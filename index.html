@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v5</title>
+<title>Bici Indoor · v6</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -64,6 +64,7 @@
   .srow .tag{color:var(--dim);font-size:12px;margin-top:3px}
   .srow .del{min-height:40px;padding:8px 12px;background:#2a1518;border-color:#5a2a2a;color:#ff9b91;font-weight:700}
   .badge{display:inline-block;font-size:10px;padding:2px 6px;border-radius:6px;background:#1c2531;color:var(--dim);margin-right:6px;text-transform:uppercase;letter-spacing:.03em}
+  .srow input[type=checkbox]{width:22px;height:22px;accent-color:var(--acc);flex:0 0 auto}
   .progress{height:8px;background:#0a0d12;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:14px 0 4px}
   .progress > i{display:block;height:100%;background:var(--acc);width:0%}
   canvas{width:100%;display:block;border-radius:8px;background:#0a0d12;touch-action:none}
@@ -78,7 +79,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v5</h1>
+  <h1>Bici Indoor · v6</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -188,6 +189,14 @@
   <!-- HISTORIAL -->
   <div class="card hidden" id="historial">
     <h2>Historial de sesiones</h2>
+    <div class="row" style="margin-bottom:10px">
+      <button id="selToggle" style="flex:1">Seleccionar varias</button>
+    </div>
+    <div id="selBar" class="hidden" style="display:flex;gap:8px;margin-bottom:10px">
+      <button id="selAll" style="flex:1">Todas</button>
+      <button class="danger" id="delSel" style="flex:1.4">Borrar (0)</button>
+      <button id="selCancel" style="flex:1">Cancelar</button>
+    </div>
     <div id="sessList"></div>
     <div class="controls">
       <button id="exportAll">Exportar todo</button>
@@ -584,22 +593,38 @@ toggleMode();
 // ---------- Historial ----------
 function fmtDate(ms){const d=new Date(ms);
   return d.getDate()+"/"+(d.getMonth()+1)+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");}
-function deleteSesion(i){const a=loadSesiones();a.splice(i,1);localStorage.setItem("bici_sesiones",JSON.stringify(a));}
+let selMode=false, selected=new Set();
+function deleteByDate(date){const a=loadSesiones().filter(s=>s.date!==date);localStorage.setItem("bici_sesiones",JSON.stringify(a));}
+function updateDelCount(){ const b=$("delSel"); if(b)b.textContent="Borrar ("+selected.size+")"; }
 function renderHistorial(){
   const list=loadSesiones(), wrap=$("sessList");
   if(!list.length){wrap.innerHTML='<div style="color:var(--dim);font-size:13px">Todavía no hay sesiones guardadas.</div>';return;}
   wrap.innerHTML="";
-  list.map((s,i)=>({s,i})).reverse().forEach(({s,i})=>{
+  list.map((s,i)=>({s,i})).reverse().forEach(({s})=>{
     const modo=s.mode==="libre"?("Libre · "+(s.raceBy||"")):"Recorrido";
     const dist=((s.dist||s.total||0)/1000).toFixed(2);
     const hr=s.hrAvg?(" · ♥ "+s.hrAvg+(s.hrMax?"/"+s.hrMax:"")):"";
     const row=document.createElement("div");row.className="srow";
-    row.innerHTML=`<div class="info"><span class="badge">${modo}</span>${fmtDate(s.date)}<div class="tag">${fmtTime(s.dur||0)} · ${dist} km${hr}</div></div>`;
-    const del=document.createElement("button");del.className="del";del.textContent="✕";
-    del.onclick=()=>{ if(confirm("¿Borrar esta sesión?")){deleteSesion(i);renderHistorial();populateGhosts();} };
-    row.appendChild(del);wrap.appendChild(row);
+    let cb=null;
+    if(selMode){
+      cb=document.createElement("input");cb.type="checkbox";cb.checked=selected.has(s.date);
+      cb.onchange=()=>{ if(cb.checked)selected.add(s.date); else selected.delete(s.date); updateDelCount(); };
+      row.appendChild(cb);
+    }
+    const info=document.createElement("div");info.className="info";
+    info.innerHTML=`<span class="badge">${modo}</span>${fmtDate(s.date)}<div class="tag">${fmtTime(s.dur||0)} · ${dist} km${hr}</div>`;
+    row.appendChild(info);
+    if(selMode){ row.style.cursor="pointer"; info.onclick=()=>{ cb.checked=!cb.checked; cb.onchange(); }; }
+    else{
+      const del=document.createElement("button");del.className="del";del.textContent="✕";
+      del.onclick=()=>{ if(confirm("¿Borrar esta sesión?")){deleteByDate(s.date);renderHistorial();populateGhosts();} };
+      row.appendChild(del);
+    }
+    wrap.appendChild(row);
   });
 }
+function setSelMode(on){ selMode=on; selected.clear(); updateDelCount();
+  $("selBar").classList.toggle("hidden",!on); $("selToggle").classList.toggle("hidden",on); renderHistorial(); }
 function exportAll(){
   const data=localStorage.getItem("bici_sesiones")||"[]";
   const blob=new Blob([data],{type:"application/json"});const d=new Date();
@@ -618,12 +643,22 @@ function importSesiones(text){
   renderHistorial();populateGhosts();
   alert("Importadas "+added+" sesiones nuevas.");
 }
-$("histBtn").onclick=()=>{ renderHistorial();$("setup").classList.add("hidden");$("historial").classList.remove("hidden"); };
+$("histBtn").onclick=()=>{ $("setup").classList.add("hidden");$("historial").classList.remove("hidden"); setSelMode(false); };
 $("histBack").onclick=()=>{ $("historial").classList.add("hidden");$("setup").classList.remove("hidden");refreshStart(); };
 $("exportAll").onclick=exportAll;
 $("importBtn").onclick=()=>$("importFile").click();
 $("importFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>importSesiones(r.result);r.readAsText(f);e.target.value="";};
 $("clearAll").onclick=()=>{ if(confirm("¿Borrar TODAS las sesiones? No se puede deshacer.")){localStorage.removeItem("bici_sesiones");renderHistorial();populateGhosts();} };
+$("selToggle").onclick=()=>setSelMode(true);
+$("selCancel").onclick=()=>setSelMode(false);
+$("selAll").onclick=()=>{ const list=loadSesiones();
+  if(selected.size>=list.length) selected.clear(); else list.forEach(s=>selected.add(s.date));
+  updateDelCount(); renderHistorial(); };
+$("delSel").onclick=()=>{ if(!selected.size){return;}
+  if(confirm("¿Borrar "+selected.size+" sesiones?")){
+    const a=loadSesiones().filter(s=>!selected.has(s.date));
+    localStorage.setItem("bici_sesiones",JSON.stringify(a));
+    setSelMode(false); populateGhosts(); } };
 
 window.addEventListener("resize",()=>{ if(state==="riding"||state==="paused")drawRide(); });
 if(!("usb" in navigator))msg("WebUSB no disponible en este navegador.");
