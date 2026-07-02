@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v10</title>
+<title>Bici Indoor · v12</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -69,6 +69,7 @@
   .progress > i{display:block;height:100%;background:var(--acc);width:0%}
   canvas{width:100%;display:block;border-radius:8px;background:#0a0d12;touch-action:none}
   #prof{height:150px} #map{height:220px}
+  #pvProf{height:130px} #pvMap{height:150px}
   .controls{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
   .msg{color:var(--warn);font-size:13px;margin:8px 0}
   pre#log{background:#0a0d12;border:1px solid var(--line);border-radius:12px;padding:10px;
@@ -79,13 +80,21 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v10</h1>
+  <h1>Bici Indoor · v12</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
   <div class="card" id="setup">
     <div class="state"><span id="dot" class="dot"></span><span id="stateTx">Rodillo desconectado</span></div>
-    <button class="primary full" id="connect">Conectar rodillo</button>
+    <div class="row">
+      <label for="connType">Conexión</label>
+      <select id="connType" style="flex:1">
+        <option value="ant">ANT+ (stick USB)</option>
+        <option value="ble">Bluetooth (FTMS: Tacx, Wahoo…)</option>
+      </select>
+    </div>
+    <button class="primary full" id="connect" style="margin-top:8px">Conectar rodillo</button>
+    <button class="full hidden" id="hrBleBtn" style="margin-top:8px">Conectar banda cardíaca (BT)</button>
 
     <div class="row" style="margin-top:14px">
       <label for="modeSel">Modo</label>
@@ -104,6 +113,15 @@
       <div class="row" id="gpxGhostRow" style="margin-top:10px">
         <label for="gpxGhostSel">Fantasma</label>
         <select id="gpxGhostSel" style="flex:1"></select>
+      </div>
+      <div id="preview" class="hidden" style="margin-top:10px">
+        <canvas id="pvProf" height="130"></canvas>
+        <canvas id="pvMap" height="150" style="margin-top:8px"></canvas>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+          <label style="color:var(--dim);font-size:13px">Suavizado</label>
+          <input type="range" id="pvSmooth" min="0" max="300" step="10" style="flex:1;accent-color:var(--acc);height:32px">
+          <label id="pvSmoothV" style="color:var(--dim);font-size:13px;width:48px">100 m</label>
+        </div>
       </div>
     </div>
 
@@ -232,6 +250,7 @@ let peRawArr=[];
 // ---------- Estado app ----------
 let state="idle"; // idle | riding | paused | finished
 let device=null, epIn=0, epOut=0, inPacket=64, ifaceNum=0, connected=false, autoPaused=false;
+let conn="ant", bleDevice=null, bleControl=null;
 let curPower=0, curCad=0, curHR=0, sawTrainer=false, rxBuf=[];
 
 // recorrido
@@ -280,6 +299,11 @@ async function openDevice(dev){
   rxBuf=[]; readLoop();
 }
 async function connect(){
+  const type=$("connType")?$("connType").value:"ant";
+  if(type==="ble"){ conn="ble"; await connectBle(); }
+  else { conn="ant"; await connectAnt(); }
+}
+async function connectAnt(){
   if(!("usb" in navigator)){msg("Este navegador no soporta WebUSB (usá Brave/Chrome).");return;}
   try{
     const dev=await navigator.usb.requestDevice({filters:FILTERS});
@@ -348,12 +372,81 @@ function frame(f){
   }
 }
 function sendUserConfig(){
+  if(conn!=="ant")return;
   const kg=riderKg(); const w=Math.round(kg*100);
   send(antMsg(M.ACK,[CH,0x37,w&0xFF,(w>>8)&0xFF,0xFF,0xFF,0xFF,0xFF,0xFF]));
 }
-function sendGrade(g){
+function sendGrade(g){ if(conn==="ble") sendGradeBle(g); else sendGradeAnt(g); }
+function sendGradeAnt(g){
   const raw=Math.round((g+200)/0.01),lo=raw&0xFF,hi=(raw>>8)&0xFF;
   send(antMsg(M.ACK,[CH,0x33,0xFF,0xFF,0xFF,0xFF,lo,hi,0x50]));
+}
+async function sendGradeBle(g){
+  if(!bleControl)return;
+  const b=new DataView(new ArrayBuffer(7));
+  b.setUint8(0,0x11); b.setInt16(1,0,true); b.setInt16(3,Math.round(g*100),true);
+  b.setUint8(5,40); b.setUint8(6,51); // Crr 0.004, Cw 0.51
+  try{ await bleControl.writeValueWithResponse(b.buffer); }catch(_){}
+}
+async function connectBle(){
+  if(!navigator.bluetooth){msg("Este navegador no soporta Web Bluetooth (usá Brave/Chrome; no anda en iPhone).");return;}
+  try{
+    bleDevice=await navigator.bluetooth.requestDevice({
+      filters:[{services:['fitness_machine']}],
+      optionalServices:['fitness_machine','cycling_power','heart_rate']
+    });
+    bleDevice.addEventListener('gattserverdisconnected',onBleDisconnect);
+    await bleSetup();
+    sawTrainer=true; $("connect").textContent="Rodillo conectado (BT)";
+    setState("Rodillo BT conectado","live");
+    log("FTMS conectado: "+(bleDevice.name||"rodillo"),"#3fb950");
+    afterReconnect();
+  }catch(e){ log("BT: "+e.message,"#f85149"); setState("Error de conexión BT","err"); }
+}
+async function bleSetup(){
+  const server=await bleDevice.gatt.connect();
+  const ftms=await server.getPrimaryService('fitness_machine');
+  const bike=await ftms.getCharacteristic('indoor_bike_data');
+  await bike.startNotifications();
+  bike.addEventListener('characteristicvaluechanged',e=>parseBikeData(e.target.value));
+  bleControl=await ftms.getCharacteristic('fitness_machine_control_point');
+  try{ await bleControl.startNotifications(); }catch(_){}
+  await bleControl.writeValueWithResponse(Uint8Array.of(0x00)); // request control
+  connected=true;
+}
+function parseBikeData(dv){
+  const flags=dv.getUint16(0,true); let o=2;
+  if(!(flags&0x0001)) o+=2;   // inst speed
+  if(flags&0x0002) o+=2;      // avg speed
+  if(flags&0x0004){ curCad=Math.round(dv.getUint16(o,true)*0.5); o+=2; }
+  if(flags&0x0008) o+=2;      // avg cadence
+  if(flags&0x0010) o+=3;      // total distance
+  if(flags&0x0020) o+=2;      // resistance
+  if(flags&0x0040){ curPower=dv.getInt16(o,true); o+=2; } // inst power
+}
+function onBleDisconnect(){
+  if(conn!=="ble")return;
+  log("Rodillo BT desconectado","#f85149");
+  connected=false; sawTrainer=false; bleControl=null; curPower=0;
+  setState("Rodillo desconectado","err");
+  if(state==="riding"){ autoPaused=true; state="paused"; $("pause").textContent="Reanudar"; showReconnect(true); }
+  refreshStart();
+}
+async function reconnectBle(){
+  if(!bleDevice) return connectBle();
+  try{ await bleSetup(); sawTrainer=true; setState("Rodillo BT conectado","live"); afterReconnect(); }
+  catch(e){ log("Reconexión BT falló: "+e.message,"#f85149"); showReconnect(true); }
+}
+async function connectHrBle(){
+  if(!navigator.bluetooth){msg("Sin Web Bluetooth");return;}
+  try{
+    const d=await navigator.bluetooth.requestDevice({filters:[{services:['heart_rate']}]});
+    const s=await d.gatt.connect();
+    const hm=await (await s.getPrimaryService('heart_rate')).getCharacteristic('heart_rate_measurement');
+    await hm.startNotifications();
+    hm.addEventListener('characteristicvaluechanged',e=>{const dv=e.target.value,f=dv.getUint8(0);curHR=(f&1)?dv.getUint16(1,true):dv.getUint8(1);});
+    log("Banda cardíaca BT conectada","#3fb950");
+  }catch(e){ log("Banda BT: "+e.message,"#f85149"); }
 }
 
 // ================= Recorrido =================
@@ -380,6 +473,9 @@ function parseGpx(text){
   peRawArr=raw;
   recomputeProfile();
   computeMap();
+  $("preview").classList.remove("hidden");
+  $("pvSmooth").value=$("smoothM").value; $("pvSmoothV").textContent=$("smoothM").value+" m";
+  drawPreview();
   populateGpxGhosts();
   msg(""); refreshStart();
 }
@@ -392,6 +488,37 @@ function recomputeProfile(){
   let up=0; for(let i=1;i<pe.length;i++){const dv=pe[i]-pe[i-1];if(dv>0)up+=dv;}
   let gmax=0; for(const g of pg) if(g>gmax)gmax=g;
   $("routeinfo").innerHTML=`<b>${fname}</b> · ${(total/1000).toFixed(1)} km · ${up.toFixed(0)} m D+ · máx ${gmax.toFixed(1)}%`;
+  const pv=$("preview"); if(pv && !pv.classList.contains("hidden")) drawPreview();
+}
+function drawPreview(){
+  if(!pd.length) return;
+  let cv=$("pvProf"), r=fit(cv), ctx=r.ctx, w=r.w, h=r.h;
+  if(w<10) return;
+  ctx.clearRect(0,0,w,h);
+  const pad={l:8,r:8,t:8,b:14}, cw=w-pad.l-pad.r, ch=h-pad.t-pad.b;
+  let emin=Math.min(...pe),emax=Math.max(...pe); if(emax-emin<1){emax+=1;emin-=1;}
+  const x=d=>pad.l+(d/total)*cw, y=e=>pad.t+(1-(e-emin)/(emax-emin))*ch;
+  const stride=Math.max(1,Math.floor(pe.length/cw));
+  ctx.beginPath();ctx.moveTo(x(0),y(pe[0]));
+  for(let i=0;i<pe.length;i+=stride)ctx.lineTo(x(pd[i]),y(pe[i]));
+  ctx.lineTo(x(total),pad.t+ch);ctx.lineTo(x(0),pad.t+ch);ctx.closePath();
+  ctx.fillStyle="rgba(76,194,255,.14)";ctx.fill();
+  ctx.beginPath();ctx.moveTo(x(0),y(pe[0]));
+  for(let i=0;i<pe.length;i+=stride)ctx.lineTo(x(pd[i]),y(pe[i]));
+  ctx.strokeStyle="#4cc2ff";ctx.lineWidth=1.6;ctx.stroke();
+  for(let px=0;px<cw;px++){const d=(px/cw)*total;ctx.fillStyle=gradeColor(gradeAt(d));ctx.fillRect(pad.l+px,pad.t+ch+2,1,6);}
+  if(!projPts.length) return;
+  cv=$("pvMap"); r=fit(cv); ctx=r.ctx; w=r.w; h=r.h; if(w<10)return;
+  ctx.clearRect(0,0,w,h);
+  const mp=14, mcw=w-2*mp, mch=h-2*mp, bw=(mxmax-mxmin)||1e-9, bh=(mymax-mymin)||1e-9;
+  const scale=Math.min(mcw/bw,mch/bh), ox=mp+(mcw-bw*scale)/2, oy=mp+(mch-bh*scale)/2;
+  const X=p=>ox+(p.x-mxmin)*scale, Y=p=>oy+(mymax-p.y)*scale;
+  ctx.lineWidth=3;ctx.lineJoin="round";ctx.lineCap="round";
+  for(let i=0;i<projPts.length-1;i++){ctx.strokeStyle=gradeColor(gradeAt(dist[i]));
+    ctx.beginPath();ctx.moveTo(X(projPts[i]),Y(projPts[i]));ctx.lineTo(X(projPts[i+1]),Y(projPts[i+1]));ctx.stroke();}
+  const dot=(px,py,f)=>{ctx.beginPath();ctx.arc(px,py,4,0,7);ctx.fillStyle=f;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#04121c";ctx.stroke();};
+  dot(X(projPts[0]),Y(projPts[0]),"#3fb950");
+  dot(X(projPts[projPts.length-1]),Y(projPts[projPts.length-1]),"#f85149");
 }
 function haversine(a,b){const R=6371000,tr=Math.PI/180;
   const dLat=(b.lat-a.lat)*tr,dLon=(b.lon-a.lon)*tr;
@@ -663,9 +790,19 @@ $("finish").onclick=()=>{ if(confirm("¿Terminar y guardar la sesión?")) finish
 $("again").onclick=()=>{ state="idle";$("summary").classList.add("hidden");$("setup").classList.remove("hidden");$("start").disabled=false;refreshStart(); };
 ["weight","bike","crr","cda"].forEach(id=>$(id).addEventListener("change",()=>{ if(state==="riding")sendUserConfig(); }));
 $("modeSel").onchange=toggleMode;
-$("smoothM").addEventListener("change",()=>{ if(pd.length){recomputeProfile(); if(state==="riding"||state==="paused")drawRide();} });
+function setSmooth(v){
+  v=Math.max(0,Math.min(300,parseInt(v,10)||0));
+  $("smoothM").value=v;
+  if($("pvSmooth"))$("pvSmooth").value=v;
+  if($("pvSmoothV"))$("pvSmoothV").textContent=v+" m";
+  if(pd.length){ recomputeProfile(); if(state==="riding"||state==="paused")drawRide(); }
+}
+$("smoothM").addEventListener("change",()=>setSmooth($("smoothM").value));
+$("pvSmooth").addEventListener("input",()=>setSmooth($("pvSmooth").value));
 $("raceSel").onchange=()=>{ $("objUnit").textContent=$("raceSel").value==="tiempo"?"min":"km"; };
-$("reconnBtn").onclick=connect;
+$("reconnBtn").onclick=()=>{ conn==="ble"?reconnectBle():connect(); };
+$("connType").onchange=()=>{ conn=$("connType").value; $("hrBleBtn").classList.toggle("hidden",conn!=="ble"); };
+$("hrBleBtn").onclick=connectHrBle;
 toggleMode();
 
 if("usb" in navigator){
@@ -679,7 +816,7 @@ if("usb" in navigator){
     }
   });
   navigator.usb.addEventListener("connect",async e=>{
-    if(connected || !e.device || e.device.vendorId!==0x0fcf) return;
+    if(conn!=="ant" || connected || !e.device || e.device.vendorId!==0x0fcf) return;
     log("Stick detectado, reabriendo…","#3fb950");
     try{ await openDevice(e.device); await initAnt(); afterReconnect(); }
     catch(err){ log("No pude reabrir solo: "+err.message,"#f85149"); showReconnect(true); }
