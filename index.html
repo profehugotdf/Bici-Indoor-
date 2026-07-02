@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v12</title>
+<title>Bici Indoor · v15</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -70,6 +70,7 @@
   canvas{width:100%;display:block;border-radius:8px;background:#0a0d12;touch-action:none}
   #prof{height:150px} #map{height:220px}
   #pvProf{height:130px} #pvMap{height:150px}
+  #lane{height:84px}
   .controls{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
   .msg{color:var(--warn);font-size:13px;margin:8px 0}
   pre#log{background:#0a0d12;border:1px solid var(--line);border-radius:12px;padding:10px;
@@ -80,7 +81,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v12</h1>
+  <h1>Bici Indoor · v15</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -122,6 +123,7 @@
           <input type="range" id="pvSmooth" min="0" max="300" step="10" style="flex:1;accent-color:var(--acc);height:32px">
           <label id="pvSmoothV" style="color:var(--dim);font-size:13px;width:48px">100 m</label>
         </div>
+        <div id="pvReadout" style="color:var(--dim);font-size:12px;margin-top:6px">Deslizá el dedo por la altimetría para ubicar el punto</div>
       </div>
     </div>
 
@@ -175,7 +177,7 @@
     </div>
     <div id="raceWrap" class="hidden" style="margin-bottom:12px">
       <div class="gap" id="gapTx">—</div>
-      <div class="lane"><div class="mk ghost" id="mkG"></div><div class="mk you" id="mkY"></div></div>
+      <canvas id="lane" height="84"></canvas>
     </div>
     <div class="hud">
       <div class="tile big"><div class="l">Tiempo</div><div class="v" id="hTime">0:00</div></div>
@@ -246,6 +248,7 @@
 const $=id=>document.getElementById(id);
 const STEP=10, G=9.81, RHO=1.225;
 let peRawArr=[];
+let pvScrub=-1, pvMapT=null;
 
 // ---------- Estado app ----------
 let state="idle"; // idle | riding | paused | finished
@@ -474,6 +477,7 @@ function parseGpx(text){
   recomputeProfile();
   computeMap();
   $("preview").classList.remove("hidden");
+  pvScrub=-1; updatePvReadout();
   $("pvSmooth").value=$("smoothM").value; $("pvSmoothV").textContent=$("smoothM").value+" m";
   drawPreview();
   populateGpxGhosts();
@@ -507,18 +511,36 @@ function drawPreview(){
   for(let i=0;i<pe.length;i+=stride)ctx.lineTo(x(pd[i]),y(pe[i]));
   ctx.strokeStyle="#4cc2ff";ctx.lineWidth=1.6;ctx.stroke();
   for(let px=0;px<cw;px++){const d=(px/cw)*total;ctx.fillStyle=gradeColor(gradeAt(d));ctx.fillRect(pad.l+px,pad.t+ch+2,1,6);}
+  if(pvScrub>=0){ const xx=x(pd[pvScrub]);
+    ctx.strokeStyle="#e6edf3";ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(xx,pad.t);ctx.lineTo(xx,pad.t+ch);ctx.stroke();
+    const yi=y(pe[pvScrub]);ctx.beginPath();ctx.arc(xx,yi,5,0,7);ctx.fillStyle="#e6edf3";ctx.strokeStyle="#04121c";ctx.lineWidth=2;ctx.fill();ctx.stroke(); }
   if(!projPts.length) return;
   cv=$("pvMap"); r=fit(cv); ctx=r.ctx; w=r.w; h=r.h; if(w<10)return;
   ctx.clearRect(0,0,w,h);
   const mp=14, mcw=w-2*mp, mch=h-2*mp, bw=(mxmax-mxmin)||1e-9, bh=(mymax-mymin)||1e-9;
   const scale=Math.min(mcw/bw,mch/bh), ox=mp+(mcw-bw*scale)/2, oy=mp+(mch-bh*scale)/2;
+  pvMapT={scale,ox,oy};
   const X=p=>ox+(p.x-mxmin)*scale, Y=p=>oy+(mymax-p.y)*scale;
   ctx.lineWidth=3;ctx.lineJoin="round";ctx.lineCap="round";
   for(let i=0;i<projPts.length-1;i++){ctx.strokeStyle=gradeColor(gradeAt(dist[i]));
     ctx.beginPath();ctx.moveTo(X(projPts[i]),Y(projPts[i]));ctx.lineTo(X(projPts[i+1]),Y(projPts[i+1]));ctx.stroke();}
-  const dot=(px,py,f)=>{ctx.beginPath();ctx.arc(px,py,4,0,7);ctx.fillStyle=f;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#04121c";ctx.stroke();};
+  const dot=(px,py,f,rr)=>{ctx.beginPath();ctx.arc(px,py,rr||4,0,7);ctx.fillStyle=f;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#04121c";ctx.stroke();};
   dot(X(projPts[0]),Y(projPts[0]),"#3fb950");
   dot(X(projPts[projPts.length-1]),Y(projPts[projPts.length-1]),"#f85149");
+  if(pvScrub>=0){ const pp=projAt(pd[pvScrub]); dot(X(pp),Y(pp),"#e6edf3",6); }
+}
+function updatePvReadout(){
+  const el=$("pvReadout"); if(!el)return;
+  if(pvScrub<0){ el.textContent="Deslizá el dedo por la altimetría para ubicar el punto"; return; }
+  el.innerHTML=`Km <b>${(pd[pvScrub]/1000).toFixed(2)}</b> · Alt <b>${pe[pvScrub].toFixed(0)} m</b> · Pend <b>${pg[pvScrub].toFixed(1)}%</b>`;
+}
+function pvOnScrub(ev){
+  if(!pd.length)return;
+  const cv=$("pvProf"), rect=cv.getBoundingClientRect();
+  const px=(ev.touches?ev.touches[0].clientX:ev.clientX)-rect.left;
+  const frac=Math.max(0,Math.min(1,(px-8)/(rect.width-16)));
+  pvScrub=Math.round(frac*(pd.length-1));
+  drawPreview(); updatePvReadout();
 }
 function haversine(a,b){const R=6371000,tr=Math.PI/180;
   const dLat=(b.lat-a.lat)*tr,dLon=(b.lon-a.lon)*tr;
@@ -569,7 +591,7 @@ function tick(){
     raceBar(distanceM,ghostDistNow,total);
   }
   // grabación 1 Hz
-  if(elapsed-lastRec>=1){lastRec=elapsed;session.samples.push({t:+elapsed.toFixed(1),d:+distanceM.toFixed(1),hr:curHR||0});}
+  if(elapsed-lastRec>=1){lastRec=elapsed;session.samples.push({t:+elapsed.toFixed(1),d:+distanceM.toFixed(1),hr:curHR||0,c:curCad||0});}
   hud(grade); drawRide();
 }
 function updateGhost(){
@@ -596,9 +618,69 @@ function ghostTimeAt(d){const s=ghost.samples;if(!s.length)return 0;
 function showGap(val,unit){const g=$("gapTx"),ahead=val>=0;
   g.textContent=(ahead?"+":"−")+Math.abs(Math.round(val))+" "+unit+(ahead?" adelante":" atrás");
   g.className="gap "+(ahead?"ahead":"behind");}
-function raceBar(you,gpos,maxD){
-  $("mkY").style.left=Math.min(100,you/maxD*100)+"%";
-  $("mkG").style.left=Math.min(100,gpos/maxD*100)+"%";}
+function raceBar(you,gpos,maxD){ raceYou=you; raceGhost=gpos; raceMax=maxD||1; }
+let raceYou=0, raceGhost=0, raceMax=1, youCrank=0, ghostCrank=0, laneRAF=null, laneLast=0, laneCtx=null;
+function ghostCadAt(t){ const s=ghost?ghost.samples:null; if(!s||!s.length)return 0;
+  if(t<=s[0].t)return s[0].c||0; if(t>=s[s.length-1].t)return s[s.length-1].c||0;
+  let i=0;while(i<s.length-1&&s[i+1].t<t)i++;const a=s[i],b=s[i+1];const ca=a.c||0,cb=b.c||0;
+  return ca+(cb-ca)*((t-a.t)/((b.t-a.t)||1)); }
+function raceActive(){ return (state==="riding"||state==="paused") && ghost && $("raceWrap") && !$("raceWrap").classList.contains("hidden"); }
+function fitLane(){ laneCtx=fit($("lane")); }
+function startLane(){ fitLane(); if(!laneRAF){ laneLast=0; laneRAF=requestAnimationFrame(laneLoop); } }
+function stopLane(){ if(laneRAF){cancelAnimationFrame(laneRAF);laneRAF=null;} }
+function laneLoop(ts){
+  if(!raceActive()){ laneRAF=null; return; }
+  const dt=laneLast?Math.min(0.1,(ts-laneLast)/1000):0; laneLast=ts;
+  youCrank += 2*Math.PI*((curCad||0)/60)*dt;
+  ghostCrank += 2*Math.PI*(ghostCadAt(elapsed)/60)*dt;
+  drawLane();
+  laneRAF=requestAnimationFrame(laneLoop);
+}
+function drawLane(){
+  if(!laneCtx) fitLane(); if(!laneCtx) return;
+  const {ctx,w,h}=laneCtx; if(w<10)return;
+  ctx.clearRect(0,0,w,h);
+  const groundY=h-10, margin=32, maxD=raceMax||1;
+  ctx.strokeStyle="#273040";ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(margin,groundY+6);ctx.lineTo(w-margin,groundY+6);ctx.stroke();
+  const xOf=d=>margin+Math.min(1,Math.max(0,d/maxD))*(w-2*margin);
+  drawCyclist(ctx,xOf(raceGhost),groundY,15,ghostCrank,"#8b98a9",0.55);
+  drawCyclist(ctx,xOf(raceYou),groundY,15,youCrank,"#e6edf3",1);
+}
+function drawCyclist(ctx,cx,groundY,s,crank,color,alpha){
+  ctx.save(); ctx.globalAlpha=alpha; ctx.strokeStyle=color; ctx.fillStyle=color; ctx.lineCap="round"; ctx.lineJoin="round";
+  const wr=0.55*s, wy=groundY-wr;
+  const rear=[cx-1.0*s,wy], front=[cx+1.0*s,wy], bb=[cx+0.02*s,wy];
+  const seat=[cx-0.55*s,wy-1.15*s], bar=[cx+0.95*s,wy-0.95*s];
+  const hip=[cx-0.30*s,wy-1.05*s], shoulder=[cx+0.28*s,wy-1.5*s], head=[cx+0.58*s,wy-1.78*s];
+  ctx.lineWidth=Math.max(1,0.09*s);
+  for(const wc of [rear,front]){ ctx.beginPath();ctx.arc(wc[0],wc[1],wr,0,7);ctx.stroke(); }
+  ctx.lineWidth=Math.max(1,0.12*s);
+  ctx.beginPath();
+  ctx.moveTo(rear[0],rear[1]);ctx.lineTo(bb[0],bb[1]);ctx.lineTo(front[0],front[1]);
+  ctx.moveTo(bb[0],bb[1]);ctx.lineTo(seat[0],seat[1]);
+  ctx.moveTo(seat[0],seat[1]);ctx.lineTo(bar[0],bar[1]);
+  ctx.moveTo(bar[0],bar[1]);ctx.lineTo(front[0],front[1]);
+  ctx.stroke();
+  ctx.lineWidth=Math.max(1.5,0.16*s);
+  ctx.beginPath();ctx.moveTo(hip[0],hip[1]);ctx.lineTo(shoulder[0],shoulder[1]);ctx.lineTo(bar[0],bar[1]);ctx.stroke();
+  ctx.beginPath();ctx.arc(head[0],head[1],0.28*s,0,7);ctx.fill();
+  const cr=0.34*s, L1=0.72*s, L2=0.80*s;
+  drawLeg(ctx,hip,bb,crank,cr,L1,L2,s,0.8);
+  drawLeg(ctx,hip,bb,crank+Math.PI,cr,L1,L2,s,1);
+  ctx.restore();
+}
+function drawLeg(ctx,hip,bb,theta,cr,L1,L2,s,a){
+  const px=bb[0]+cr*Math.cos(theta), py=bb[1]+cr*Math.sin(theta);
+  const Hx=hip[0],Hy=hip[1]; let dx=px-Hx,dy=py-Hy,d=Math.hypot(dx,dy);
+  d=Math.max(Math.abs(L1-L2)+0.001,Math.min(L1+L2-0.001,d));
+  const a1=(L1*L1-L2*L2+d*d)/(2*d), hh=Math.sqrt(Math.max(0,L1*L1-a1*a1));
+  const mx=Hx+a1*dx/d, my=Hy+a1*dy/d;
+  const k1x=mx+hh*(dy/d), k1y=my-hh*(dx/d), k2x=mx-hh*(dy/d), k2y=my+hh*(dx/d);
+  let kx,ky; if(k1x>=k2x){kx=k1x;ky=k1y;}else{kx=k2x;ky=k2y;}
+  ctx.save();ctx.globalAlpha*=a;ctx.lineWidth=Math.max(1.5,0.15*s);
+  ctx.beginPath();ctx.moveTo(Hx,Hy);ctx.lineTo(kx,ky);ctx.lineTo(px,py);ctx.stroke();ctx.restore();
+}
 function doVerdict(margin,unit){const good=margin>0,vd=$("verdict");
   verdictMargin=margin; verdictUnit=unit;
   vd.textContent=(good?"¡Mejoraste! +":"No mejoraste: −")+Math.abs(Math.round(margin))+" "+unit;
@@ -744,6 +826,8 @@ function startRide(){
     session={mode:"gpx",route:fname,total:+total.toFixed(1),date:Date.now(),samples:[]};
   }
   $("sVerdict").classList.add("hidden");
+  raceYou=0; raceGhost=0; raceMax=1; youCrank=0; ghostCrank=0;
+  if(ghost) startLane(); else stopLane();
   sendUserConfig();
   state="riding";lastTs=performance.now();
   $("setup").classList.add("hidden");$("summary").classList.add("hidden");$("ride").classList.remove("hidden");
@@ -799,6 +883,21 @@ function setSmooth(v){
 }
 $("smoothM").addEventListener("change",()=>setSmooth($("smoothM").value));
 $("pvSmooth").addEventListener("input",()=>setSmooth($("pvSmooth").value));
+function pvOnMapScrub(ev){
+  if(!projPts.length||!pvMapT)return;
+  const cv=$("pvMap"), rect=cv.getBoundingClientRect();
+  const sx=(ev.touches?ev.touches[0].clientX:ev.clientX)-rect.left;
+  const sy=(ev.touches?ev.touches[0].clientY:ev.clientY)-rect.top;
+  const X=p=>pvMapT.ox+(p.x-mxmin)*pvMapT.scale, Y=p=>pvMapT.oy+(mymax-p.y)*pvMapT.scale;
+  let best=0,bd=Infinity;
+  for(let i=0;i<projPts.length;i++){const dx=X(projPts[i])-sx,dy=Y(projPts[i])-sy,dd=dx*dx+dy*dy;if(dd<bd){bd=dd;best=i;}}
+  pvScrub=Math.max(0,Math.min(pd.length-1,Math.round(dist[best]/STEP)));
+  drawPreview(); updatePvReadout();
+}
+$("pvProf").addEventListener("pointerdown",pvOnScrub);
+$("pvProf").addEventListener("pointermove",e=>{ if(e.pressure>0||e.buttons)pvOnScrub(e); });
+$("pvMap").addEventListener("pointerdown",pvOnMapScrub);
+$("pvMap").addEventListener("pointermove",e=>{ if(e.pressure>0||e.buttons)pvOnMapScrub(e); });
 $("raceSel").onchange=()=>{ $("objUnit").textContent=$("raceSel").value==="tiempo"?"min":"km"; };
 $("reconnBtn").onclick=()=>{ conn==="ble"?reconnectBle():connect(); };
 $("connType").onchange=()=>{ conn=$("connType").value; $("hrBleBtn").classList.toggle("hidden",conn!=="ble"); };
@@ -898,7 +997,7 @@ function parseTcxGhost(text,filename){
     const hn=tp.getElementsByTagName("HeartRateBpm")[0];
     let hr=0; if(hn){const vv=hn.getElementsByTagName("Value")[0]; if(vv)hr=parseInt(vv.textContent,10)||0;}
     if(hr>0){hrSum+=hr;hrN++;if(hr>hrMax)hrMax=hr;}
-    samples.push({t:+t.toFixed(1),d:+d.toFixed(1),hr});
+    samples.push({t:+t.toFixed(1),d:+d.toFixed(1),hr,c:(tp.getElementsByTagName("Cadence")[0]?parseInt(tp.getElementsByTagName("Cadence")[0].textContent,10)||0:0)});
   }
   if(samples.length<2){alert("El TCX no tiene datos suficientes de tiempo/distancia");return;}
   const dur=samples[samples.length-1].t, dist=samples[samples.length-1].d;
@@ -920,7 +1019,7 @@ $("delSel").onclick=()=>{ if(!selected.size){return;}
     localStorage.setItem("bici_sesiones",JSON.stringify(a));
     setSelMode(false); populateGhosts(); } };
 
-window.addEventListener("resize",()=>{ if(state==="riding"||state==="paused")drawRide(); });
+window.addEventListener("resize",()=>{ if(state==="riding"||state==="paused"){drawRide(); if(raceActive()){fitLane();drawLane();}} });
 if(!("usb" in navigator))msg("WebUSB no disponible en este navegador.");
 </script>
 </body>
