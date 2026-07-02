@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>FE-C · Prueba 1b</title>
+<title>Bici Indoor · v4</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -12,79 +12,171 @@
   *{box-sizing:border-box}
   html,body{margin:0;background:var(--bg);color:var(--tx);
     font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-text-size-adjust:100%}
-  .wrap{max-width:640px;margin:0 auto;padding:14px 14px 40px}
+  .wrap{max-width:680px;margin:0 auto;padding:14px 14px 44px}
   h1{font-size:18px;margin:6px 0 2px}
   .sub{color:var(--dim);font-size:13px;margin:0 0 14px}
   button{font:inherit;color:var(--tx);background:var(--panel);border:1px solid var(--line);
     border-radius:12px;padding:14px 16px;min-height:52px;font-weight:600}
   button:active{transform:translateY(1px)}
-  .primary{width:100%;background:var(--acc);color:#04121c;border-color:transparent;font-size:16px}
-  select{font:inherit;color:var(--tx);background:var(--panel);border:1px solid var(--line);
-    border-radius:12px;padding:12px 14px;width:100%;min-height:50px;margin-bottom:10px}
-  .state{margin:12px 0;padding:12px 14px;border:1px solid var(--line);border-radius:12px;
-    background:var(--panel);font-size:14px;display:flex;align-items:center;gap:10px}
+  button[disabled]{opacity:.45}
+  .primary{background:var(--acc);color:#04121c;border-color:transparent}
+  .full{width:100%}
+  .danger{background:#2a1518;border-color:#5a2a2a;color:#ff9b91}
+  input[type=file]{display:none}
+  input[type=number]{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--line);
+    border-radius:10px;padding:10px;width:92px;text-align:right}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin:12px 0}
+  .card h2{font-size:13px;margin:0 0 12px;color:var(--dim);text-transform:uppercase;letter-spacing:.04em}
+  .state{display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:10px}
   .dot{width:11px;height:11px;border-radius:50%;background:var(--dim);flex:0 0 auto}
   .dot.searching{background:var(--warn);animation:pulse 1s infinite}
   .dot.live{background:var(--ok)}
   .dot.err{background:var(--err)}
   @keyframes pulse{50%{opacity:.35}}
-  .found{margin:0 0 12px;padding:10px 14px;border:1px solid var(--acc);border-radius:12px;
-    background:#0f2230;font-size:14px;display:none}
-  .metrics{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:14px 0}
-  .m{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 10px;text-align:center}
-  .m .v{font-size:30px;font-weight:800;line-height:1.05;font-variant-numeric:tabular-nums}
-  .m .u{color:var(--dim);font-size:12px;margin-top:4px}
-  .m .l{color:var(--dim);font-size:12px;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin:14px 0}
-  .card h2{font-size:14px;margin:0 0 12px;color:var(--dim);text-transform:uppercase;letter-spacing:.04em}
-  .grades{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-  .grades button{padding:12px 4px;min-height:48px}
-  .grades button.on{background:var(--acc);color:#04121c;border-color:transparent}
-  .slider{width:100%;margin:16px 0 4px;accent-color:var(--acc);height:34px}
-  .gnow{font-size:22px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums}
-  .row{display:flex;gap:10px;align-items:center}
+  .row{display:flex;gap:10px;align-items:center;margin:8px 0}
   .row label{color:var(--dim);font-size:14px;flex:1}
-  input[type=number]{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--line);
-    border-radius:10px;padding:10px;width:100px;text-align:right}
-  pre#log{background:#0a0d12;border:1px solid var(--line);border-radius:12px;padding:12px;
-    font-size:12px;line-height:1.5;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:14px 0 0}
-  .log-ok{color:var(--ok)} .log-err{color:var(--err)} .log-tx{color:var(--acc)} .log-dim{color:var(--dim)} .log-ev{color:var(--warn)}
-  .note{color:var(--warn);font-size:13px;margin:10px 0;display:none}
+  .routeinfo{font-size:13px;color:var(--dim);margin-top:8px}
+  .routeinfo b{color:var(--tx)}
+  details{margin-top:6px} summary{color:var(--dim);font-size:13px;cursor:pointer;padding:6px 0}
+  .hud{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 8px;text-align:center}
+  .tile .v{font-size:30px;font-weight:800;line-height:1.05;font-variant-numeric:tabular-nums}
+  .tile .u{color:var(--dim);font-size:11px;margin-top:3px}
+  .tile .l{color:var(--dim);font-size:11px;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em}
+  .tile.big .v{font-size:34px}
+  .hud4{grid-template-columns:repeat(4,1fr)}
+  .hud4 .tile{padding:10px 4px}
+  .hud4 .tile .v{font-size:22px}
+  .grade-pos .v{color:var(--warn)}
+  .pulse .v{color:#ff6b6b}
+  select{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;min-height:44px}
+  .gap{font-size:30px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums}
+  .gap.ahead{color:var(--ok)} .gap.behind{color:var(--err)}
+  .lane{position:relative;height:26px;background:#0a0d12;border:1px solid var(--line);border-radius:13px;margin:8px 0}
+  .mk{position:absolute;top:50%;transform:translate(-50%,-50%);width:16px;height:16px;border-radius:50%;transition:left .15s linear}
+  .mk.you{background:#e6edf3;border:2px solid #04121c;z-index:2}
+  .mk.ghost{background:#8b98a9;border:2px solid #04121c}
+  .verdict{padding:14px;border-radius:12px;text-align:center;font-weight:800;font-size:18px;margin:10px 0}
+  .verdict.good{background:#13291a;color:#6ee787;border:1px solid #2ea043}
+  .verdict.bad{background:#2a1518;color:#ff9b91;border:1px solid #5a2a2a}
+  .progress{height:8px;background:#0a0d12;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:14px 0 4px}
+  .progress > i{display:block;height:100%;background:var(--acc);width:0%}
+  canvas{width:100%;display:block;border-radius:8px;background:#0a0d12;touch-action:none}
+  #prof{height:150px} #map{height:220px}
+  .controls{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+  .msg{color:var(--warn);font-size:13px;margin:8px 0}
+  pre#log{background:#0a0d12;border:1px solid var(--line);border-radius:12px;padding:10px;
+    font-size:11px;line-height:1.5;max-height:120px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:12px 0 0;color:var(--dim)}
+  .summary .v{font-size:26px;font-weight:800}
+  .hidden{display:none}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>FE-C · Prueba 1b</h1>
-  <p class="sub">Lectura robusta + modo escaneo para descubrir qué transmite el rodillo.</p>
+  <h1>Bici Indoor · v4</h1>
+  <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
-  <div id="httpwarn" class="note">WebUSB necesita HTTPS o localhost. Desde file:// no anda.</div>
+  <!-- SETUP -->
+  <div class="card" id="setup">
+    <div class="state"><span id="dot" class="dot"></span><span id="stateTx">Rodillo desconectado</span></div>
+    <button class="primary full" id="connect">Conectar rodillo</button>
 
-  <select id="mode">
-    <option value="17">Buscar rodillo FE-C (control)</option>
-    <option value="0">Escanear cualquier dispositivo (diagnóstico)</option>
-    <option value="11">Buscar potenciómetro (tipo 11)</option>
-  </select>
+    <div class="row" style="margin-top:14px">
+      <label for="modeSel">Modo</label>
+      <select id="modeSel" style="flex:1">
+        <option value="gpx">Recorrido (GPX)</option>
+        <option value="libre">Libre (sin GPX)</option>
+      </select>
+    </div>
 
-  <button id="btn" class="primary">Conectar stick</button>
+    <div id="gpxSetup">
+      <div class="row" style="margin-top:10px">
+        <button class="full" id="loadBtn">Cargar recorrido (GPX)</button>
+      </div>
+      <input type="file" id="file" accept=".gpx,application/gpx+xml,text/xml">
+      <div class="routeinfo" id="routeinfo">Sin recorrido cargado.</div>
+    </div>
 
-  <div class="state"><span id="dot" class="dot"></span><span id="stateTx">Desconectado</span></div>
-  <div class="found" id="found"></div>
+    <div id="libreSetup" class="hidden">
+      <div class="row" style="margin-top:10px">
+        <label for="raceSel">Competir por</label>
+        <select id="raceSel" style="flex:1">
+          <option value="tiempo">Tiempo</option>
+          <option value="distancia">Distancia</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="objVal">Objetivo</label>
+        <input type="number" id="objVal" value="6" min="1" step="1" style="width:80px">
+        <span id="objUnit" style="color:var(--dim);width:34px">min</span>
+      </div>
+      <div class="row">
+        <label for="fixG">Resistencia fija (%)</label>
+        <input type="number" id="fixG" value="0" min="0" max="15" step="0.5" style="width:80px">
+      </div>
+      <div class="row">
+        <label for="ghostSel">Fantasma</label>
+        <select id="ghostSel" style="flex:1"></select>
+      </div>
+    </div>
 
-  <div class="metrics">
-    <div class="m"><div class="l">Potencia</div><div class="v" id="pw">—</div><div class="u">W</div></div>
-    <div class="m"><div class="l">Cadencia</div><div class="v" id="cad">—</div><div class="u">rpm</div></div>
-    <div class="m"><div class="l">Velocidad</div><div class="v" id="spd">—</div><div class="u">km/h</div></div>
-  </div>
-
-  <div class="card">
-    <h2>Pendiente</h2>
-    <div class="grades" id="grades"></div>
-    <input type="range" min="-10" max="20" step="0.5" value="0" class="slider" id="slider" disabled>
-    <div class="gnow" id="gnow">0.0 %</div>
     <div class="row" style="margin-top:14px">
       <label for="weight">Tu peso (kg)</label>
       <input type="number" id="weight" value="75" min="30" max="150" step="0.5">
     </div>
+    <details>
+      <summary>Parámetros avanzados</summary>
+      <div class="row"><label for="bike">Peso bici (kg)</label><input type="number" id="bike" value="8" min="3" max="20" step="0.5"></div>
+      <div class="row"><label for="crr">Rodadura (Crr)</label><input type="number" id="crr" value="0.005" min="0.002" max="0.02" step="0.001"></div>
+      <div class="row"><label for="cda">Aerodinámica (CdA)</label><input type="number" id="cda" value="0.32" min="0.2" max="0.6" step="0.01"></div>
+    </details>
+
+    <button class="primary full" id="start" style="margin-top:14px" disabled>Empezar</button>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <!-- RIDE -->
+  <div class="card hidden" id="ride">
+    <div id="verdict" class="verdict hidden"></div>
+    <div id="raceWrap" class="hidden" style="margin-bottom:12px">
+      <div class="gap" id="gapTx">—</div>
+      <div class="lane"><div class="mk ghost" id="mkG"></div><div class="mk you" id="mkY"></div></div>
+    </div>
+    <div class="hud">
+      <div class="tile big"><div class="l">Tiempo</div><div class="v" id="hTime">0:00</div></div>
+      <div class="tile big"><div class="l">Distancia</div><div class="v" id="hDist">0.00</div><div class="u">km</div></div>
+      <div class="tile big"><div class="l">Velocidad</div><div class="v" id="hSpd">0.0</div><div class="u">km/h</div></div>
+    </div>
+    <div class="hud hud4" style="margin-top:10px">
+      <div class="tile"><div class="l">Potencia</div><div class="v" id="hPw">0</div><div class="u">W</div></div>
+      <div class="tile pulse"><div class="l">Pulso</div><div class="v" id="hHr">—</div><div class="u">bpm</div></div>
+      <div class="tile"><div class="l">Cadencia</div><div class="v" id="hCad">0</div><div class="u">rpm</div></div>
+      <div class="tile grade-pos"><div class="l">Pendiente</div><div class="v" id="hGr">0.0</div><div class="u">%</div></div>
+    </div>
+    <div class="progress"><i id="pbar"></i></div>
+
+    <canvas id="prof" height="150" style="margin-top:12px"></canvas>
+    <canvas id="map" height="220" style="margin-top:10px"></canvas>
+
+    <div class="controls">
+      <button id="pause">Pausar</button>
+      <button class="danger" id="finish">Terminar</button>
+    </div>
+  </div>
+
+  <!-- SUMMARY -->
+  <div class="card hidden summary" id="summary">
+    <h2>Sesión terminada</h2>
+    <div class="hud">
+      <div class="tile"><div class="l">Tiempo</div><div class="v" id="sTime">—</div></div>
+      <div class="tile"><div class="l">Distancia</div><div class="v" id="sDist">—</div><div class="u">km</div></div>
+      <div class="tile"><div class="l">Vel. media</div><div class="v" id="sSpd">—</div><div class="u">km/h</div></div>
+      <div class="tile"><div class="l">Pot. media</div><div class="v" id="sPw">—</div><div class="u">W</div></div>
+      <div class="tile"><div class="l">Pulso med</div><div class="v" id="sHr">—</div><div class="u">bpm</div></div>
+      <div class="tile"><div class="l">Pulso máx</div><div class="v" id="sHrMax">—</div><div class="u">bpm</div></div>
+    </div>
+    <div class="msg" id="savedMsg" style="color:var(--ok)"></div>
+    <button class="primary full" id="again" style="margin-top:10px">Nueva sesión</button>
   </div>
 
   <pre id="log"></pre>
@@ -92,190 +184,385 @@
 
 <script>
 "use strict";
-
-const ANT_SYNC=0xA4;
-const ANTPLUS_KEY=[0xB9,0xA5,0x21,0xFB,0xBD,0x72,0xC3,0x45];
-const NET=0x00, CH=0x00, RF_FREQ=57, PERIOD=8192; // 4 Hz (FE-C y potencia entran bien)
-
-const MSG={RESET:0x4A,NET_KEY:0x46,ASSIGN:0x42,CH_ID:0x51,SEARCH_TO:0x44,RF:0x45,PERIOD:0x43,
-  OPEN:0x4B,CLOSE:0x4C,REQUEST:0x4D,BROADCAST:0x4E,ACK:0x4F,EVENT:0x40,STARTUP:0x6F};
-
-const DEVTYPES={0:"cualquiera",11:"Potenciómetro",17:"Rodillo FE-C",120:"Frec. cardíaca",
-  121:"Vel+Cadencia",122:"Cadencia",123:"Velocidad",15:"Multideporte"};
-
-const USB_FILTERS=[{vendorId:0x0fcf,productId:0x1008},{vendorId:0x0fcf,productId:0x1009},{vendorId:0x0fcf}];
-
-let device=null, epIn=0, epOut=0, inPacket=64, ifaceNum=0;
-let connected=false, curGrade=0, keepAlive=null, rxBuf=[];
-let searchType=17, locked=false, askedId=false;
-
 const $=id=>document.getElementById(id);
-const btn=$("btn"),dot=$("dot"),stateTx=$("stateTx"),logEl=$("log");
-const pwEl=$("pw"),cadEl=$("cad"),spdEl=$("spd");
-const slider=$("slider"),gnow=$("gnow"),gradesEl=$("grades"),weightEl=$("weight"),foundEl=$("found"),modeEl=$("mode");
+const STEP=10, SMOOTH=40, G=9.81, RHO=1.225;
+
+// ---------- Estado app ----------
+let state="idle"; // idle | riding | paused | finished
+let device=null, epIn=0, epOut=0, inPacket=64, ifaceNum=0, connected=false;
+let curPower=0, curCad=0, curHR=0, sawTrainer=false, rxBuf=[];
+
+// recorrido
+let points=[], dist=[], pd=[], pe=[], pg=[], total=0, fname="";
+let projPts=[], mxmin=0,mxmax=0,mymin=0,mymax=0;
+
+// simulación
+let v=0, distanceM=0, elapsed=0, lastTs=0, physTimer=null;
+let lastSentGrade=999, lastSentAt=0, lastRec=0, sumP=0, nP=0, hrSum=0, hrN=0, hrMax=0;
+let session=null;
+let mode="gpx", raceBy="tiempo", targetTime=Infinity, targetDist=Infinity, fixedGrade=0;
+let ghost=null, ghostList=[], ghostDur=0, ghostTotalDist=0, verdictDone=false;
 
 function log(m,c){const t=new Date().toTimeString().slice(0,8);const d=document.createElement("div");
-  if(c)d.className=c;d.textContent=t+"  "+m;logEl.appendChild(d);logEl.scrollTop=logEl.scrollHeight;}
-function setState(t,k){stateTx.textContent=t;dot.className="dot"+(k?" "+k:"");}
+  if(c)d.style.color=c;d.textContent=t+"  "+m;$("log").appendChild(d);$("log").scrollTop=$("log").scrollHeight;}
+function setState(t,k){$("stateTx").textContent=t;$("dot").className="dot"+(k?" "+k:"");}
+function msg(t){$("msg").textContent=t||"";}
 
-const QUICK=[-5,0,3,6,9,12];
-QUICK.forEach(g=>{const b=document.createElement("button");b.textContent=(g>0?"+":"")+g+"%";
-  b.dataset.g=g;b.disabled=true;b.onclick=()=>applyGrade(g,true);gradesEl.appendChild(b);});
-slider.oninput=()=>{gnow.textContent=parseFloat(slider.value).toFixed(1)+" %";};
-slider.onchange=()=>applyGrade(parseFloat(slider.value),false);
-function markQuick(g){[...gradesEl.children].forEach(b=>b.classList.toggle("on",parseFloat(b.dataset.g)===g));}
-function setControls(on){slider.disabled=!on;[...gradesEl.children].forEach(b=>b.disabled=!on);}
+// ================= ANT+ / FE-C =================
+const ANT_SYNC=0xA4, ANTPLUS_KEY=[0xB9,0xA5,0x21,0xFB,0xBD,0x72,0xC3,0x45];
+const NET=0,CH=0,RF=57,PERIOD=8192,FEC=17;
+const HRCH=1,HRDEV=120,HRPER=8070;
+const M={RESET:0x4A,KEY:0x46,ASSIGN:0x42,ID:0x51,STO:0x44,RF:0x45,PER:0x43,OPEN:0x4B,CLOSE:0x4C,
+  BCAST:0x4E,ACK:0x4F,EVENT:0x40,STARTUP:0x6F};
+const FILTERS=[{vendorId:0x0fcf,productId:0x1008},{vendorId:0x0fcf,productId:0x1009},{vendorId:0x0fcf}];
 
-function antMsg(id,data){const len=data.length;const buf=new Uint8Array(4+len);
-  buf[0]=ANT_SYNC;buf[1]=len;buf[2]=id;buf.set(data,3);
-  let cs=0;for(let i=0;i<3+len;i++)cs^=buf[i];buf[3+len]=cs;return buf;}
-async function send(b){try{await device.transferOut(epOut,b);}catch(e){log("TX error: "+e.message,"log-err");}}
+function antMsg(id,data){const l=data.length,b=new Uint8Array(4+l);
+  b[0]=ANT_SYNC;b[1]=l;b[2]=id;b.set(data,3);let cs=0;for(let i=0;i<3+l;i++)cs^=b[i];b[3+l]=cs;return b;}
+async function send(b){try{await device.transferOut(epOut,b);}catch(e){log("TX "+e.message,"#f85149");}}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 async function connect(){
-  if(!("usb" in navigator)){log("Este navegador no soporta WebUSB.","log-err");return;}
-  searchType=parseInt(modeEl.value,10);
+  if(!("usb" in navigator)){msg("Este navegador no soporta WebUSB (usá Brave/Chrome).");return;}
   try{
-    device=await navigator.usb.requestDevice({filters:USB_FILTERS});
-    log("Stick: "+(device.productName||"?")+" ["+device.vendorId.toString(16)+":"+device.productId.toString(16)+"]");
-    await device.open();
-    if(!device.configuration) await device.selectConfiguration(1);
+    device=await navigator.usb.requestDevice({filters:FILTERS});
+    await device.open(); if(!device.configuration)await device.selectConfiguration(1);
     let f=null;
-    for(const itf of device.configuration.interfaces){
-      const a=itf.alternate;
-      const din=a.endpoints.find(e=>e.direction==="in"&&e.type==="bulk");
-      const dout=a.endpoints.find(e=>e.direction==="out"&&e.type==="bulk");
-      if(din&&dout){f={itf,din,dout};break;}
-    }
-    if(!f) throw new Error("Sin endpoints bulk");
-    ifaceNum=f.itf.interfaceNumber;epIn=f.din.endpointNumber;epOut=f.dout.endpointNumber;
-    inPacket=f.din.packetSize||64;
+    for(const itf of device.configuration.interfaces){const a=itf.alternate;
+      const i=a.endpoints.find(e=>e.direction==="in"&&e.type==="bulk");
+      const o=a.endpoints.find(e=>e.direction==="out"&&e.type==="bulk");
+      if(i&&o){f={itf,i,o};break;}}
+    if(!f)throw new Error("sin endpoints bulk");
+    ifaceNum=f.itf.interfaceNumber;epIn=f.i.endpointNumber;epOut=f.o.endpointNumber;inPacket=f.i.packetSize||64;
     await device.claimInterface(ifaceNum);
-    log("Interfaz "+ifaceNum+" reclamada · IN=0x"+epIn.toString(16)+" OUT=0x"+epOut.toString(16),"log-ok");
-    connected=true;locked=false;askedId=false;foundEl.style.display="none";
-    btn.textContent="Desconectar";setControls(true);
-    readLoop();
-    await initAnt();
+    connected=true;$("connect").textContent="Rodillo conectado";
+    log("Stick "+device.productName+" · interfaz reclamada","#3fb950");
+    readLoop(); await initAnt(); refreshStart();
   }catch(e){
-    log("No se pudo conectar: "+e.message,"log-err");
-    if(/claim|busy|access/i.test(e.message))
-      log("Forzá detención de 'ANT USB Service' y 'ANT Radio Service' y reintentá.","log-dim");
-    setState("Error","err");await cleanup();
+    log("Conexión: "+e.message,"#f85149"); setState("Error de conexión","err");
+    if(/claim|busy|access/i.test(e.message)) msg("Forzá detención de ANT USB Service y reintentá.");
   }
 }
-
 async function initAnt(){
-  const name=DEVTYPES[searchType]||("tipo "+searchType);
-  setState("Inicializando ANT…","searching");
-  await send(antMsg(MSG.RESET,[0x00]));                 await sleep(600);
-  await send(antMsg(MSG.NET_KEY,[NET,...ANTPLUS_KEY]));  await sleep(60);
-  await send(antMsg(MSG.ASSIGN,[CH,0x00,NET]));          await sleep(60);
-  await send(antMsg(MSG.CH_ID,[CH,0x00,0x00,searchType,0x00])); await sleep(60);
-  await send(antMsg(MSG.SEARCH_TO,[CH,0xFF]));           await sleep(60); // búsqueda larga
-  await send(antMsg(MSG.RF,[CH,RF_FREQ]));               await sleep(60);
-  await send(antMsg(MSG.PERIOD,[CH,PERIOD&0xFF,(PERIOD>>8)&0xFF])); await sleep(60);
-  await send(antMsg(MSG.OPEN,[CH]));
-  log("Canal abierto ("+name+"). Buscando… PEDALEÁ PAREJO 15-20 s.","log-ok");
-  setState("Buscando… pedaleá parejo","searching");
-  if(searchType===17) sendUserConfig();
+  setState("Inicializando…","searching");
+  await send(antMsg(M.RESET,[0]));               await sleep(600);
+  await send(antMsg(M.KEY,[NET,...ANTPLUS_KEY])); await sleep(50);
+  await send(antMsg(M.ASSIGN,[CH,0x00,NET]));     await sleep(50);
+  await send(antMsg(M.ID,[CH,0,0,FEC,0]));        await sleep(50);
+  await send(antMsg(M.STO,[CH,0xFF]));            await sleep(50);
+  await send(antMsg(M.RF,[CH,RF]));               await sleep(50);
+  await send(antMsg(M.PER,[CH,PERIOD&0xFF,(PERIOD>>8)&0xFF])); await sleep(50);
+  await send(antMsg(M.OPEN,[CH]));
+  // canal 1: pulsómetro (opcional)
+  await send(antMsg(M.ASSIGN,[HRCH,0x00,NET])); await sleep(50);
+  await send(antMsg(M.ID,[HRCH,0,0,HRDEV,0]));  await sleep(50);
+  await send(antMsg(M.STO,[HRCH,0xFF]));         await sleep(50);
+  await send(antMsg(M.RF,[HRCH,RF]));            await sleep(50);
+  await send(antMsg(M.PER,[HRCH,HRPER&0xFF,(HRPER>>8)&0xFF])); await sleep(50);
+  await send(antMsg(M.OPEN,[HRCH]));
+  setState("Buscando rodillo… pedaleá","searching");
+  log("Canales FE-C + pulso abiertos");
 }
-
 async function readLoop(){
   let fails=0;
   while(connected){
     try{
       const r=await device.transferIn(epIn,inPacket);
       if(r.status==="ok"){fails=0;if(r.data&&r.data.byteLength)ingest(new Uint8Array(r.data.buffer));}
-      else if(r.status==="stall"){log("stall → clearHalt","log-dim");await device.clearHalt("in",epIn);}
-      else if(r.status==="babble"){log("babble","log-dim");}
-    }catch(e){
-      if(!connected)break;
-      fails++;
-      // Silencioso las primeras: es normal si el rodillo aún no transmite.
-      if(fails===1) log("Sin datos aún, reintentando lectura…","log-dim");
-      try{await device.clearHalt("in",epIn);}catch(_){}
-      await sleep(150);
-      if(fails>=25){log("Demasiados errores seguidos, corto.","log-err");break;}
-    }
+      else if(r.status==="stall"){await device.clearHalt("in",epIn);}
+    }catch(e){ if(!connected)break; fails++; try{await device.clearHalt("in",epIn);}catch(_){}
+      await sleep(150); if(fails>=25){log("RX cortado","#f85149");break;} }
   }
 }
-
 function ingest(bytes){
   for(const b of bytes)rxBuf.push(b);
   while(rxBuf.length>=1){
     if(rxBuf[0]!==ANT_SYNC){rxBuf.shift();continue;}
-    if(rxBuf.length<2)return;
-    const len=rxBuf[1],total=len+4;
-    if(rxBuf.length<total)return;
-    const frame=rxBuf.slice(0,total);rxBuf=rxBuf.slice(total);
-    handleFrame(frame);
+    if(rxBuf.length<2)return; const len=rxBuf[1],tot=len+4;
+    if(rxBuf.length<tot)return; const fr=rxBuf.slice(0,tot); rxBuf=rxBuf.slice(tot); frame(fr);
   }
 }
-
-function handleFrame(f){
-  const id=f[2],data=f.slice(3,3+f[1]);
-  if(id===MSG.BROADCAST||id===MSG.ACK){
-    if(!locked){locked=true;setState("¡Señal recibida!","live");log("¡Dispositivo transmitiendo!","log-ok");
-      if(!askedId){askedId=true;send(antMsg(MSG.REQUEST,[CH,MSG.CH_ID]));}}
-    handlePage(data.slice(1));
-  }else if(id===MSG.CH_ID){ // respuesta de channel ID
-    const dn=data[1]|(data[2]<<8),dt=data[3];
-    const nm=DEVTYPES[dt]||("desconocido");
-    foundEl.style.display="block";
-    foundEl.textContent="Encontrado → tipo "+dt+" ("+nm+"), nº "+dn;
-    log("Channel ID → tipo "+dt+" ("+nm+"), nº "+dn,"log-ok");
-    if(searchType!==17 && dt===11) log("Es potenciómetro: transmite pero NO se puede controlar. Falta activar FE-C.","log-ev");
-    if(dt===17) log("Es FE-C: se puede controlar la pendiente.","log-ok");
-  }else if(id===MSG.STARTUP){log("ANT reset OK","log-dim");}
-  else if(id===MSG.EVENT){
-    const rc=data[1],code=data[2];
-    if(rc===0x01){ // evento RF
-      if(code===0x01){log("Timeout de búsqueda: no apareció ningún dispositivo.","log-ev");
-        setState("No se encontró nada","err");}
-      else if(code===0x08){log("Canal cerrado.","log-dim");}
+function frame(f){
+  const id=f[2],d=f.slice(3,3+f[1]);
+  if(id===M.BCAST||id===M.ACK){
+    const ch=d[0], p=d.slice(1), page=p[0];
+    if(ch===CH){
+      if(!sawTrainer){sawTrainer=true;setState("Rodillo conectado","live");log("¡Rodillo FE-C!","#3fb950");refreshStart();}
+      if(page===0x19){const c=p[2],pw=p[5]|((p[6]&0x0F)<<8); if(c!==0xFF)curCad=c; if(pw!==0xFFF)curPower=pw;}
+    } else if(ch===HRCH){
+      const hr=p[7]; if(hr>0){ if(!curHR)log("Pulsómetro OK","#3fb950"); curHR=hr; }
     }
   }
 }
-
-function handlePage(p){
-  const page=p[0];
-  if(page===0x19){const cad=p[2];const pw=p[5]|((p[6]&0x0F)<<8);
-    if(cad!==0xFF)cadEl.textContent=cad;if(pw!==0xFFF)pwEl.textContent=pw;}
-  else if(page===0x10){const s=p[4]|(p[5]<<8);if(s!==0xFFFF)spdEl.textContent=(s*0.001*3.6).toFixed(1);}
-  else if(page===0x52||page===0x51){/* páginas de manufacturer/product info, ignorar */}
-}
-
 function sendUserConfig(){
-  const kg=Math.max(20,Math.min(200,parseFloat(weightEl.value)||75));
-  const w=Math.round(kg*100);
-  send(antMsg(MSG.ACK,[CH,0x37,w&0xFF,(w>>8)&0xFF,0xFF,0xFF,0xFF,0xFF,0xFF]));
-  log("Config de usuario · "+kg+" kg","log-tx");
+  const kg=riderKg(); const w=Math.round(kg*100);
+  send(antMsg(M.ACK,[CH,0x37,w&0xFF,(w>>8)&0xFF,0xFF,0xFF,0xFF,0xFF,0xFF]));
 }
-function gradePage(g){const raw=Math.round((g+200)/0.01);const lo=raw&0xFF,hi=(raw>>8)&0xFF;
-  return antMsg(MSG.ACK,[CH,0x33,0xFF,0xFF,0xFF,0xFF,lo,hi,0x50]);}
-function applyGrade(g,fromBtn){curGrade=g;slider.value=g;gnow.textContent=g.toFixed(1)+" %";
-  markQuick(fromBtn?g:NaN);send(gradePage(g));log("→ pendiente "+g.toFixed(1)+"%","log-tx");}
-function startKeepAlive(){stopKeepAlive();keepAlive=setInterval(()=>{if(connected&&locked)send(gradePage(curGrade));},3000);}
-function stopKeepAlive(){if(keepAlive){clearInterval(keepAlive);keepAlive=null;}}
-weightEl.onchange=()=>{if(connected&&searchType===17)sendUserConfig();};
-
-async function cleanup(){
-  connected=false;locked=false;rxBuf=[];stopKeepAlive();setControls(false);
-  btn.textContent="Conectar stick";pwEl.textContent=cadEl.textContent=spdEl.textContent="—";
-  try{if(device){try{await send(antMsg(MSG.CLOSE,[CH]));}catch(_){}
-    try{await device.releaseInterface(ifaceNum);}catch(_){}
-    try{await device.close();}catch(_){}}}catch(_){}
-  device=null;
+function sendGrade(g){
+  const raw=Math.round((g+200)/0.01),lo=raw&0xFF,hi=(raw>>8)&0xFF;
+  send(antMsg(M.ACK,[CH,0x33,0xFF,0xFF,0xFF,0xFF,lo,hi,0x50]));
 }
-async function disconnect(){log("Desconectando…","log-dim");await cleanup();setState("Desconectado");}
 
-btn.onclick=()=>{connected?disconnect():connect();};
-navigator.usb&&navigator.usb.addEventListener&&navigator.usb.addEventListener("disconnect",e=>{
-  if(device&&e.device===device){log("Stick desconectado físicamente","log-err");cleanup();setState("Desconectado");}});
-setInterval(()=>{if(locked&&!keepAlive)startKeepAlive();},1000);
+// ================= Recorrido =================
+$("loadBtn").onclick=()=>$("file").click();
+$("file").onchange=e=>{const f=e.target.files[0];if(!f)return;fname=f.name;
+  const r=new FileReader();r.onload=()=>{try{parseGpx(r.result);}catch(err){msg("GPX: "+err.message);}};r.readAsText(f);};
 
-if(location.protocol==="file:")$("httpwarn").style.display="block";
-if(!("usb" in navigator))log("WebUSB no disponible en este navegador.","log-err");
+function parseGpx(text){
+  const xml=new DOMParser().parseFromString(text,"application/xml");
+  if(xml.querySelector("parsererror"))throw new Error("XML inválido");
+  let n=[...xml.getElementsByTagName("trkpt")]; if(!n.length)n=[...xml.getElementsByTagName("rtept")];
+  if(!n.length)throw new Error("sin puntos");
+  points=n.map(p=>{const e=p.getElementsByTagName("ele")[0];
+    return{lat:parseFloat(p.getAttribute("lat")),lon:parseFloat(p.getAttribute("lon")),ele:e?parseFloat(e.textContent):NaN};})
+    .filter(p=>isFinite(p.lat)&&isFinite(p.lon));
+  if(!points.every(p=>isFinite(p.ele)))throw new Error("el GPX no trae altimetría");
+  dist=[0]; for(let i=1;i<points.length;i++)dist[i]=dist[i-1]+haversine(points[i-1],points[i]);
+  total=dist[dist.length-1]; if(total<50)throw new Error("recorrido muy corto");
+  // resampleo + suavizado + pendiente
+  const N=Math.floor(total/STEP); pd=[]; let raw=[],j=0;
+  for(let k=0;k<=N;k++){const dd=k*STEP; while(j<dist.length-2&&dist[j+1]<dd)j++;
+    const t=(dist[j+1]-dist[j])>0?(dd-dist[j])/(dist[j+1]-dist[j]):0;
+    pd.push(dd); raw.push(points[j].ele+(points[j+1].ele-points[j].ele)*t);}
+  pe=smooth(raw,SMOOTH); pg=[];
+  for(let i=0;i<pe.length;i++){const a=Math.max(0,i-1),b=Math.min(pe.length-1,i+1),run=(b-a)*STEP;
+    pg.push(Math.max(-30,Math.min(30,run>0?(pe[b]-pe[a])/run*100:0)));}
+  computeMap();
+  let up=0; for(let i=1;i<pe.length;i++){const dv=pe[i]-pe[i-1];if(dv>0)up+=dv;}
+  $("routeinfo").innerHTML=`<b>${fname}</b> · ${(total/1000).toFixed(1)} km · ${up.toFixed(0)} m D+`;
+  msg(""); refreshStart();
+}
+function haversine(a,b){const R=6371000,tr=Math.PI/180;
+  const dLat=(b.lat-a.lat)*tr,dLon=(b.lon-a.lon)*tr;
+  const s=Math.sin(dLat/2)**2+Math.cos(a.lat*tr)*Math.cos(b.lat*tr)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.min(1,Math.sqrt(s)));}
+function smooth(arr,winM){const k=Math.round((winM/STEP)/2);if(k<=0)return arr.slice();
+  const o=new Array(arr.length);for(let i=0;i<arr.length;i++){let s=0,c=0;
+    for(let j=i-k;j<=i+k;j++)if(j>=0&&j<arr.length){s+=arr[j];c++;}o[i]=s/c;}return o;}
+function gradeAt(d){return pg[Math.max(0,Math.min(pg.length-1,Math.round(d/STEP)))];}
+
+function mercator(lat,lon){return{x:lon*Math.PI/180,y:Math.log(Math.tan(Math.PI/4+(lat*Math.PI/180)/2))};}
+function computeMap(){projPts=points.map(p=>mercator(p.lat,p.lon));
+  mxmin=Infinity;mxmax=-Infinity;mymin=Infinity;mymax=-Infinity;
+  for(const p of projPts){if(p.x<mxmin)mxmin=p.x;if(p.x>mxmax)mxmax=p.x;if(p.y<mymin)mymin=p.y;if(p.y>mymax)mymax=p.y;}}
+function projAt(d){let i=0;while(i<dist.length-2&&dist[i+1]<d)i++;
+  const t=(dist[i+1]-dist[i])>0?(d-dist[i])/(dist[i+1]-dist[i]):0;
+  return{x:projPts[i].x+(projPts[i+1].x-projPts[i].x)*t,y:projPts[i].y+(projPts[i+1].y-projPts[i].y)*t};}
+
+// ================= Física =================
+const riderKg=()=>Math.max(30,parseFloat($("weight").value)||75);
+const bikeKg=()=>Math.max(3,parseFloat($("bike").value)||8);
+const CRR=()=>parseFloat($("crr").value)||0.005;
+const CDA=()=>parseFloat($("cda").value)||0.32;
+
+function tick(){
+  if(state!=="riding")return;
+  const now=performance.now();let dt=(now-lastTs)/1000;lastTs=now;dt=Math.min(0.5,Math.max(0,dt));
+  elapsed+=dt;
+  const grade = mode==="gpx" ? gradeAt(distanceM) : fixedGrade;
+  const th=Math.atan(grade/100),m=riderKg()+bikeKg();
+  const vEff=Math.max(v,0.5);
+  const Fprop=curPower>0?curPower/vEff:0;
+  const Fnet=Fprop - m*G*Math.sin(th) - CRR()*m*G*Math.cos(th) - 0.5*RHO*CDA()*v*v;
+  v=Math.max(0,v+(Fnet/m)*dt);
+  distanceM+=v*dt;
+  sumP+=curPower;nP++; if(curHR>0){hrSum+=curHR;hrN++;if(curHR>hrMax)hrMax=curHR;}
+  // ¿terminó?
+  let done = mode==="gpx" ? distanceM>=total : (raceBy==="tiempo" ? elapsed>=targetTime : distanceM>=targetDist);
+  if(done){ if(mode==="gpx")distanceM=total; finishRide(); return; }
+  // pendiente al rodillo
+  if(Math.abs(grade-lastSentGrade)>0.2||now-lastSentAt>1000){sendGrade(grade);lastSentGrade=grade;lastSentAt=now;}
+  // fantasma (modo libre)
+  if(mode==="libre" && ghost) updateGhost();
+  // grabación 1 Hz
+  if(elapsed-lastRec>=1){lastRec=elapsed;session.samples.push({t:+elapsed.toFixed(1),d:+distanceM.toFixed(1),hr:curHR||0});}
+  hud(grade); drawRide();
+}
+function updateGhost(){
+  if(raceBy==="tiempo"){
+    const gd=ghostDistAt(elapsed), gap=distanceM-gd;
+    showGap(gap,"m");
+    raceBar(distanceM,gd,Math.max(distanceM,ghostTotalDist,1));
+    if(!verdictDone && elapsed>=ghostDur){ verdictDone=true; doVerdict(distanceM-ghostTotalDist,"m"); }
+  }else{
+    const gt=ghostTimeAt(distanceM), gap=gt-elapsed; // + = vas adelante
+    showGap(gap,"s");
+    raceBar(distanceM,ghostDistAt(elapsed),Math.max(targetDist,ghostTotalDist,1));
+    if(!verdictDone && distanceM>=ghostTotalDist){ verdictDone=true; doVerdict(ghostDur-elapsed,"s"); }
+  }
+}
+function ghostDistAt(t){const s=ghost.samples;if(!s.length)return 0;
+  if(t<=s[0].t)return s[0].d;if(t>=s[s.length-1].t)return s[s.length-1].d;
+  let i=0;while(i<s.length-1&&s[i+1].t<t)i++;const a=s[i],b=s[i+1];
+  return a.d+(b.d-a.d)*((t-a.t)/((b.t-a.t)||1));}
+function ghostTimeAt(d){const s=ghost.samples;if(!s.length)return 0;
+  if(d<=s[0].d)return s[0].t;if(d>=s[s.length-1].d)return s[s.length-1].t;
+  let i=0;while(i<s.length-1&&s[i+1].d<d)i++;const a=s[i],b=s[i+1];
+  return a.t+(b.t-a.t)*((d-a.d)/((b.d-a.d)||1));}
+function showGap(val,unit){const g=$("gapTx"),ahead=val>=0;
+  g.textContent=(ahead?"+":"−")+Math.abs(Math.round(val))+" "+unit+(ahead?" adelante":" atrás");
+  g.className="gap "+(ahead?"ahead":"behind");}
+function raceBar(you,gpos,maxD){
+  $("mkY").style.left=Math.min(100,you/maxD*100)+"%";
+  $("mkG").style.left=Math.min(100,gpos/maxD*100)+"%";}
+function doVerdict(margin,unit){const good=margin>0,vd=$("verdict");
+  vd.textContent=(good?"¡Mejoraste! +":"No mejoraste: −")+Math.abs(Math.round(margin))+" "+unit;
+  vd.className="verdict "+(good?"good":"bad");vd.classList.remove("hidden");
+  if(navigator.vibrate)navigator.vibrate(good?[120,60,120]:400);}
+function hud(grade){
+  $("hTime").textContent=fmtTime(elapsed);
+  $("hDist").textContent=(distanceM/1000).toFixed(2);
+  $("hSpd").textContent=(v*3.6).toFixed(1);
+  $("hPw").textContent=curPower;
+  $("hGr").textContent=grade.toFixed(1);
+  $("hCad").textContent=curCad;
+  $("hHr").textContent=curHR||"—";
+  const prog = mode==="gpx" ? distanceM/total : (raceBy==="tiempo" ? elapsed/targetTime : distanceM/targetDist);
+  $("pbar").style.width=Math.min(100,prog*100)+"%";
+}
+function fmtTime(s){s=Math.floor(s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),ss=s%60;
+  return (h?h+":"+String(m).padStart(2,"0"):m)+":"+String(ss).padStart(2,"0");}
+
+// ================= Dibujo =================
+function fit(cv){const dpr=window.devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight||150;
+  cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);const ctx=cv.getContext("2d");
+  ctx.setTransform(dpr,0,0,dpr,0,0);return{ctx,w,h};}
+function gradeColor(g){if(g<=-2)return"#4cc2ff";if(g<0)return"#7fd1e8";if(g<2)return"#3fb950";
+  if(g<4)return"#9fd23f";if(g<6)return"#e3c53f";if(g<8)return"#f0883e";if(g<10)return"#f85149";return"#c0392b";}
+function drawRide(){ if(mode==="gpx"){drawProf();drawMap();} }
+
+function drawProf(){
+  const cv=$("prof"),{ctx,w,h}=fit(cv);ctx.clearRect(0,0,w,h);
+  const pad={l:8,r:8,t:8,b:14},cw=w-pad.l-pad.r,ch=h-pad.t-pad.b;
+  let emin=Math.min(...pe),emax=Math.max(...pe);if(emax-emin<1){emax+=1;emin-=1;}
+  const x=d=>pad.l+(d/total)*cw,y=e=>pad.t+(1-(e-emin)/(emax-emin))*ch;
+  const stride=Math.max(1,Math.floor(pe.length/cw));
+  // área
+  ctx.beginPath();ctx.moveTo(x(0),y(pe[0]));
+  for(let i=0;i<pe.length;i+=stride)ctx.lineTo(x(pd[i]),y(pe[i]));
+  ctx.lineTo(x(total),pad.t+ch);ctx.lineTo(x(0),pad.t+ch);ctx.closePath();
+  ctx.fillStyle="rgba(76,194,255,.10)";ctx.fill();
+  // porción recorrida
+  ctx.save();ctx.beginPath();ctx.rect(pad.l,pad.t,(distanceM/total)*cw,ch);ctx.clip();
+  ctx.beginPath();ctx.moveTo(x(0),y(pe[0]));
+  for(let i=0;i<pe.length;i+=stride)ctx.lineTo(x(pd[i]),y(pe[i]));
+  ctx.lineTo(x(total),pad.t+ch);ctx.lineTo(x(0),pad.t+ch);ctx.closePath();
+  ctx.fillStyle="rgba(76,194,255,.28)";ctx.fill();ctx.restore();
+  // línea
+  ctx.beginPath();ctx.moveTo(x(0),y(pe[0]));
+  for(let i=0;i<pe.length;i+=stride)ctx.lineTo(x(pd[i]),y(pe[i]));
+  ctx.strokeStyle="#4cc2ff";ctx.lineWidth=1.6;ctx.stroke();
+  // tira de pendiente
+  for(let px=0;px<cw;px++){const d=(px/cw)*total;ctx.fillStyle=gradeColor(gradeAt(d));
+    ctx.fillRect(pad.l+px,pad.t+ch+2,1,6);}
+  // "vos"
+  const xx=x(distanceM);ctx.strokeStyle="#e6edf3";ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(xx,pad.t);ctx.lineTo(xx,pad.t+ch);ctx.stroke();
+  const yi=y(pe[Math.max(0,Math.min(pe.length-1,Math.round(distanceM/STEP)))]);
+  ctx.beginPath();ctx.arc(xx,yi,5,0,7);ctx.fillStyle="#e6edf3";ctx.strokeStyle="#04121c";ctx.lineWidth=2;ctx.fill();ctx.stroke();
+}
+function drawMap(){
+  if(!projPts.length)return;
+  const cv=$("map"),{ctx,w,h}=fit(cv);ctx.clearRect(0,0,w,h);
+  const pad=14,cw=w-2*pad,ch=h-2*pad,bw=(mxmax-mxmin)||1e-9,bh=(mymax-mymin)||1e-9;
+  const scale=Math.min(cw/bw,ch/bh),ox=pad+(cw-bw*scale)/2,oy=pad+(ch-bh*scale)/2;
+  const X=p=>ox+(p.x-mxmin)*scale,Y=p=>oy+(mymax-p.y)*scale;
+  ctx.lineWidth=3;ctx.lineJoin="round";ctx.lineCap="round";
+  for(let i=0;i<projPts.length-1;i++){ctx.strokeStyle=gradeColor(gradeAt(dist[i]));
+    ctx.beginPath();ctx.moveTo(X(projPts[i]),Y(projPts[i]));ctx.lineTo(X(projPts[i+1]),Y(projPts[i+1]));ctx.stroke();}
+  const dot=(x,y,f,r)=>{ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fillStyle=f;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#04121c";ctx.stroke();};
+  dot(X(projPts[0]),Y(projPts[0]),"#3fb950",4);
+  dot(X(projPts[projPts.length-1]),Y(projPts[projPts.length-1]),"#f85149",4);
+  const pp=projAt(distanceM);dot(X(pp),Y(pp),"#e6edf3",6);
+}
+
+// ================= Control de sesión =================
+function refreshStart(){
+  const m=$("modeSel").value;
+  $("start").disabled=!(connected&&sawTrainer&&(m==="gpx"?pd.length>0:true));
+}
+function loadSesiones(){try{return JSON.parse(localStorage.getItem("bici_sesiones")||"[]");}catch{return[];}}
+function populateGhosts(){
+  ghostList=loadSesiones().filter(s=>s.mode==="libre");
+  const sel=$("ghostSel"); if(!sel)return;
+  sel.innerHTML='<option value="-1">Ninguno (marca base)</option>';
+  ghostList.forEach((s,i)=>{const d=new Date(s.date);
+    const o=document.createElement("option");o.value=i;
+    o.textContent=fmtTime(s.dur||0)+" · "+((s.dist||0)/1000).toFixed(2)+" km · "+d.getDate()+"/"+(d.getMonth()+1);
+    sel.appendChild(o);});
+  if(ghostList.length) sel.value=ghostList.length-1;
+}
+function toggleMode(){
+  const m=$("modeSel").value;
+  $("gpxSetup").classList.toggle("hidden",m!=="gpx");
+  $("libreSetup").classList.toggle("hidden",m!=="libre");
+  if(m==="libre") populateGhosts();
+  refreshStart();
+}
+
+function startRide(){
+  mode=$("modeSel").value;
+  distanceM=0;v=0;elapsed=0;lastRec=0;sumP=0;nP=0;hrSum=0;hrN=0;hrMax=0;lastSentGrade=999;lastSentAt=0;
+  verdictDone=false; ghost=null;
+  if(mode==="libre"){
+    raceBy=$("raceSel").value;
+    const val=parseFloat($("objVal").value)||0;
+    targetTime = raceBy==="tiempo" ? val*60 : Infinity;
+    targetDist = raceBy==="distancia" ? val*1000 : Infinity;
+    fixedGrade = parseFloat($("fixG").value)||0;
+    const gi=parseInt($("ghostSel").value,10);
+    if(gi>=0 && ghostList[gi]){ ghost=ghostList[gi];
+      ghostDur=ghost.dur||(ghost.samples.length?ghost.samples[ghost.samples.length-1].t:0);
+      ghostTotalDist=ghost.samples.length?ghost.samples[ghost.samples.length-1].d:0; }
+    $("prof").classList.add("hidden");$("map").classList.add("hidden");
+    $("raceWrap").classList.toggle("hidden",!ghost);
+    $("verdict").classList.add("hidden");
+    session={mode:"libre",raceBy,date:Date.now(),samples:[]};
+  }else{
+    $("prof").classList.remove("hidden");$("map").classList.remove("hidden");
+    $("raceWrap").classList.add("hidden");$("verdict").classList.add("hidden");
+    session={mode:"gpx",route:fname,total:+total.toFixed(1),date:Date.now(),samples:[]};
+  }
+  sendUserConfig();
+  state="riding";lastTs=performance.now();
+  $("setup").classList.add("hidden");$("summary").classList.add("hidden");$("ride").classList.remove("hidden");
+  if(!physTimer)physTimer=setInterval(tick,100);
+  log("Sesión iniciada ("+mode+")");
+}
+function pauseRide(){
+  if(state==="riding"){state="paused";$("pause").textContent="Reanudar";sendGrade(0);}
+  else if(state==="paused"){state="riding";lastTs=performance.now();$("pause").textContent="Pausar";}
+}
+function finishRide(){
+  state="finished";
+  const avgP=nP?sumP/nP:0, avgV=elapsed>0?(distanceM/elapsed)*3.6:0, avgHr=hrN?Math.round(hrSum/hrN):0;
+  session.dur=+elapsed.toFixed(1); session.dist=+distanceM.toFixed(1); session.hrAvg=avgHr; session.hrMax=hrMax;
+  saveSesion(session); populateGhosts();
+  $("sTime").textContent=fmtTime(elapsed);
+  $("sDist").textContent=(distanceM/1000).toFixed(2);
+  $("sSpd").textContent=avgV.toFixed(1);
+  $("sPw").textContent=Math.round(avgP);
+  $("sHr").textContent=avgHr||"—";
+  $("sHrMax").textContent=hrMax||"—";
+  $("savedMsg").textContent="Guardada. Vas a poder correr contra este fantasma.";
+  $("ride").classList.add("hidden");$("summary").classList.remove("hidden");
+  sendGrade(0);
+  log("Sesión terminada y guardada");
+}
+function saveSesion(s){try{const a=JSON.parse(localStorage.getItem("bici_sesiones")||"[]");
+  a.push(s);localStorage.setItem("bici_sesiones",JSON.stringify(a));}catch(e){log("No pude guardar: "+e.message,"#f85149");}}
+
+// ================= Wiring =================
+$("connect").onclick=connect;
+$("start").onclick=startRide;
+$("pause").onclick=pauseRide;
+$("finish").onclick=()=>{ if(confirm("¿Terminar y guardar la sesión?")) finishRide(); };
+$("again").onclick=()=>{ state="idle";$("summary").classList.add("hidden");$("setup").classList.remove("hidden");$("start").disabled=false;refreshStart(); };
+["weight","bike","crr","cda"].forEach(id=>$(id).addEventListener("change",()=>{ if(state==="riding")sendUserConfig(); }));
+$("modeSel").onchange=toggleMode;
+$("raceSel").onchange=()=>{ $("objUnit").textContent=$("raceSel").value==="tiempo"?"min":"km"; };
+toggleMode();
+window.addEventListener("resize",()=>{ if(state==="riding"||state==="paused")drawRide(); });
+if(!("usb" in navigator))msg("WebUSB no disponible en este navegador.");
 </script>
 </body>
 </html>
