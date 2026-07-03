@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v15</title>
+<title>Bici Indoor · v17</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -81,7 +81,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v15</h1>
+  <h1>Bici Indoor · v17</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -214,6 +214,7 @@
     </div>
     <div id="sVerdict" class="verdict hidden"></div>
     <div class="msg" id="savedMsg" style="color:var(--ok)"></div>
+    <button class="full" id="shareReto" style="margin-top:10px">Compartir reto</button>
     <button class="primary full" id="again" style="margin-top:10px">Nueva sesión</button>
   </div>
 
@@ -235,6 +236,8 @@
     </div>
     <input type="file" id="importFile" accept="application/json" style="display:none">
     <button class="full" id="importTcxBtn" style="margin-top:10px">Importar fantasma TCX (Garmin)</button>
+    <button class="full" id="importRetoBtn" style="margin-top:10px">Importar reto (de un conocido)</button>
+    <input type="file" id="importRetoFile" accept="application/json,.json" style="display:none">
     <input type="file" id="importTcxFile" accept=".tcx,application/xml,text/xml" style="display:none">
     <button class="full danger" id="clearAll" style="margin-top:10px">Borrar todo</button>
     <button class="primary full" id="histBack" style="margin-top:10px">Volver</button>
@@ -248,7 +251,7 @@
 const $=id=>document.getElementById(id);
 const STEP=10, G=9.81, RHO=1.225;
 let peRawArr=[];
-let pvScrub=-1, pvMapT=null;
+let pvScrub=-1, pvMapT=null, gpxText="";
 
 // ---------- Estado app ----------
 let state="idle"; // idle | riding | paused | finished
@@ -458,6 +461,7 @@ $("file").onchange=e=>{const f=e.target.files[0];if(!f)return;fname=f.name;
   const r=new FileReader();r.onload=()=>{try{parseGpx(r.result);}catch(err){msg("GPX: "+err.message);}};r.readAsText(f);};
 
 function parseGpx(text){
+  gpxText=text;
   const xml=new DOMParser().parseFromString(text,"application/xml");
   if(xml.querySelector("parsererror"))throw new Error("XML inválido");
   let n=[...xml.getElementsByTagName("trkpt")]; if(!n.length)n=[...xml.getElementsByTagName("rtept")];
@@ -880,6 +884,7 @@ function setSmooth(v){
   if($("pvSmooth"))$("pvSmooth").value=v;
   if($("pvSmoothV"))$("pvSmoothV").textContent=v+" m";
   if(pd.length){ recomputeProfile(); if(state==="riding"||state==="paused")drawRide(); }
+  if(typeof saveCfg==="function") saveCfg();
 }
 $("smoothM").addEventListener("change",()=>setSmooth($("smoothM").value));
 $("pvSmooth").addEventListener("input",()=>setSmooth($("pvSmooth").value));
@@ -900,8 +905,17 @@ $("pvMap").addEventListener("pointerdown",pvOnMapScrub);
 $("pvMap").addEventListener("pointermove",e=>{ if(e.pressure>0||e.buttons)pvOnMapScrub(e); });
 $("raceSel").onchange=()=>{ $("objUnit").textContent=$("raceSel").value==="tiempo"?"min":"km"; };
 $("reconnBtn").onclick=()=>{ conn==="ble"?reconnectBle():connect(); };
-$("connType").onchange=()=>{ conn=$("connType").value; $("hrBleBtn").classList.toggle("hidden",conn!=="ble"); };
+$("connType").onchange=()=>{ conn=$("connType").value; $("hrBleBtn").classList.toggle("hidden",conn!=="ble"); saveCfg(); };
 $("hrBleBtn").onclick=connectHrBle;
+
+const CFG_KEY="bici_config", CFG_IDS=["weight","bike","crr","cda","smoothM","diff","connType"];
+function saveCfg(){ const o={}; CFG_IDS.forEach(id=>{const el=$(id);if(el)o[id]=el.value;}); try{localStorage.setItem(CFG_KEY,JSON.stringify(o));}catch(_){} }
+function loadCfg(){ let o; try{o=JSON.parse(localStorage.getItem(CFG_KEY)||"{}");}catch(_){o={};}
+  CFG_IDS.forEach(id=>{const el=$(id);if(el&&o[id]!=null)el.value=o[id];});
+  conn=$("connType").value; $("hrBleBtn").classList.toggle("hidden",conn!=="ble");
+}
+CFG_IDS.forEach(id=>{const el=$(id);if(el)el.addEventListener("change",saveCfg);});
+loadCfg();
 toggleMode();
 
 if("usb" in navigator){
@@ -958,22 +972,56 @@ function renderHistorial(){
 function setSelMode(on){ selMode=on; selected.clear(); updateDelCount();
   $("selBar").classList.toggle("hidden",!on); $("selToggle").classList.toggle("hidden",on); renderHistorial(); }
 function exportAll(){
-  const data=localStorage.getItem("bici_sesiones")||"[]";
-  const blob=new Blob([data],{type:"application/json"});const d=new Date();
+  let cfg={}; try{cfg=JSON.parse(localStorage.getItem("bici_config")||"{}");}catch(_){}
+  const bundle={kind:"bici-backup",sesiones:loadSesiones(),config:cfg};
+  const blob=new Blob([JSON.stringify(bundle)],{type:"application/json"});const d=new Date();
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
-  a.download="bici-sesiones-"+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0")+".json";
+  a.download="bici-respaldo-"+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0")+".json";
   a.click();
 }
 function importSesiones(text){
   let inc; try{inc=JSON.parse(text);}catch{alert("Archivo inválido");return;}
-  if(!Array.isArray(inc)){alert("Formato inesperado");return;}
+  let arr, cfg=null;
+  if(Array.isArray(inc)) arr=inc;                       // formato viejo
+  else if(inc && Array.isArray(inc.sesiones)){ arr=inc.sesiones; cfg=inc.config; }
+  else { alert("Formato inesperado"); return; }
   const cur=loadSesiones(), seen=new Set(cur.map(s=>s.date));
   let added=0;
-  for(const s of inc){ if(s&&s.date&&!seen.has(s.date)){cur.push(s);seen.add(s.date);added++;} }
+  for(const s of arr){ if(s&&s.date&&!seen.has(s.date)){cur.push(s);seen.add(s.date);added++;} }
   cur.sort((a,b)=>a.date-b.date);
   localStorage.setItem("bici_sesiones",JSON.stringify(cur));
+  if(cfg){ try{localStorage.setItem("bici_config",JSON.stringify(cfg));}catch(_){} loadCfg(); }
   renderHistorial();populateGhosts();
-  alert("Importadas "+added+" sesiones nuevas.");
+  alert("Importadas "+added+" sesiones nuevas"+(cfg?" y tu configuración":"")+".");
+}
+function shareReto(){
+  if(!session){ alert("No hay sesión para compartir"); return; }
+  const bundle={kind:"bici-reto",v:1,mode:session.mode,
+    config:{smoothM:$("smoothM").value,diff:$("diff").value},
+    ghost:session};
+  if(session.mode==="gpx" && gpxText){ bundle.gpx=gpxText; bundle.route=fname; }
+  else if(session.mode==="gpx" && !gpxText){ alert("Para compartir un reto de recorrido, el GPX debe estar cargado."); return; }
+  const blob=new Blob([JSON.stringify(bundle)],{type:"application/json"});
+  const base=(bundle.route||"libre").replace(/\.gpx$/i,"");
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="reto-"+base+".json";a.click();
+}
+function importReto(text){
+  let b; try{b=JSON.parse(text);}catch{alert("Archivo inválido");return;}
+  if(b.kind!=="bici-reto"||!b.ghost){alert("No es un archivo de reto válido");return;}
+  const g=b.ghost; g.date=g.date||Date.now();
+  if(b.config){ if(b.config.smoothM!=null)$("smoothM").value=b.config.smoothM; if(b.config.diff!=null)$("diff").value=b.config.diff; saveCfg(); }
+  if(b.mode==="gpx" && b.gpx){
+    fname=b.route||"reto.gpx"; g.route=fname; g.mode="gpx"; saveSesion(g);
+    $("modeSel").value="gpx"; toggleMode();
+    $("historial").classList.add("hidden"); $("setup").classList.remove("hidden");
+    try{ parseGpx(b.gpx); }catch(e){ alert("El GPX del reto falló: "+e.message); return; }
+    alert("Reto cargado. Elegí el fantasma en el selector y tocá Empezar.");
+  } else {
+    g.mode=g.mode||"libre"; saveSesion(g);
+    $("modeSel").value="libre"; toggleMode();
+    alert("Fantasma del reto importado (modo Libre). Elegilo en el selector de fantasma.");
+  }
+  renderHistorial();
 }
 $("histBtn").onclick=()=>{ $("setup").classList.add("hidden");$("historial").classList.remove("hidden"); setSelMode(false); };
 $("histBack").onclick=()=>{ $("historial").classList.add("hidden");$("setup").classList.remove("hidden");refreshStart(); };
@@ -1008,6 +1056,9 @@ function parseTcxGhost(text,filename){
 }
 $("importTcxBtn").onclick=()=>$("importTcxFile").click();
 $("importTcxFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>parseTcxGhost(r.result,f.name);r.readAsText(f);e.target.value="";};
+$("importRetoBtn").onclick=()=>$("importRetoFile").click();
+$("importRetoFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>importReto(r.result);r.readAsText(f);e.target.value="";};
+$("shareReto").onclick=shareReto;
 $("selToggle").onclick=()=>setSelMode(true);
 $("selCancel").onclick=()=>setSelMode(false);
 $("selAll").onclick=()=>{ const list=loadSesiones();
