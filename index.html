@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v20</title>
+<title>Bici Indoor · v24</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -49,6 +49,8 @@
   .hud4 .tile .v{font-size:22px}
   .grade-pos .v{color:var(--warn)}
   .pulse .v{color:#ff6b6b}
+  textarea{width:100%;min-height:180px;font:14px/1.5 ui-monospace,monospace;color:var(--tx);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;resize:vertical}
+  #woName{width:100%;font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px}
   select{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;min-height:44px}
   .gap{font-size:30px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums}
   .gap.ahead{color:var(--ok)} .gap.behind{color:var(--err)}
@@ -81,7 +83,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v20</h1>
+  <h1>Bici Indoor · v24</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -162,15 +164,30 @@
       <div class="row"><label for="cda">Aerodinámica (CdA)</label><input type="number" id="cda" value="0.32" min="0.2" max="0.6" step="0.01"></div>
       <div class="row"><label for="smoothM">Suavizado altimetría (m)</label><input type="number" id="smoothM" value="100" min="0" max="300" step="10"></div>
       <div class="row"><label for="diff">Dificultad rodillo (%)</label><input type="number" id="diff" value="100" min="10" max="100" step="5"></div>
+      <div class="row"><label for="ftp">FTP (W)</label><input type="number" id="ftp" value="200" min="50" max="600" step="5"></div>
     </details>
 
     <button class="primary full" id="start" style="margin-top:14px" disabled>Empezar</button>
     <div class="msg" id="msg"></div>
+    <div id="woPending" style="display:none;color:var(--acc);font-size:13px;margin-top:8px;cursor:pointer"></div>
     <button class="full" id="histBtn" style="margin-top:10px">Historial de sesiones</button>
+    <button class="full" id="zonesBtn" style="margin-top:10px">Zonas de potencia y FTP</button>
+    <button class="full" id="entrenoBtn" style="margin-top:10px">Entrenamientos estructurados</button>
   </div>
 
   <!-- RIDE -->
   <div class="card hidden" id="ride">
+    <div id="woHud" class="hidden" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--dim)">
+        <span id="woStepIdx">Paso 1</span><span id="woNext">Sigue: —</span>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:12px;margin-top:2px">
+        <div id="woTarget" style="font-size:34px;font-weight:800">—</div>
+        <div id="woTargetSub" style="color:var(--dim);font-size:15px"></div>
+        <div id="woLeft" style="margin-left:auto;font-size:30px;font-weight:800;font-variant-numeric:tabular-nums">0:00</div>
+      </div>
+      <div class="progress" style="margin-top:6px"><i id="woBar"></i></div>
+    </div>
     <div id="verdict" class="verdict hidden"></div>
     <div id="reconn" class="hidden" style="background:#2a1518;border:1px solid #5a2a2a;color:#ff9b91;padding:12px;border-radius:12px;margin-bottom:10px;text-align:center;font-size:14px">
       Rodillo desconectado — sesión en pausa. Reconectá el cable.
@@ -186,7 +203,7 @@
       <div class="tile big"><div class="l">Velocidad</div><div class="v" id="hSpd">0.0</div><div class="u">km/h</div></div>
     </div>
     <div class="hud hud4" style="margin-top:10px">
-      <div class="tile"><div class="l">Potencia</div><div class="v" id="hPw">0</div><div class="u">W</div></div>
+      <div class="tile"><div class="l">Potencia</div><div class="v" id="hPw">0</div><div class="u">W · <b id="hZone" style="color:var(--dim)">—</b></div></div>
       <div class="tile pulse"><div class="l">Pulso</div><div class="v" id="hHr">—</div><div class="u">bpm</div></div>
       <div class="tile"><div class="l">Cadencia</div><div class="v" id="hCad">0</div><div class="u">rpm</div></div>
       <div class="tile grade-pos"><div class="l">Pendiente</div><div class="v" id="hGr">0.0</div><div class="u">%</div></div>
@@ -248,6 +265,33 @@
     <button class="primary full" id="histBack" style="margin-top:10px">Volver</button>
   </div>
 
+  <div class="card hidden" id="zonesCard">
+    <h2>Zonas de potencia y FTP</h2>
+    <div class="row"><label for="ftp2">FTP (W)</label><input type="number" id="ftp2" min="50" max="600" step="5" style="width:100px"></div>
+    <div id="zonesTable" style="margin-top:10px"></div>
+    <button class="full" id="estFtpBtn" style="margin-top:10px">Estimar FTP desde mis sesiones</button>
+    <button class="full" id="ftpTestBtn" style="margin-top:8px">Configurar test de 20 min</button>
+    <div style="color:var(--dim);font-size:12px;margin-top:8px">El test: 20 min a fondo, parejo. Al terminar, FTP ≈ 95% de tu potencia media. Antes, hacé 10-15 min de entrada en calor.</div>
+    <button class="primary full" id="zonesBack" style="margin-top:10px">Volver</button>
+  </div>
+
+  <div class="card hidden" id="entrenoCard">
+    <h2>Entrenamientos estructurados</h2>
+    <div id="woList"></div>
+    <button class="full" id="woNew" style="margin-top:8px">Nuevo entrenamiento</button>
+    <div id="woEditor" class="hidden" style="margin-top:12px">
+      <input id="woName" placeholder="Nombre del entrenamiento">
+      <textarea id="woText" spellcheck="false"></textarea>
+      <div style="color:var(--dim);font-size:12px;margin-top:6px">Duración: <b>10'</b> min, <b>15"</b> seg, <b>1'30"</b> combinado. Objetivo: <b>Z1</b>–<b>Z7</b> (zona/ERG), <b>200W</b> (watts/ERG) o <b>4%</b> / <b>-2%</b> (pendiente). Repetición: <b>3x</b> … <b>end</b>.</div>
+      <div id="woPreview" style="margin-top:10px"></div>
+      <div class="controls" style="margin-top:10px">
+        <button id="woCancel">Cancelar</button>
+        <button class="primary" id="woSave">Guardar</button>
+      </div>
+    </div>
+    <button class="primary full" id="entrenoBack" style="margin-top:12px">Volver</button>
+  </div>
+
   <pre id="log"></pre>
 </div>
 
@@ -262,6 +306,7 @@ let pvScrub=-1, pvMapT=null, gpxText="";
 let state="idle"; // idle | riding | paused | finished
 let device=null, epIn=0, epOut=0, inPacket=64, ifaceNum=0, connected=false, autoPaused=false;
 let conn="ant", bleDevice=null, bleControl=null;
+let linkLost=false, linkTimer=null, wakeLockRef=null;
 let curPower=0, curCad=0, curHR=0, sawTrainer=false, rxBuf=[];
 
 // recorrido
@@ -327,10 +372,25 @@ async function connectAnt(){
 }
 function showReconnect(on){ const r=$("reconn"); if(r)r.classList.toggle("hidden",!on); }
 function afterReconnect(){
+  linkLost=false; if(linkTimer){clearTimeout(linkTimer);linkTimer=null;}
   showReconnect(false);
   if(autoPaused){ autoPaused=false; state="riding"; lastTs=performance.now(); $("pause").textContent="Pausar"; log("Reanudado tras reconexión","#3fb950"); }
+  else if(state==="riding"){ lastTs=performance.now(); setState("Rodillo conectado","live"); }
+  requestWake();
   refreshStart();
 }
+function onLinkLost(){
+  connected=false; sawTrainer=false; curPower=0;
+  if(state==="riding"){
+    linkLost=true; setState("Reconectando…","searching"); log("Enlace perdido, esperando reconexión…","#f0883e");
+    if(conn==="ble") setTimeout(()=>{ if(linkLost) reconnectBle().catch(()=>{}); }, 1500);
+    if(!linkTimer) linkTimer=setTimeout(()=>{ linkTimer=null;
+      if(state==="riding" && linkLost){ linkLost=false; autoPaused=true; state="paused"; $("pause").textContent="Reanudar"; showReconnect(true); setState("Rodillo desconectado","err"); log("Pausa automática por desconexión sostenida","#f85149"); }
+    }, 8000);
+  } else { setState("Rodillo desconectado","err"); refreshStart(); }
+}
+async function requestWake(){ try{ if("wakeLock" in navigator && !wakeLockRef){ wakeLockRef=await navigator.wakeLock.request("screen"); wakeLockRef.addEventListener("release",()=>{wakeLockRef=null;}); } }catch(_){} }
+function releaseWake(){ try{ wakeLockRef&&wakeLockRef.release(); }catch(_){} wakeLockRef=null; }
 async function initAnt(){
   setState("Inicializando…","searching");
   await send(antMsg(M.RESET,[0]));               await sleep(600);
@@ -399,6 +459,12 @@ async function sendGradeBle(g){
   b.setUint8(5,40); b.setUint8(6,51); // Crr 0.004, Cw 0.51
   try{ await bleControl.writeValueWithResponse(b.buffer); }catch(_){}
 }
+function sendTargetPower(w){ if(conn==="ble") sendTargetPowerBle(w); else sendTargetPowerAnt(w); }
+function sendTargetPowerAnt(w){ const v=Math.max(0,Math.round(w*4)); // 0.25 W units
+  send(antMsg(M.ACK,[CH,0x31,0xFF,0xFF,0xFF,0xFF,0xFF,v&0xFF,(v>>8)&0xFF])); }
+async function sendTargetPowerBle(w){ if(!bleControl)return;
+  const b=new DataView(new ArrayBuffer(3)); b.setUint8(0,0x05); b.setInt16(1,Math.max(0,Math.round(w)),true);
+  try{ await bleControl.writeValueWithResponse(b.buffer); }catch(_){} }
 async function connectBle(){
   if(!navigator.bluetooth){msg("Este navegador no soporta Web Bluetooth (usá Brave/Chrome; no anda en iPhone).");return;}
   try{
@@ -438,10 +504,8 @@ function parseBikeData(dv){
 function onBleDisconnect(){
   if(conn!=="ble")return;
   log("Rodillo BT desconectado","#f85149");
-  connected=false; sawTrainer=false; bleControl=null; curPower=0;
-  setState("Rodillo desconectado","err");
-  if(state==="riding"){ autoPaused=true; state="paused"; $("pause").textContent="Reanudar"; showReconnect(true); }
-  refreshStart();
+  bleControl=null;
+  onLinkLost();
 }
 async function reconnectBle(){
   if(!bleDevice) return connectBle();
@@ -576,9 +640,22 @@ const CDA=()=>parseFloat($("cda").value)||0.32;
 
 function tick(){
   if(state!=="riding")return;
+  if(linkLost){ lastTs=performance.now(); return; }
   const now=performance.now();let dt=(now-lastTs)/1000;lastTs=now;dt=Math.min(0.5,Math.max(0,dt));
   elapsed+=dt;
-  const grade = mode==="gpx" ? gradeAt(distanceM) : fixedGrade;
+  let grade;
+  if(mode==="entreno"){
+    woStepT+=dt;
+    let step=woSteps[woIdx];
+    while(step && woStepT>=step.dur){ woStepT-=step.dur; woIdx++; step=woSteps[woIdx]; }
+    if(!step){ finishRide(); return; }
+    if(step.kind==="erg"){ grade=0; const w=step.z?zoneMidWatts(step.z):step.w;
+      const key="e"+w; if(key!==woSentKey||now-lastSentAt>2000){ sendTargetPower(w); woSentKey=key; lastSentAt=now; } }
+    else { grade=step.slope; const tg=grade*(Math.max(10,Math.min(100,parseFloat($("diff").value)||100))/100);
+      const key="s"+tg.toFixed(1); if(key!==woSentKey||now-lastSentAt>2000){ sendGrade(tg); woSentKey=key; lastSentAt=now; lastSentGrade=tg; } }
+  } else {
+    grade = mode==="gpx" ? gradeAt(distanceM) : fixedGrade;
+  }
   const th=Math.atan(grade/100),m=riderKg()+bikeKg();
   const vEff=Math.max(v,0.5);
   const Fprop=curPower>0?curPower/vEff:0;
@@ -587,11 +664,13 @@ function tick(){
   distanceM+=v*dt;
   sumP+=curPower;nP++; if(curHR>0){hrSum+=curHR;hrN++;if(curHR>hrMax)hrMax=curHR;}
   // ¿terminó?
-  let done = mode==="gpx" ? distanceM>=total : (raceBy==="tiempo" ? elapsed>=targetTime : distanceM>=targetDist);
+  let done = mode==="gpx" ? distanceM>=total : mode==="entreno" ? false : (raceBy==="tiempo" ? elapsed>=targetTime : distanceM>=targetDist);
   if(done){ if(mode==="gpx")distanceM=total; finishRide(); return; }
-  // pendiente al rodillo (escalada por dificultad; la física usa la real)
-  const tgrade=grade*(Math.max(10,Math.min(100,parseFloat($("diff").value)||100))/100);
-  if(Math.abs(tgrade-lastSentGrade)>0.2||now-lastSentAt>1000){sendGrade(tgrade);lastSentGrade=tgrade;lastSentAt=now;}
+  // pendiente al rodillo (gpx/libre; en entreno el control ya se envió arriba)
+  if(mode!=="entreno"){
+    const tgrade=grade*(Math.max(10,Math.min(100,parseFloat($("diff").value)||100))/100);
+    if(Math.abs(tgrade-lastSentGrade)>0.2||now-lastSentAt>1000){sendGrade(tgrade);lastSentGrade=tgrade;lastSentAt=now;}
+  }
   // fantasma
   if(mode==="libre" && ghost) updateGhost();
   else if(mode==="gpx" && ghost){
@@ -600,7 +679,8 @@ function tick(){
     raceBar(distanceM,ghostDistNow,total);
   }
   // grabación 1 Hz
-  if(elapsed-lastRec>=1){lastRec=elapsed;session.samples.push({t:+elapsed.toFixed(1),d:+distanceM.toFixed(1),hr:curHR||0,c:curCad||0});}
+  if(elapsed-lastRec>=1){lastRec=elapsed;session.samples.push({t:+elapsed.toFixed(1),d:+distanceM.toFixed(1),hr:curHR||0,c:curCad||0,p:curPower||0});}
+  if(mode==="entreno") updateWoHud();
   hud(grade); drawRide();
 }
 function updateGhost(){
@@ -630,6 +710,9 @@ function showGap(val,unit){const g=$("gapTx"),ahead=val>=0;
 function raceBar(you,gpos,maxD){ raceYou=you; raceGhost=gpos; raceMax=maxD||1; }
 let raceYou=0, raceGhost=0, raceMax=1, youCrank=0, ghostCrank=0, laneRAF=null, laneLast=0, laneCtx=null;
 let battleZoom=true;
+let pendingWorkout=null, woSteps=[], woIdx=0, woStepT=0, woName="", woSentKey="";
+const ZMID={1:0.50,2:0.65,3:0.83,4:0.98,5:1.13,6:1.35,7:1.60};
+function zoneMidWatts(z){ return Math.round(ZMID[z]*ftpVal()); }
 function ghostCadAt(t){ const s=ghost?ghost.samples:null; if(!s||!s.length)return 0;
   if(t<=s[0].t)return s[0].c||0; if(t>=s[s.length-1].t)return s[s.length-1].c||0;
   let i=0;while(i<s.length-1&&s[i+1].t<t)i++;const a=s[i],b=s[i+1];const ca=a.c||0,cb=b.c||0;
@@ -704,6 +787,8 @@ function hud(grade){
   $("hGr").textContent=grade.toFixed(1);
   $("hCad").textContent=curCad;
   $("hHr").textContent=curHR||"—";
+  if(curPower>0){ const z=zoneOf(curPower); $("hZone").textContent="Z"+z; $("hZone").style.color=ZCOL[z]; }
+  else { $("hZone").textContent="—"; $("hZone").style.color="var(--dim)"; }
   const prog = mode==="gpx" ? distanceM/total : (raceBy==="tiempo" ? elapsed/targetTime : distanceM/targetDist);
   $("pbar").style.width=Math.min(100,prog*100)+"%";
   if(mode==="gpx"){ const ng=nextGradeInfo();
@@ -810,7 +895,7 @@ function drawMap(){
 // ================= Control de sesión =================
 function refreshStart(){
   const m=$("modeSel").value;
-  $("start").disabled=!(connected&&sawTrainer&&(m==="gpx"?pd.length>0:true));
+  $("start").disabled=!(connected&&sawTrainer&&(pendingWorkout?true:(m==="gpx"?pd.length>0:true)));
 }
 function loadSesiones(){try{return JSON.parse(localStorage.getItem("bici_sesiones")||"[]");}catch{return[];}}
 function populateGhosts(){
@@ -838,17 +923,37 @@ function populateGpxGhosts(){
 }
 function toggleMode(){
   const m=$("modeSel").value;
+  pendingWorkout=null; const wp=$("woPending"); if(wp)wp.style.display="none";
   $("gpxSetup").classList.toggle("hidden",m!=="gpx");
   $("libreSetup").classList.toggle("hidden",m!=="libre");
   if(m==="libre") populateGhosts();
   refreshStart();
 }
 
+function updateWoHud(){
+  const step=woSteps[woIdx]; if(!step)return;
+  const left=Math.max(0,step.dur-woStepT);
+  $("woStepIdx").textContent="Paso "+(woIdx+1)+"/"+woSteps.length;
+  const nx=woSteps[woIdx+1];
+  $("woNext").textContent=nx?("Sigue: "+woStepLabel(nx)+" "+fmtDur(nx.dur)):"Último paso";
+  $("woTarget").textContent=woStepLabel(step);
+  $("woTarget").style.color=woStepColor(step);
+  $("woTargetSub").textContent=step.kind==="erg"?(step.z?(zoneMidWatts(step.z)+" W objetivo"):(step.w+" W")):"pendiente";
+  $("woLeft").textContent=fmtTime(left);
+  $("woBar").style.width=(100*woStepT/step.dur)+"%";
+}
 function startRide(){
-  mode=$("modeSel").value;
+  mode = pendingWorkout ? "entreno" : $("modeSel").value;
   distanceM=0;v=0;elapsed=0;lastRec=0;sumP=0;nP=0;hrSum=0;hrN=0;hrMax=0;lastSentGrade=999;lastSentAt=0;
-  verdictDone=false; ghost=null;
-  if(mode==="libre"){
+  verdictDone=false; ghost=null; woSentKey="";
+  if(mode==="entreno"){
+    woSteps=pendingWorkout.steps; woIdx=0; woStepT=0; woName=pendingWorkout.name; pendingWorkout=null;
+    $("woPending").style.display="none";
+    $("prof").classList.add("hidden");$("map").classList.add("hidden");$("raceWrap").classList.add("hidden");
+    $("zoomRow").style.display="none";$("woHud").classList.remove("hidden");$("verdict").classList.add("hidden");
+    session={mode:"entreno",name:woName,date:Date.now(),samples:[]};
+    updateWoHud();
+  }else if(mode==="libre"){
     raceBy=$("raceSel").value;
     const val=parseFloat($("objVal").value)||0;
     targetTime = raceBy==="tiempo" ? val*60 : Infinity;
@@ -874,6 +979,8 @@ function startRide(){
     session={mode:"gpx",route:fname,total:+total.toFixed(1),date:Date.now(),samples:[],smoothM:parseInt($("smoothM").value,10)||0};
   }
   $("sVerdict").classList.add("hidden");
+  if(mode!=="entreno") $("woHud").classList.add("hidden");
+  if(session) session.isFtpTest=pendingFtpTest; pendingFtpTest=false;
   raceYou=0; raceGhost=0; raceMax=1; youCrank=0; ghostCrank=0;
   if(ghost) startLane(); else stopLane();
   $("zoomRow").style.display=(mode==="gpx"&&ghost)?"flex":"none";
@@ -882,6 +989,7 @@ function startRide(){
   state="riding";lastTs=performance.now();
   $("setup").classList.add("hidden");$("summary").classList.add("hidden");$("ride").classList.remove("hidden");
   if(!physTimer)physTimer=setInterval(tick,100);
+  requestWake();
   log("Sesión iniciada ("+mode+")");
 }
 function pauseRide(){
@@ -890,6 +998,7 @@ function pauseRide(){
 }
 function finishRide(){
   state="finished";
+  linkLost=false; if(linkTimer){clearTimeout(linkTimer);linkTimer=null;} releaseWake();
   const avgP=nP?sumP/nP:0, avgV=elapsed>0?(distanceM/elapsed)*3.6:0, avgHr=hrN?Math.round(hrSum/hrN):0;
   session.dur=+elapsed.toFixed(1); session.dist=+distanceM.toFixed(1); session.hrAvg=avgHr; session.hrMax=hrMax;
   saveSesion(session); populateGhosts();
@@ -911,6 +1020,8 @@ function finishRide(){
   $("ride").classList.add("hidden");$("summary").classList.remove("hidden");
   sendGrade(0);
   if($("modeSel").value==="gpx") populateGpxGhosts();
+  if(session.isFtpTest && elapsed>=1000){ const ftp=Math.round(0.95*avgP);
+    setTimeout(()=>{ if(confirm("Test de 20 min terminado.\nPotencia media: "+Math.round(avgP)+" W\nFTP estimado (95%): "+ftp+" W\n¿Guardarlo como tu FTP?")){ $("ftp").value=ftp; saveCfg(); } },400); }
   log("Sesión terminada y guardada");
 }
 function saveSesion(s){try{const a=JSON.parse(localStorage.getItem("bici_sesiones")||"[]");
@@ -954,7 +1065,7 @@ $("reconnBtn").onclick=()=>{ conn==="ble"?reconnectBle():connect(); };
 $("connType").onchange=()=>{ conn=$("connType").value; $("hrBleBtn").classList.toggle("hidden",conn!=="ble"); saveCfg(); };
 $("hrBleBtn").onclick=connectHrBle;
 
-const CFG_KEY="bici_config", CFG_IDS=["weight","bike","crr","cda","smoothM","diff","connType"];
+const CFG_KEY="bici_config", CFG_IDS=["weight","bike","crr","cda","smoothM","diff","connType","ftp"];
 function saveCfg(){ const o={}; CFG_IDS.forEach(id=>{const el=$(id);if(el)o[id]=el.value;}); try{localStorage.setItem(CFG_KEY,JSON.stringify(o));}catch(_){} }
 function loadCfg(){ let o; try{o=JSON.parse(localStorage.getItem(CFG_KEY)||"{}");}catch(_){o={};}
   CFG_IDS.forEach(id=>{const el=$(id);if(el&&o[id]!=null)el.value=o[id];});
@@ -962,16 +1073,129 @@ function loadCfg(){ let o; try{o=JSON.parse(localStorage.getItem(CFG_KEY)||"{}")
 }
 CFG_IDS.forEach(id=>{const el=$(id);if(el)el.addEventListener("change",saveCfg);});
 loadCfg();
+
+// ---------- Zonas / FTP ----------
+const ZCOL={1:"#4cc2ff",2:"#3fb950",3:"#9fd23f",4:"#e3c53f",5:"#f0883e",6:"#f85149",7:"#b46bd6"};
+const ZNAME={1:"Recuperación",2:"Resistencia",3:"Tempo",4:"Umbral",5:"VO2máx",6:"Anaeróbico",7:"Neuromuscular"};
+const ZLO=[0,0,0.55,0.75,0.90,1.05,1.20,1.50], ZHI=[0,0.55,0.75,0.90,1.05,1.20,1.50,99];
+function ftpVal(){ return Math.max(50,parseInt($("ftp").value,10)||200); }
+function zoneOf(p){ const r=p/ftpVal(); if(r<0.55)return 1;if(r<0.75)return 2;if(r<0.90)return 3;if(r<1.05)return 4;if(r<1.20)return 5;if(r<1.50)return 6;return 7; }
+function renderZones(){
+  const ftp=ftpVal(); $("ftp").value=ftp; $("ftp2").value=ftp;
+  let html="";
+  for(let z=1;z<=7;z++){ const lo=Math.round(ZLO[z]*ftp), hi=z===7?"∞":Math.round(ZHI[z]*ftp);
+    html+=`<div class="srow"><div class="info"><span class="badge" style="background:${ZCOL[z]};color:#04121c">Z${z}</span>${ZNAME[z]}<div class="tag">${lo}–${hi} W</div></div></div>`; }
+  $("zonesTable").innerHTML=html;
+}
+function estimateFtp(){
+  const all=loadSesiones(), W=1200; let best=0;
+  for(const s of all){ if(!s.samples||s.samples.length<W) continue;
+    const ps=s.samples.map(x=>x.p||0); let sum=0; for(let i=0;i<W;i++)sum+=ps[i]; let mx=sum;
+    for(let i=W;i<ps.length;i++){ sum+=ps[i]-ps[i-W]; if(sum>mx)mx=sum; }
+    const avg=mx/W; if(avg>best)best=avg;
+  }
+  if(best<=0){ alert("No hay ningún tramo de 20 min con potencia grabada. Hacé el test de 20 min."); return; }
+  const ftp=Math.round(0.95*best);
+  if(confirm("Mejor 20 min: "+Math.round(best)+" W\nFTP estimado: "+ftp+" W\n¿Usarlo?")){ $("ftp").value=ftp; $("ftp2").value=ftp; saveCfg(); renderZones(); }
+}
+let pendingFtpTest=false;
+$("zonesBtn").onclick=()=>{ renderZones(); $("setup").classList.add("hidden"); $("zonesCard").classList.remove("hidden"); };
+$("zonesBack").onclick=()=>{ $("zonesCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); };
+$("ftp2").addEventListener("change",()=>{ $("ftp").value=$("ftp2").value; saveCfg(); renderZones(); });
+$("estFtpBtn").onclick=estimateFtp;
+
+// ---------- Editor de entrenamientos ----------
+const WO_EXAMPLE="10' Z1\n3x\n  5' Z2\n  3' Z3\n  1' Z4\n  15\" Z5\nend\n10' Z1";
+function loadWorkouts(){ try{return JSON.parse(localStorage.getItem("bici_entrenos")||"[]");}catch{return[];} }
+function woClone(a){ return a.map(s=>Object.assign({},s)); }
+function parseStep(line){
+  let min=0,sec=0; const mm=line.match(/(\d+)\s*'/); if(mm)min=parseInt(mm[1],10);
+  const ss=line.match(/(\d+)\s*"/); if(ss)sec=parseInt(ss[1],10);
+  const dur=min*60+sec; if(dur<=0) return {error:"duración inválida"};
+  let t=line.replace(/(\d+)\s*'/,"").replace(/(\d+)\s*"/,"").trim();
+  let m;
+  if(m=t.match(/Z\s*([1-7])/i)) return {dur,kind:"erg",z:parseInt(m[1],10)};
+  if(m=t.match(/(-?\d+)\s*W/i)) return {dur,kind:"erg",w:parseInt(m[1],10)};
+  if(m=t.match(/(-?\d+(?:\.\d+)?)\s*%/)) return {dur,kind:"sim",slope:parseFloat(m[1])};
+  return {error:"objetivo no reconocido (Z1-Z7, 200W o 4%)"};
+}
+function parseWorkout(text){
+  const lines=(text||"").split(/\n/), stack=[{n:1,steps:[]}], err=[];
+  lines.forEach((raw,li)=>{ const line=raw.trim(); if(!line)return; let m;
+    if(/^end$/i.test(line)){ if(stack.length>1){ const f=stack.pop(); for(let i=0;i<f.n;i++) stack[stack.length-1].steps.push(...woClone(f.steps)); } else err.push("Línea "+(li+1)+": 'end' sin repetición abierta"); return; }
+    if(m=line.match(/^(\d+)\s*(?:x|sets)\b/i)){ stack.push({n:parseInt(m[1],10),steps:[]}); return; }
+    const st=parseStep(line); if(st.error){ err.push("Línea "+(li+1)+": "+st.error); return; }
+    stack[stack.length-1].steps.push(st);
+  });
+  while(stack.length>1){ const f=stack.pop(); for(let i=0;i<f.n;i++) stack[stack.length-1].steps.push(...woClone(f.steps)); }
+  const steps=stack[0].steps, totalSec=steps.reduce((a,s)=>a+s.dur,0);
+  return {steps,totalSec,error:err.length?err.join("\n"):null};
+}
+function fmtDur(sec){ const m=Math.floor(sec/60), s=sec%60; return (m?m+"'":"")+(s?s+'"':"")||'0"'; }
+function woStepColor(s){ return s.kind==="erg" ? (s.z?ZCOL[s.z]:"#4cc2ff") : gradeColor(s.slope); }
+function woStepLabel(s){ return s.kind==="erg" ? (s.z?("Z"+s.z):(s.w+" W")) : (s.slope+"%"); }
+function renderWoPreview(){
+  const {steps,totalSec,error}=parseWorkout($("woText").value), pv=$("woPreview");
+  if(error){ pv.innerHTML='<div style="color:var(--err);font-size:13px;white-space:pre-wrap">'+error+'</div>'; return; }
+  let html=`<div style="color:var(--dim);font-size:12px;margin-bottom:6px">${steps.length} pasos · ${fmtTime(totalSec)} total</div>`;
+  for(const s of steps){ html+=`<div class="srow"><div class="info"><span class="badge" style="background:${woStepColor(s)};color:#04121c">${s.kind==="erg"?"ERG":"PEND"}</span>${fmtDur(s.dur)} · ${woStepLabel(s)}</div></div>`; }
+  pv.innerHTML=html;
+}
+function renderWoList(){
+  const list=loadWorkouts(), wrap=$("woList");
+  if(!list.length){ wrap.innerHTML='<div style="color:var(--dim);font-size:13px">Sin entrenamientos todavía.</div>'; return; }
+  wrap.innerHTML="";
+  list.forEach((w,i)=>{ const p=parseWorkout(w.text);
+    const row=document.createElement("div");row.className="srow";
+    row.innerHTML=`<div class="info">${w.name||"(sin nombre)"}<div class="tag">${p.steps.length} pasos · ${fmtTime(p.totalSec)}</div></div>`;
+    const ed=document.createElement("button");ed.textContent="✎";ed.style.minHeight="40px";ed.style.padding="8px 12px";ed.onclick=()=>editWorkout(i);
+    const run=document.createElement("button");run.textContent="▶";run.className="primary";run.style.minHeight="40px";run.style.padding="8px 14px";run.onclick=()=>runWorkout(i);
+    const del=document.createElement("button");del.className="del";del.textContent="✕";del.onclick=()=>{ if(confirm("¿Borrar entrenamiento?")){ const a=loadWorkouts();a.splice(i,1);localStorage.setItem("bici_entrenos",JSON.stringify(a));renderWoList(); } };
+    row.appendChild(run);row.appendChild(ed);row.appendChild(del);wrap.appendChild(row);
+  });
+}
+let woEditIdx=-1;
+function openEditor(){ $("woEditor").classList.remove("hidden"); renderWoPreview(); }
+function editWorkout(i){ const w=loadWorkouts()[i]; woEditIdx=i; $("woName").value=w.name||""; $("woText").value=w.text||""; openEditor(); }
+$("entrenoBtn").onclick=()=>{ renderWoList(); $("woEditor").classList.add("hidden"); $("setup").classList.add("hidden"); $("entrenoCard").classList.remove("hidden"); };
+$("entrenoBack").onclick=()=>{ $("entrenoCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); };
+$("woNew").onclick=()=>{ woEditIdx=-1; $("woName").value=""; $("woText").value=WO_EXAMPLE; openEditor(); };
+$("woCancel").onclick=()=>{ $("woEditor").classList.add("hidden"); };
+$("woText").addEventListener("input",renderWoPreview);
+function runWorkout(i){
+  const w=loadWorkouts()[i], p=parseWorkout(w.text);
+  if(p.error||!p.steps.length){ alert("El entrenamiento tiene errores, no se puede correr."); return; }
+  pendingWorkout={name:w.name,steps:p.steps};
+  $("entrenoCard").classList.add("hidden"); $("setup").classList.remove("hidden");
+  const wp=$("woPending"); wp.textContent="▶ "+w.name+" ("+fmtTime(p.totalSec)+") — conectá el rodillo y tocá Empezar. (Tocá acá para cancelar)"; wp.style.display="block";
+  refreshStart();
+}
+$("woPending").onclick=()=>{ pendingWorkout=null; $("woPending").style.display="none"; refreshStart(); };
+$("woSave").onclick=()=>{
+  const name=$("woName").value.trim()||"Entrenamiento", text=$("woText").value, p=parseWorkout(text);
+  if(p.error){ alert("Corregí los errores antes de guardar:\n"+p.error); return; }
+  if(!p.steps.length){ alert("El entrenamiento está vacío."); return; }
+  const a=loadWorkouts(), w={name,text};
+  if(woEditIdx>=0) a[woEditIdx]=w; else a.push(w);
+  localStorage.setItem("bici_entrenos",JSON.stringify(a));
+  $("woEditor").classList.add("hidden"); renderWoList();
+};
+$("ftpTestBtn").onclick=()=>{
+  $("modeSel").value="libre"; toggleMode();
+  $("raceSel").value="tiempo"; $("objUnit").textContent="min"; $("objVal").value="20"; $("ghostSel").value="-1";
+  pendingFtpTest=true;
+  $("zonesCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart();
+  alert("Test de 20 min configurado (modo Libre, 20 min). Conectá el rodillo si falta, entrá en calor, y tocá Empezar. Pedaleá fuerte y parejo; al terminar te calculo el FTP.");
+};
 toggleMode();
 
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible" && state==="riding") requestWake(); });
 if("usb" in navigator){
   navigator.usb.addEventListener("disconnect",e=>{
     if(device && e.device===device){
       log("Stick desconectado","#f85149");
-      connected=false; sawTrainer=false; device=null; curPower=0;
-      setState("Rodillo desconectado","err");
-      if(state==="riding"){ autoPaused=true; state="paused"; $("pause").textContent="Reanudar"; showReconnect(true); log("Sesión en pausa automática","#f0883e"); }
-      refreshStart();
+      device=null;
+      onLinkLost();
     }
   });
   navigator.usb.addEventListener("connect",async e=>{
