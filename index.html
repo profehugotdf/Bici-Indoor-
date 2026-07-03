@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v17</title>
+<title>Bici Indoor · v18</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -81,7 +81,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v17</h1>
+  <h1>Bici Indoor · v18</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -191,9 +191,13 @@
       <div class="tile grade-pos"><div class="l">Pendiente</div><div class="v" id="hGr">0.0</div><div class="u">%</div></div>
     </div>
     <div class="progress"><i id="pbar"></i></div>
+    <div id="nextGrade" style="color:var(--dim);font-size:13px;text-align:center;margin-top:6px;font-variant-numeric:tabular-nums"></div>
 
     <canvas id="prof" height="150" style="margin-top:12px"></canvas>
-    <canvas id="map" height="220" style="margin-top:10px"></canvas>
+    <div id="zoomRow" style="display:flex;justify-content:flex-end;margin-top:10px">
+      <button id="zoomBtn" style="min-height:40px;padding:8px 14px;font-size:13px">Zoom disputa: ON</button>
+    </div>
+    <canvas id="map" height="220" style="margin-top:8px"></canvas>
 
     <div class="controls">
       <button id="pause">Pausar</button>
@@ -624,6 +628,7 @@ function showGap(val,unit){const g=$("gapTx"),ahead=val>=0;
   g.className="gap "+(ahead?"ahead":"behind");}
 function raceBar(you,gpos,maxD){ raceYou=you; raceGhost=gpos; raceMax=maxD||1; }
 let raceYou=0, raceGhost=0, raceMax=1, youCrank=0, ghostCrank=0, laneRAF=null, laneLast=0, laneCtx=null;
+let battleZoom=true;
 function ghostCadAt(t){ const s=ghost?ghost.samples:null; if(!s||!s.length)return 0;
   if(t<=s[0].t)return s[0].c||0; if(t>=s[s.length-1].t)return s[s.length-1].c||0;
   let i=0;while(i<s.length-1&&s[i+1].t<t)i++;const a=s[i],b=s[i+1];const ca=a.c||0,cb=b.c||0;
@@ -700,6 +705,19 @@ function hud(grade){
   $("hHr").textContent=curHR||"—";
   const prog = mode==="gpx" ? distanceM/total : (raceBy==="tiempo" ? elapsed/targetTime : distanceM/targetDist);
   $("pbar").style.width=Math.min(100,prog*100)+"%";
+  if(mode==="gpx"){ const ng=nextGradeInfo();
+    $("nextGrade").textContent = ng ? `Próximo: ${ng.g>=0?"+":""}${ng.g.toFixed(1)}% en ${Math.round(ng.m)} m${ng.secs!=null?" · "+fmtTime(ng.secs):""}` : "Sin más cambios de pendiente";
+  } else $("nextGrade").textContent="";
+}
+function bandOf(g){ if(g<=-1)return 0; if(g<1)return 1; if(g<3)return 2; if(g<6)return 3; return 4; }
+function nextGradeInfo(){
+  if(mode!=="gpx"||!pg.length) return null;
+  const i0=Math.max(0,Math.min(pg.length-1,Math.round(distanceM/STEP))), b0=bandOf(pg[i0]);
+  for(let i=i0+1;i<pg.length;i++){ if(bandOf(pg[i])!==b0){
+    const m=Math.max(0,pd[i]-distanceM), secs=v>0.3?m/v:null;
+    return {m,secs,g:pg[i]};
+  }}
+  return null;
 }
 function fmtTime(s){s=Math.floor(s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),ss=s%60;
   return (h?h+":"+String(m).padStart(2,"0"):m)+":"+String(ss).padStart(2,"0");}
@@ -752,13 +770,36 @@ function drawProf(){
 function drawMap(){
   if(!projPts.length)return;
   const cv=$("map"),{ctx,w,h}=fit(cv);ctx.clearRect(0,0,w,h);
+  const dot=(x,y,f,r)=>{ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fillStyle=f;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#04121c";ctx.stroke();};
+  if(battleZoom && mode==="gpx" && ghost){
+    const mp=16, cw=w-2*mp, ch=h-2*mp;
+    const you=projAt(distanceM), gh=projAt(Math.min(ghostDistNow,total));
+    const cx=(you.x+gh.x)/2, cy=(you.y+gh.y)/2;
+    const fullX=(mxmax-mxmin)||1e-9, fullY=(mymax-mymin)||1e-9;
+    const minS=0.05*Math.max(fullX,fullY);
+    const spanX=Math.max(Math.abs(you.x-gh.x),minS)*2.2, spanY=Math.max(Math.abs(you.y-gh.y),minS)*2.2;
+    const scale=Math.min(cw/spanX,ch/spanY);
+    const X=p=>mp+cw/2+(p.x-cx)*scale, Y=p=>mp+ch/2-(p.y-cy)*scale;
+    ctx.lineWidth=5;ctx.lineJoin="round";ctx.lineCap="round";
+    for(let i=0;i<projPts.length-1;i++){ctx.strokeStyle=gradeColor(gradeAt(dist[i]));
+      ctx.beginPath();ctx.moveTo(X(projPts[i]),Y(projPts[i]));ctx.lineTo(X(projPts[i+1]),Y(projPts[i+1]));ctx.stroke();}
+    // línea entre ellos + etiqueta de distancia
+    const yx=X(you),yy=Y(you),gx=X(gh),gy=Y(gh);
+    ctx.strokeStyle="rgba(230,237,243,.4)";ctx.lineWidth=1.5;ctx.setLineDash([4,4]);
+    ctx.beginPath();ctx.moveTo(yx,yy);ctx.lineTo(gx,gy);ctx.stroke();ctx.setLineDash([]);
+    dot(gx,gy,"#8b98a9",7); dot(yx,yy,"#e6edf3",7);
+    const gap=Math.abs(distanceM-ghostDistNow);
+    ctx.fillStyle="#e6edf3";ctx.font="600 14px system-ui";ctx.textAlign="center";
+    ctx.fillText(Math.round(gap)+" m",(yx+gx)/2,Math.min(yy,gy)-10);
+    ctx.textAlign="start";
+    return;
+  }
   const pad=14,cw=w-2*pad,ch=h-2*pad,bw=(mxmax-mxmin)||1e-9,bh=(mymax-mymin)||1e-9;
   const scale=Math.min(cw/bw,ch/bh),ox=pad+(cw-bw*scale)/2,oy=pad+(ch-bh*scale)/2;
   const X=p=>ox+(p.x-mxmin)*scale,Y=p=>oy+(mymax-p.y)*scale;
   ctx.lineWidth=3;ctx.lineJoin="round";ctx.lineCap="round";
   for(let i=0;i<projPts.length-1;i++){ctx.strokeStyle=gradeColor(gradeAt(dist[i]));
     ctx.beginPath();ctx.moveTo(X(projPts[i]),Y(projPts[i]));ctx.lineTo(X(projPts[i+1]),Y(projPts[i+1]));ctx.stroke();}
-  const dot=(x,y,f,r)=>{ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fillStyle=f;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#04121c";ctx.stroke();};
   dot(X(projPts[0]),Y(projPts[0]),"#3fb950",4);
   dot(X(projPts[projPts.length-1]),Y(projPts[projPts.length-1]),"#f85149",4);
   if(mode==="gpx" && ghost){const gp=projAt(Math.min(ghostDistNow,total));dot(X(gp),Y(gp),"#8b98a9",6);}
@@ -832,6 +873,8 @@ function startRide(){
   $("sVerdict").classList.add("hidden");
   raceYou=0; raceGhost=0; raceMax=1; youCrank=0; ghostCrank=0;
   if(ghost) startLane(); else stopLane();
+  $("zoomRow").style.display=(mode==="gpx"&&ghost)?"flex":"none";
+  $("zoomBtn").textContent="Zoom disputa: "+(battleZoom?"ON":"OFF");
   sendUserConfig();
   state="riding";lastTs=performance.now();
   $("setup").classList.add("hidden");$("summary").classList.add("hidden");$("ride").classList.remove("hidden");
@@ -1059,6 +1102,7 @@ $("importTcxFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=n
 $("importRetoBtn").onclick=()=>$("importRetoFile").click();
 $("importRetoFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>importReto(r.result);r.readAsText(f);e.target.value="";};
 $("shareReto").onclick=shareReto;
+$("zoomBtn").onclick=()=>{ battleZoom=!battleZoom; $("zoomBtn").textContent="Zoom disputa: "+(battleZoom?"ON":"OFF"); if(state==="riding"||state==="paused")drawMap(); };
 $("selToggle").onclick=()=>setSelMode(true);
 $("selCancel").onclick=()=>setSelMode(false);
 $("selAll").onclick=()=>{ const list=loadSesiones();
