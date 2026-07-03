@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v18</title>
+<title>Bici Indoor · v20</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -81,7 +81,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v18</h1>
+  <h1>Bici Indoor · v20</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -115,6 +115,7 @@
         <label for="gpxGhostSel">Fantasma</label>
         <select id="gpxGhostSel" style="flex:1"></select>
       </div>
+      <div id="ghostNote" style="color:var(--acc);font-size:12px;margin-top:4px;display:none"></div>
       <div id="preview" class="hidden" style="margin-top:10px">
         <canvas id="pvProf" height="130"></canvas>
         <canvas id="pvMap" height="150" style="margin-top:8px"></canvas>
@@ -788,9 +789,9 @@ function drawMap(){
     ctx.strokeStyle="rgba(230,237,243,.4)";ctx.lineWidth=1.5;ctx.setLineDash([4,4]);
     ctx.beginPath();ctx.moveTo(yx,yy);ctx.lineTo(gx,gy);ctx.stroke();ctx.setLineDash([]);
     dot(gx,gy,"#8b98a9",7); dot(yx,yy,"#e6edf3",7);
-    const gap=Math.abs(distanceM-ghostDistNow);
-    ctx.fillStyle="#e6edf3";ctx.font="600 14px system-ui";ctx.textAlign="center";
-    ctx.fillText(Math.round(gap)+" m",(yx+gx)/2,Math.min(yy,gy)-10);
+    const diff=distanceM-ghostDistNow, ahead=diff>=0;
+    ctx.fillStyle=ahead?"#3fb950":"#f85149";ctx.font="700 15px system-ui";ctx.textAlign="center";
+    ctx.fillText((ahead?"+":"−")+Math.round(Math.abs(diff))+" m",(yx+gx)/2,Math.min(yy,gy)-10);
     ctx.textAlign="start";
     return;
   }
@@ -825,6 +826,7 @@ function populateGhosts(){
 }
 function populateGpxGhosts(){
   const sel=$("gpxGhostSel"); if(!sel)return;
+  const gn=$("ghostNote"); if(gn)gn.style.display="none";
   const all=loadSesiones();
   gpxGhostList=[...all.filter(s=>s.mode==="gpx"&&s.route===fname), ...all.filter(s=>s.mode==="tcx")];
   sel.innerHTML='<option value="-1">Ninguno</option>';
@@ -864,11 +866,12 @@ function startRide(){
     const gi=parseInt(($("gpxGhostSel").value)||"-1",10);
     if(gi>=0 && gpxGhostList[gi]){ ghost=gpxGhostList[gi];
       ghostDur=ghost.dur||(ghost.samples.length?ghost.samples[ghost.samples.length-1].t:0);
-      ghostTotalDist=ghost.samples.length?ghost.samples[ghost.samples.length-1].d:0; }
+      ghostTotalDist=ghost.samples.length?ghost.samples[ghost.samples.length-1].d:0;
+      if(ghost.smoothM!=null && parseInt($("smoothM").value,10)!==ghost.smoothM) setSmooth(ghost.smoothM); }
     ghostDistNow=0;
     $("prof").classList.remove("hidden");$("map").classList.remove("hidden");
     $("raceWrap").classList.toggle("hidden",!ghost);$("verdict").classList.add("hidden");
-    session={mode:"gpx",route:fname,total:+total.toFixed(1),date:Date.now(),samples:[]};
+    session={mode:"gpx",route:fname,total:+total.toFixed(1),date:Date.now(),samples:[],smoothM:parseInt($("smoothM").value,10)||0};
   }
   $("sVerdict").classList.add("hidden");
   raceYou=0; raceGhost=0; raceMax=1; youCrank=0; ghostCrank=0;
@@ -1102,6 +1105,15 @@ $("importTcxFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=n
 $("importRetoBtn").onclick=()=>$("importRetoFile").click();
 $("importRetoFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>importReto(r.result);r.readAsText(f);e.target.value="";};
 $("shareReto").onclick=shareReto;
+$("gpxGhostSel").onchange=()=>{
+  const gi=parseInt($("gpxGhostSel").value,10), g=gi>=0?gpxGhostList[gi]:null, note=$("ghostNote");
+  if(g && g.smoothM!=null){
+    if(parseInt($("smoothM").value,10)!==g.smoothM) setSmooth(g.smoothM);
+    note.textContent="Suavizado ajustado a "+g.smoothM+" m (el del fantasma)"; note.style.display="block";
+  } else if(g && g.mode==="tcx"){
+    note.textContent="Fantasma externo (TCX): mantené tu suavizado actual"; note.style.display="block";
+  } else { note.style.display="none"; }
+};
 $("zoomBtn").onclick=()=>{ battleZoom=!battleZoom; $("zoomBtn").textContent="Zoom disputa: "+(battleZoom?"ON":"OFF"); if(state==="riding"||state==="paused")drawMap(); };
 $("selToggle").onclick=()=>setSelMode(true);
 $("selCancel").onclick=()=>setSelMode(false);
