@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v24</title>
+<title>Bici Indoor · v26</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -83,7 +83,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v24</h1>
+  <h1>Bici Indoor · v26</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -531,6 +531,7 @@ $("file").onchange=e=>{const f=e.target.files[0];if(!f)return;fname=f.name;
 
 function parseGpx(text){
   gpxText=text;
+  saveRouteText(fname,text);
   const xml=new DOMParser().parseFromString(text,"application/xml");
   if(xml.querySelector("parsererror"))throw new Error("XML inválido");
   let n=[...xml.getElementsByTagName("trkpt")]; if(!n.length)n=[...xml.getElementsByTagName("rtept")];
@@ -962,21 +963,23 @@ function startRide(){
     const gi=parseInt($("ghostSel").value,10);
     if(gi>=0 && ghostList[gi]){ ghost=ghostList[gi];
       ghostDur=ghost.dur||(ghost.samples.length?ghost.samples[ghost.samples.length-1].t:0);
-      ghostTotalDist=ghost.samples.length?ghost.samples[ghost.samples.length-1].d:0; }
+      ghostTotalDist=ghost.samples.length?ghost.samples[ghost.samples.length-1].d:0;
+      if(ghost.diff!=null && parseInt($("diff").value,10)!==ghost.diff){ $("diff").value=ghost.diff; saveCfg(); } }
     $("prof").classList.add("hidden");$("map").classList.add("hidden");
     $("raceWrap").classList.toggle("hidden",!ghost);
     $("verdict").classList.add("hidden");
-    session={mode:"libre",raceBy,date:Date.now(),samples:[]};
+    session={mode:"libre",raceBy,date:Date.now(),samples:[],diff:parseInt($("diff").value,10)||100};
   }else{
     const gi=parseInt(($("gpxGhostSel").value)||"-1",10);
     if(gi>=0 && gpxGhostList[gi]){ ghost=gpxGhostList[gi];
       ghostDur=ghost.dur||(ghost.samples.length?ghost.samples[ghost.samples.length-1].t:0);
       ghostTotalDist=ghost.samples.length?ghost.samples[ghost.samples.length-1].d:0;
-      if(ghost.smoothM!=null && parseInt($("smoothM").value,10)!==ghost.smoothM) setSmooth(ghost.smoothM); }
+      if(ghost.smoothM!=null && parseInt($("smoothM").value,10)!==ghost.smoothM) setSmooth(ghost.smoothM);
+      if(ghost.diff!=null && parseInt($("diff").value,10)!==ghost.diff){ $("diff").value=ghost.diff; saveCfg(); } }
     ghostDistNow=0;
     $("prof").classList.remove("hidden");$("map").classList.remove("hidden");
     $("raceWrap").classList.toggle("hidden",!ghost);$("verdict").classList.add("hidden");
-    session={mode:"gpx",route:fname,total:+total.toFixed(1),date:Date.now(),samples:[],smoothM:parseInt($("smoothM").value,10)||0};
+    session={mode:"gpx",route:fname,total:+total.toFixed(1),date:Date.now(),samples:[],smoothM:parseInt($("smoothM").value,10)||0,diff:parseInt($("diff").value,10)||100};
   }
   $("sVerdict").classList.add("hidden");
   if(mode!=="entreno") $("woHud").classList.add("hidden");
@@ -1232,6 +1235,12 @@ function renderHistorial(){
     row.appendChild(info);
     if(selMode){ row.style.cursor="pointer"; info.onclick=()=>{ cb.checked=!cb.checked; cb.onchange(); }; }
     else{
+      if(s.mode==="gpx"||s.mode==="libre"){
+        const sh=document.createElement("button");sh.textContent="↗";sh.title="Compartir como reto";
+        sh.style.minHeight="40px";sh.style.padding="8px 12px";
+        sh.onclick=()=>shareRetoFor(s,null);
+        row.appendChild(sh);
+      }
       const del=document.createElement("button");del.className="del";del.textContent="✕";
       del.onclick=()=>{ if(confirm("¿Borrar esta sesión?")){deleteByDate(s.date);renderHistorial();populateGhosts();} };
       row.appendChild(del);
@@ -1243,7 +1252,8 @@ function setSelMode(on){ selMode=on; selected.clear(); updateDelCount();
   $("selBar").classList.toggle("hidden",!on); $("selToggle").classList.toggle("hidden",on); renderHistorial(); }
 function exportAll(){
   let cfg={}; try{cfg=JSON.parse(localStorage.getItem("bici_config")||"{}");}catch(_){}
-  const bundle={kind:"bici-backup",sesiones:loadSesiones(),config:cfg};
+  let routes={}; try{routes=JSON.parse(localStorage.getItem("bici_routes")||"{}");}catch(_){}
+  const bundle={kind:"bici-backup",sesiones:loadSesiones(),config:cfg,routes};
   const blob=new Blob([JSON.stringify(bundle)],{type:"application/json"});const d=new Date();
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
   a.download="bici-respaldo-"+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0")+".json";
@@ -1251,9 +1261,9 @@ function exportAll(){
 }
 function importSesiones(text){
   let inc; try{inc=JSON.parse(text);}catch{alert("Archivo inválido");return;}
-  let arr, cfg=null;
+  let arr, cfg=null, routes=null;
   if(Array.isArray(inc)) arr=inc;                       // formato viejo
-  else if(inc && Array.isArray(inc.sesiones)){ arr=inc.sesiones; cfg=inc.config; }
+  else if(inc && Array.isArray(inc.sesiones)){ arr=inc.sesiones; cfg=inc.config; routes=inc.routes; }
   else { alert("Formato inesperado"); return; }
   const cur=loadSesiones(), seen=new Set(cur.map(s=>s.date));
   let added=0;
@@ -1261,19 +1271,28 @@ function importSesiones(text){
   cur.sort((a,b)=>a.date-b.date);
   localStorage.setItem("bici_sesiones",JSON.stringify(cur));
   if(cfg){ try{localStorage.setItem("bici_config",JSON.stringify(cfg));}catch(_){} loadCfg(); }
+  if(routes){ try{const r=JSON.parse(localStorage.getItem("bici_routes")||"{}"); Object.assign(r,routes); localStorage.setItem("bici_routes",JSON.stringify(r)); }catch(_){} }
   renderHistorial();populateGhosts();
-  alert("Importadas "+added+" sesiones nuevas"+(cfg?" y tu configuración":"")+".");
+  alert("Importadas "+added+" sesiones nuevas"+(cfg?" y tu configuración":"")+(routes?" y tus rutas":"")+".");
 }
-function shareReto(){
-  if(!session){ alert("No hay sesión para compartir"); return; }
-  const bundle={kind:"bici-reto",v:1,mode:session.mode,
-    config:{smoothM:$("smoothM").value,diff:$("diff").value},
-    ghost:session};
-  if(session.mode==="gpx" && gpxText){ bundle.gpx=gpxText; bundle.route=fname; }
-  else if(session.mode==="gpx" && !gpxText){ alert("Para compartir un reto de recorrido, el GPX debe estar cargado."); return; }
+function saveRouteText(name,text){ if(!name)return; try{const r=JSON.parse(localStorage.getItem("bici_routes")||"{}"); r[name]=text; localStorage.setItem("bici_routes",JSON.stringify(r)); }catch(_){} }
+function getRouteText(name){ try{const r=JSON.parse(localStorage.getItem("bici_routes")||"{}"); return r[name]||null; }catch(_){ return null; } }
+function shareRetoFor(sess,gpxTextArg){
+  const bundle={kind:"bici-reto",v:1,mode:sess.mode,
+    config:{smoothM:sess.smoothM!=null?sess.smoothM:$("smoothM").value, diff:sess.diff!=null?sess.diff:$("diff").value},
+    ghost:sess};
+  if(sess.mode==="gpx"){
+    const gt=gpxTextArg||getRouteText(sess.route);
+    if(!gt){ alert("No tengo guardada la ruta de esta sesión. Cargá ese mismo GPX una vez (queda guardado) y volvé a intentar."); return; }
+    bundle.gpx=gt; bundle.route=sess.route;
+  }
   const blob=new Blob([JSON.stringify(bundle)],{type:"application/json"});
   const base=(bundle.route||"libre").replace(/\.gpx$/i,"");
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="reto-"+base+".json";a.click();
+}
+function shareReto(){
+  if(!session){ alert("No hay sesión para compartir"); return; }
+  shareRetoFor(session, gpxText);
 }
 function importReto(text){
   let b; try{b=JSON.parse(text);}catch{alert("Archivo inválido");return;}
@@ -1333,9 +1352,10 @@ $("gpxGhostSel").onchange=()=>{
   const gi=parseInt($("gpxGhostSel").value,10), g=gi>=0?gpxGhostList[gi]:null, note=$("ghostNote");
   if(g && g.smoothM!=null){
     if(parseInt($("smoothM").value,10)!==g.smoothM) setSmooth(g.smoothM);
-    note.textContent="Suavizado ajustado a "+g.smoothM+" m (el del fantasma)"; note.style.display="block";
+    if(g.diff!=null && parseInt($("diff").value,10)!==g.diff){ $("diff").value=g.diff; saveCfg(); }
+    note.textContent="Suavizado "+g.smoothM+" m y dificultad "+(g.diff!=null?g.diff:100)+"% ajustados (los del fantasma)"; note.style.display="block";
   } else if(g && g.mode==="tcx"){
-    note.textContent="Fantasma externo (TCX): mantené tu suavizado actual"; note.style.display="block";
+    note.textContent="Fantasma externo (TCX): mantené tu suavizado y dificultad actuales"; note.style.display="block";
   } else { note.style.display="none"; }
 };
 $("zoomBtn").onclick=()=>{ battleZoom=!battleZoom; $("zoomBtn").textContent="Zoom disputa: "+(battleZoom?"ON":"OFF"); if(state==="riding"||state==="paused")drawMap(); };
