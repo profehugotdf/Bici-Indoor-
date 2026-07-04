@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v26</title>
+<title>Bici Indoor · v29</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -49,6 +49,9 @@
   .hud4 .tile .v{font-size:22px}
   .grade-pos .v{color:var(--warn)}
   .pulse .v{color:#ff6b6b}
+  .repSpeed{flex:1} .repSpeed.on{background:var(--acc);color:#04121c;border-color:transparent}
+  #repLane,#repProf,#repMap{width:100%;display:block;border-radius:8px;background:#0a0d12}
+  #repLane{height:90px} #repProf{height:120px} #repMap{height:200px}
   textarea{width:100%;min-height:180px;font:14px/1.5 ui-monospace,monospace;color:var(--tx);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;resize:vertical}
   #woName{width:100%;font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px}
   select{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;min-height:44px}
@@ -83,7 +86,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v26</h1>
+  <h1>Bici Indoor · v29</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -173,6 +176,7 @@
     <button class="full" id="histBtn" style="margin-top:10px">Historial de sesiones</button>
     <button class="full" id="zonesBtn" style="margin-top:10px">Zonas de potencia y FTP</button>
     <button class="full" id="entrenoBtn" style="margin-top:10px">Entrenamientos estructurados</button>
+    <button class="full" id="replayBtn" style="margin-top:10px">Carrera virtual (replay)</button>
   </div>
 
   <!-- RIDE -->
@@ -196,6 +200,9 @@
     <div id="raceWrap" class="hidden" style="margin-bottom:12px">
       <div class="gap" id="gapTx">—</div>
       <canvas id="lane" height="84"></canvas>
+      <div style="display:flex;justify-content:space-around;margin-top:6px;font-size:13px;color:var(--dim)">
+        <span>Retador: <b id="gPw" style="color:var(--tx)">—</b> W · <b id="gHr" style="color:#ff6b6b">—</b> bpm · <b id="gCad" style="color:var(--tx)">—</b> rpm</span>
+      </div>
     </div>
     <div class="hud">
       <div class="tile big"><div class="l">Tiempo</div><div class="v" id="hTime">0:00</div></div>
@@ -235,6 +242,7 @@
       <div class="tile"><div class="l">Pulso máx</div><div class="v" id="sHrMax">—</div><div class="u">bpm</div></div>
     </div>
     <div id="sVerdict" class="verdict hidden"></div>
+    <div id="sRival" class="hidden" style="margin:8px 0"></div>
     <div class="msg" id="savedMsg" style="color:var(--ok)"></div>
     <button class="full" id="shareReto" style="margin-top:10px">Compartir reto</button>
     <button class="primary full" id="again" style="margin-top:10px">Nueva sesión</button>
@@ -290,6 +298,47 @@
       </div>
     </div>
     <button class="primary full" id="entrenoBack" style="margin-top:12px">Volver</button>
+  </div>
+
+  <div class="card hidden" id="replayCard">
+    <h2>Carrera virtual (replay)</h2>
+    <div id="replaySetup">
+      <div class="row"><label for="repA">Fantasma A</label><select id="repA" style="flex:1"></select></div>
+      <div class="row"><label for="repB">Fantasma B</label><select id="repB" style="flex:1"></select></div>
+      <div id="repNote" style="color:var(--warn);font-size:12px;margin-top:4px;display:none"></div>
+      <button class="primary full" id="repStart" style="margin-top:10px">Iniciar carrera</button>
+    </div>
+    <div id="replayView" class="hidden">
+      <div id="repWinner" style="text-align:center;font-weight:800;font-size:17px;margin-bottom:8px">—</div>
+      <canvas id="repLane" height="90"></canvas>
+      <canvas id="repProf" height="120" class="hidden"></canvas>
+      <canvas id="repMap" height="200" class="hidden"></canvas>
+      <div style="display:flex;gap:10px;margin-top:10px">
+        <div style="flex:1;border:1px solid var(--line);border-radius:12px;padding:10px;font-size:14px">
+          <div style="color:#4cc2ff;font-weight:800;margin-bottom:4px">A</div>
+          <div>Dist <b id="repAd">0.00</b> km</div><div>Pot <b id="repAp">—</b> W</div>
+          <div>Pulso <b id="repAh">—</b></div><div>Cad <b id="repAc">—</b></div>
+        </div>
+        <div style="flex:1;border:1px solid var(--line);border-radius:12px;padding:10px;font-size:14px">
+          <div style="color:#f0883e;font-weight:800;margin-bottom:4px">B</div>
+          <div>Dist <b id="repBd">0.00</b> km</div><div>Pot <b id="repBp">—</b> W</div>
+          <div>Pulso <b id="repBh">—</b></div><div>Cad <b id="repBc">—</b></div>
+        </div>
+      </div>
+      <div id="repTime" style="text-align:center;margin-top:10px;font-variant-numeric:tabular-nums">0:00 / 0:00</div>
+      <input type="range" id="repScrub" min="0" max="1000" value="0" style="width:100%;accent-color:var(--acc);height:32px">
+      <div class="controls" style="grid-template-columns:1fr 1fr">
+        <button id="repPlay">▶ Play</button>
+        <button id="repRestart">Reiniciar</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="repSpeed" data-sp="1">1x</button>
+        <button class="repSpeed" data-sp="2">2x</button>
+        <button class="repSpeed" data-sp="5">5x</button>
+        <button class="repSpeed" data-sp="10">10x</button>
+      </div>
+    </div>
+    <button class="primary full" id="replayBack" style="margin-top:12px">Volver</button>
   </div>
 
   <pre id="log"></pre>
@@ -696,6 +745,14 @@ function updateGhost(){
     raceBar(distanceM,ghostDistAt(elapsed),Math.max(targetDist,ghostTotalDist,1));
     if(!verdictDone && distanceM>=ghostTotalDist){ verdictDone=true; doVerdict(ghostDur-elapsed,"s"); }
   }
+  updateRivalStats();
+}
+function updateRivalStats(){
+  const t=Math.min(elapsed,ghostDur);
+  const pw=ghostPowerAt(t), hr=ghostHrAt(t), cad=ghostCadAt(t);
+  $("gPw").textContent = elapsed<=ghostDur ? (pw||"—") : "—";
+  $("gHr").textContent = elapsed<=ghostDur ? (hr||"—") : "—";
+  $("gCad").textContent = elapsed<=ghostDur ? (cad?Math.round(cad):"—") : "—";
 }
 function ghostDistAt(t){const s=ghost.samples;if(!s.length)return 0;
   if(t<=s[0].t)return s[0].d;if(t>=s[s.length-1].t)return s[s.length-1].d;
@@ -718,6 +775,14 @@ function ghostCadAt(t){ const s=ghost?ghost.samples:null; if(!s||!s.length)retur
   if(t<=s[0].t)return s[0].c||0; if(t>=s[s.length-1].t)return s[s.length-1].c||0;
   let i=0;while(i<s.length-1&&s[i+1].t<t)i++;const a=s[i],b=s[i+1];const ca=a.c||0,cb=b.c||0;
   return ca+(cb-ca)*((t-a.t)/((b.t-a.t)||1)); }
+function ghostPowerAt(t){ const s=ghost?ghost.samples:null; if(!s||!s.length)return 0;
+  if(t<=s[0].t)return Math.round(s[0].p||0); if(t>=s[s.length-1].t)return Math.round(s[s.length-1].p||0);
+  let i=0;while(i<s.length-1&&s[i+1].t<t)i++;const a=s[i],b=s[i+1];const pa=a.p||0,pb=b.p||0;
+  return Math.round(pa+(pb-pa)*((t-a.t)/((b.t-a.t)||1))); }
+function ghostHrAt(t){ const s=ghost?ghost.samples:null; if(!s||!s.length)return 0;
+  if(t<=s[0].t)return Math.round(s[0].hr||0); if(t>=s[s.length-1].t)return Math.round(s[s.length-1].hr||0);
+  let i=0;while(i<s.length-1&&s[i+1].t<t)i++;const a=s[i],b=s[i+1];const ha=a.hr||0,hb=b.hr||0;
+  return Math.round(ha+(hb-ha)*((t-a.t)/((b.t-a.t)||1))); }
 function raceActive(){ return (state==="riding"||state==="paused") && ghost && $("raceWrap") && !$("raceWrap").classList.contains("hidden"); }
 function fitLane(){ laneCtx=fit($("lane")); }
 function startLane(){ fitLane(); if(!laneRAF){ laneLast=0; laneRAF=requestAnimationFrame(laneLoop); } }
@@ -738,8 +803,20 @@ function drawLane(){
   ctx.strokeStyle="#273040";ctx.lineWidth=2;
   ctx.beginPath();ctx.moveTo(margin,groundY+6);ctx.lineTo(w-margin,groundY+6);ctx.stroke();
   const xOf=d=>margin+Math.min(1,Math.max(0,d/maxD))*(w-2*margin);
-  drawCyclist(ctx,xOf(raceGhost),groundY,15,ghostCrank,"#8b98a9",0.55);
-  drawCyclist(ctx,xOf(raceYou),groundY,15,youCrank,"#e6edf3",1);
+  pixelCyclist(ctx,xOf(raceGhost),groundY,15,ghostCrank,"#8b98a9",0.6);
+  pixelCyclist(ctx,xOf(raceYou),groundY,15,youCrank,"#e6edf3",1);
+}
+let _offc=null;
+function pixelCyclist(ctx,cx,groundY,s,crank,color,alpha){
+  const PIX=3, bw=Math.ceil(3.2*s/PIX), bh=Math.ceil(2.9*s/PIX);
+  if(!_offc)_offc=document.createElement("canvas");
+  if(_offc.width!==bw||_offc.height!==bh){ _offc.width=bw; _offc.height=bh; }
+  const oc=_offc.getContext("2d"); oc.clearRect(0,0,bw,bh);
+  drawCyclist(oc, bw/2, bh-1, s/PIX, crank, color, 1);
+  ctx.save(); ctx.globalAlpha=alpha; ctx.imageSmoothingEnabled=false;
+  const destX=Math.round(cx-(bw/2)*PIX), destY=Math.round(groundY-(bh-1)*PIX);
+  ctx.drawImage(_offc,0,0,bw,bh,destX,destY,bw*PIX,bh*PIX);
+  ctx.restore();
 }
 function drawCyclist(ctx,cx,groundY,s,crank,color,alpha){
   ctx.save(); ctx.globalAlpha=alpha; ctx.strokeStyle=color; ctx.fillStyle=color; ctx.lineCap="round"; ctx.lineJoin="round";
@@ -985,6 +1062,7 @@ function startRide(){
   if(mode!=="entreno") $("woHud").classList.add("hidden");
   if(session) session.isFtpTest=pendingFtpTest; pendingFtpTest=false;
   raceYou=0; raceGhost=0; raceMax=1; youCrank=0; ghostCrank=0;
+  $("gPw").textContent="—"; $("gHr").textContent="—"; $("gCad").textContent="—";
   if(ghost) startLane(); else stopLane();
   $("zoomRow").style.display=(mode==="gpx"&&ghost)?"flex":"none";
   $("zoomBtn").textContent="Zoom disputa: "+(battleZoom?"ON":"OFF");
@@ -1019,6 +1097,22 @@ function finishRide(){
     sv.className="verdict "+(good?"good":"bad"); sv.classList.remove("hidden");
     if(mode==="gpx" && navigator.vibrate) navigator.vibrate(good?[120,60,120]:400);
   }else $("sVerdict").classList.add("hidden");
+  if(ghost && ghost.samples && ghost.samples.length){
+    let gp=0,gpn=0,gh=0,ghn=0;
+    for(const s of ghost.samples){ if(s.p){gp+=s.p;gpn++;} if(s.hr){gh+=s.hr;ghn++;} }
+    const gAvgP=gpn?Math.round(gp/gpn):null, gAvgHr=ghn?Math.round(gh/ghn):null;
+    const rows=[];
+    if(gAvgP!=null) rows.push(["Potencia media", Math.round(avgP)+" W", gAvgP+" W"]);
+    if(gAvgHr!=null) rows.push(["Pulso medio", (avgHr||"—")+" bpm", gAvgHr+" bpm"]);
+    if(rows.length){
+      let html='<div class="card" style="margin:0"><h2>Vos vs. retador</h2>'+
+        '<div style="display:grid;grid-template-columns:1fr auto auto;gap:6px 14px;font-size:14px">'+
+        '<div></div><div style="color:var(--dim)">Vos</div><div style="color:var(--dim)">Retador</div>';
+      for(const r of rows) html+=`<div style="color:var(--dim)">${r[0]}</div><div>${r[1]}</div><div>${r[2]}</div>`;
+      html+='</div></div>';
+      $("sRival").innerHTML=html; $("sRival").classList.remove("hidden");
+    } else $("sRival").classList.add("hidden");
+  } else $("sRival").classList.add("hidden");
   $("savedMsg").textContent="Guardada. Vas a poder correr contra este fantasma.";
   $("ride").classList.add("hidden");$("summary").classList.remove("hidden");
   sendGrade(0);
@@ -1183,6 +1277,137 @@ $("woSave").onclick=()=>{
   localStorage.setItem("bici_entrenos",JSON.stringify(a));
   $("woEditor").classList.add("hidden"); renderWoList();
 };
+
+// ================= Carrera virtual (replay) =================
+let replayA=null, replayB=null, replayRoute=null, vt=0, replaySpeed=2, replayPlaying=false, replayRAF=null, replayLast=0, replayTotal=0, aCrank=0, bCrank=0, repMapProj=null, repList=[];
+function interpAt(samples,t,key){
+  if(!samples||!samples.length)return 0;
+  if(t<=samples[0].t)return samples[0][key]||0;
+  const last=samples[samples.length-1]; if(t>=last.t)return last[key]||0;
+  let i=0; while(i<samples.length-1&&samples[i+1].t<t)i++;
+  const a=samples[i],b=samples[i+1],va=a[key]||0,vb=b[key]||0;
+  return va+(vb-va)*((t-a.t)/((b.t-a.t)||1));
+}
+function repDur(s){ return s.dur||(s.samples&&s.samples.length?s.samples[s.samples.length-1].t:0); }
+function repFinalDist(s){ return s.dist||(s.samples&&s.samples.length?s.samples[s.samples.length-1].d:0); }
+function populateReplay(){
+  repList=loadSesiones().filter(s=>s.samples&&s.samples.length>1);
+  for(const id of ["repA","repB"]){ const sel=$(id); sel.innerHTML="";
+    repList.forEach((s,i)=>{ const d=new Date(s.date);
+      const modo=s.mode==="libre"?"Libre":s.mode==="tcx"?"TCX":s.mode==="entreno"?"Entreno":"Recorrido";
+      const o=document.createElement("option");o.value=i;
+      o.textContent=modo+" · "+fmtTime(repDur(s))+" · "+(repFinalDist(s)/1000).toFixed(2)+"km · "+d.getDate()+"/"+(d.getMonth()+1);
+      sel.appendChild(o); });
+  }
+  if(repList.length>1) $("repB").value=1;
+}
+function startReplay(){
+  const ai=parseInt($("repA").value,10), bi=parseInt($("repB").value,10);
+  if(isNaN(ai)||isNaN(bi)||ai===bi){ alert("Elegí dos fantasmas distintos."); return; }
+  replayA=repList[ai]; replayB=repList[bi];
+  replayRoute=null; $("repNote").style.display="none";
+  if(replayA.mode==="gpx"&&replayB.mode==="gpx"&&replayA.route&&replayA.route===replayB.route){
+    const gt=getRouteText(replayA.route);
+    if(gt){ replayRoute=parseGpxStandalone(gt); repMapProj=null; }
+  }
+  if(!replayRoute && (replayA.mode==="gpx"||replayB.mode==="gpx")){
+    $("repNote").textContent="Sin ruta común guardada: se muestra solo la pista y los datos."; $("repNote").style.display="block";
+  }
+  replayTotal=Math.max(repDur(replayA),repDur(replayB));
+  vt=0; aCrank=0; bCrank=0; replaySpeed=2; replayPlaying=false;
+  setRepSpeed(2);
+  $("repProf").classList.toggle("hidden",!replayRoute);
+  $("repMap").classList.toggle("hidden",!replayRoute);
+  $("replaySetup").classList.add("hidden"); $("replayView").classList.remove("hidden");
+  renderReplay();
+}
+function setRepSpeed(sp){ replaySpeed=sp; document.querySelectorAll(".repSpeed").forEach(b=>b.classList.toggle("on",parseInt(b.dataset.sp,10)===sp)); }
+function replayLoop(ts){
+  if(!replayPlaying){ replayRAF=null; return; }
+  const dt=replayLast?Math.min(0.1,(ts-replayLast)/1000):0; replayLast=ts;
+  vt+=dt*replaySpeed;
+  aCrank+=2*Math.PI*(interpAt(replayA.samples,vt,'c')/60)*dt*replaySpeed;
+  bCrank+=2*Math.PI*(interpAt(replayB.samples,vt,'c')/60)*dt*replaySpeed;
+  if(vt>=replayTotal){ vt=replayTotal; replayPlaying=false; $("repPlay").textContent="▶ Play"; }
+  renderReplay();
+  if(replayPlaying) replayRAF=requestAnimationFrame(replayLoop);
+}
+function replayPlayPause(){
+  if(vt>=replayTotal){ vt=0; }
+  replayPlaying=!replayPlaying; $("repPlay").textContent=replayPlaying?"❚❚ Pausa":"▶ Play";
+  if(replayPlaying){ replayLast=0; replayRAF=requestAnimationFrame(replayLoop); }
+}
+function renderReplay(){
+  const t=vt, A=replayA, B=replayB;
+  const ad=interpAt(A.samples,t,'d'), bd=interpAt(B.samples,t,'d');
+  $("repAd").textContent=(ad/1000).toFixed(2); $("repBd").textContent=(bd/1000).toFixed(2);
+  $("repAp").textContent=Math.round(interpAt(A.samples,t,'p'))||"—"; $("repBp").textContent=Math.round(interpAt(B.samples,t,'p'))||"—";
+  $("repAh").textContent=Math.round(interpAt(A.samples,t,'hr'))||"—"; $("repBh").textContent=Math.round(interpAt(B.samples,t,'hr'))||"—";
+  $("repAc").textContent=Math.round(interpAt(A.samples,t,'c'))||"—"; $("repBc").textContent=Math.round(interpAt(B.samples,t,'c'))||"—";
+  $("repTime").textContent=fmtTime(t)+" / "+fmtTime(replayTotal);
+  $("repScrub").value=Math.round(replayTotal>0?t/replayTotal*1000:0);
+  if(t>=replayTotal){ const wa=repDur(A)<=repDur(B);
+    $("repWinner").textContent="🏁 Ganó "+(wa?"A":"B")+" — "+fmtTime(repDur(A))+" vs "+fmtTime(repDur(B));
+    $("repWinner").style.color=wa?"#4cc2ff":"#f0883e";
+  } else { const gap=ad-bd;
+    $("repWinner").textContent=(gap>=0?"A adelante +":"B adelante +")+Math.round(Math.abs(gap))+" m";
+    $("repWinner").style.color=gap>=0?"#4cc2ff":"#f0883e"; }
+  drawRepLane(ad,bd);
+  if(replayRoute){ drawRepMap(ad,bd); drawRepProf(ad,bd); }
+}
+function drawRepLane(ad,bd){
+  const cv=$("repLane"),r=fit(cv),ctx=r.ctx,w=r.w,h=r.h; if(w<10)return;
+  ctx.clearRect(0,0,w,h);
+  const groundY=h-12,margin=34,maxD=Math.max(repFinalDist(replayA),repFinalDist(replayB),1);
+  ctx.strokeStyle="#273040";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(margin,groundY+6);ctx.lineTo(w-margin,groundY+6);ctx.stroke();
+  const xOf=d=>margin+Math.min(1,Math.max(0,d/maxD))*(w-2*margin);
+  pixelCyclist(ctx,xOf(bd),groundY,15,bCrank,"#f0883e",1);
+  pixelCyclist(ctx,xOf(ad),groundY,15,aCrank,"#4cc2ff",1);
+}
+function repProject(){
+  const pts=replayRoute.pts;
+  let mxmin=Infinity,mxmax=-Infinity,mymin=Infinity,mymax=-Infinity;
+  const P=pts.map(p=>({x:p.lon*Math.PI/180,y:Math.log(Math.tan(Math.PI/4+(p.lat*Math.PI/180)/2))}));
+  for(const p of P){ if(p.x<mxmin)mxmin=p.x;if(p.x>mxmax)mxmax=p.x;if(p.y<mymin)mymin=p.y;if(p.y>mymax)mymax=p.y; }
+  repMapProj={P,mxmin,mxmax,mymin,mymax};
+}
+function projAtDistRep(d){ const {pts,dist}=replayRoute,total=dist[dist.length-1]; d=Math.max(0,Math.min(total,d));
+  let i=0;while(i<dist.length-2&&dist[i+1]<d)i++;const t=(dist[i+1]-dist[i])>0?(d-dist[i])/(dist[i+1]-dist[i]):0;
+  const P=repMapProj.P; return {x:P[i].x+(P[i+1].x-P[i].x)*t,y:P[i].y+(P[i+1].y-P[i].y)*t}; }
+function drawRepMap(ad,bd){
+  if(!repMapProj) repProject();
+  const cv=$("repMap"),r=fit(cv),ctx=r.ctx,w=r.w,h=r.h; if(w<10)return;
+  ctx.clearRect(0,0,w,h);
+  const {P,mxmin,mxmax,mymin,mymax}=repMapProj;
+  const pad=14,cw=w-2*pad,ch=h-2*pad,bw=(mxmax-mxmin)||1e-9,bh=(mymax-mymin)||1e-9;
+  const scale=Math.min(cw/bw,ch/bh),ox=pad+(cw-bw*scale)/2,oy=pad+(ch-bh*scale)/2;
+  const X=p=>ox+(p.x-mxmin)*scale,Y=p=>oy+(mymax-p.y)*scale;
+  ctx.strokeStyle="#3a4658";ctx.lineWidth=3;ctx.lineJoin="round";ctx.lineCap="round";
+  ctx.beginPath();ctx.moveTo(X(P[0]),Y(P[0]));for(let i=1;i<P.length;i++)ctx.lineTo(X(P[i]),Y(P[i]));ctx.stroke();
+  const dot=(p,f)=>{ctx.beginPath();ctx.arc(X(p),Y(p),6,0,7);ctx.fillStyle=f;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#04121c";ctx.stroke();};
+  dot(projAtDistRep(bd),"#f0883e"); dot(projAtDistRep(ad),"#4cc2ff");
+}
+function drawRepProf(ad,bd){
+  const cv=$("repProf"),r=fit(cv),ctx=r.ctx,w=r.w,h=r.h; if(w<10)return;
+  ctx.clearRect(0,0,w,h);
+  const {pts,dist}=replayRoute,total=dist[dist.length-1];
+  const eles=pts.map(p=>p.ele); let emin=Math.min(...eles),emax=Math.max(...eles); if(emax-emin<1){emax+=1;emin-=1;}
+  const pad={l:8,r:8,t:8,b:8},cw=w-pad.l-pad.r,ch=h-pad.t-pad.b;
+  const x=d=>pad.l+(d/total)*cw,y=e=>pad.t+(1-(e-emin)/(emax-emin))*ch;
+  ctx.beginPath();ctx.moveTo(x(0),y(eles[0]));for(let i=0;i<pts.length;i++)ctx.lineTo(x(dist[i]),y(eles[i]));
+  ctx.lineTo(x(total),pad.t+ch);ctx.lineTo(x(0),pad.t+ch);ctx.closePath();ctx.fillStyle="rgba(76,194,255,.12)";ctx.fill();
+  ctx.beginPath();ctx.moveTo(x(0),y(eles[0]));for(let i=0;i<pts.length;i++)ctx.lineTo(x(dist[i]),y(eles[i]));ctx.strokeStyle="#4cc2ff";ctx.lineWidth=1.4;ctx.stroke();
+  const eleAt=d=>{ const p=posAtDistance(replayRoute,d); return p.ele; };
+  const mk=(d,f)=>{ const xx=x(Math.min(d,total)); ctx.beginPath();ctx.arc(xx,y(eleAt(d)),5,0,7);ctx.fillStyle=f;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#04121c";ctx.stroke(); };
+  mk(bd,"#f0883e"); mk(ad,"#4cc2ff");
+}
+$("replayBtn").onclick=()=>{ populateReplay(); $("replaySetup").classList.remove("hidden"); $("replayView").classList.add("hidden"); $("setup").classList.add("hidden"); $("replayCard").classList.remove("hidden"); };
+$("replayBack").onclick=()=>{ replayPlaying=false; $("replayCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); };
+$("repStart").onclick=startReplay;
+$("repPlay").onclick=replayPlayPause;
+$("repRestart").onclick=()=>{ vt=0; replayPlaying=false; $("repPlay").textContent="▶ Play"; renderReplay(); };
+$("repScrub").addEventListener("input",()=>{ replayPlaying=false; $("repPlay").textContent="▶ Play"; vt=replayTotal*($("repScrub").value/1000); renderReplay(); });
+document.querySelectorAll(".repSpeed").forEach(b=>b.onclick=()=>setRepSpeed(parseInt(b.dataset.sp,10)));
 $("ftpTestBtn").onclick=()=>{
   $("modeSel").value="libre"; toggleMode();
   $("raceSel").value="tiempo"; $("objUnit").textContent="min"; $("objVal").value="20"; $("ghostSel").value="-1";
@@ -1220,7 +1445,7 @@ function renderHistorial(){
   if(!list.length){wrap.innerHTML='<div style="color:var(--dim);font-size:13px">Todavía no hay sesiones guardadas.</div>';return;}
   wrap.innerHTML="";
   list.map((s,i)=>({s,i})).reverse().forEach(({s})=>{
-    const modo=s.mode==="libre"?("Libre · "+(s.raceBy||"")):s.mode==="tcx"?"TCX Garmin":"Recorrido";
+    const modo=s.mode==="libre"?("Libre · "+(s.raceBy||"")):s.mode==="tcx"?"TCX Garmin":s.mode==="entreno"?"Entreno":"Recorrido";
     const dist=((s.dist||s.total||0)/1000).toFixed(2);
     const hr=s.hrAvg?(" · ♥ "+s.hrAvg+(s.hrMax?"/"+s.hrMax:"")):"";
     const row=document.createElement("div");row.className="srow";
@@ -1240,6 +1465,15 @@ function renderHistorial(){
         sh.style.minHeight="40px";sh.style.padding="8px 12px";
         sh.onclick=()=>shareRetoFor(s,null);
         row.appendChild(sh);
+        const tx=document.createElement("button");tx.textContent="TCX";tx.title="Exportar para TrainingPeaks";
+        tx.style.minHeight="40px";tx.style.padding="8px 10px";tx.style.fontSize="12px";
+        tx.onclick=()=>exportTcxFor(s);
+        row.appendChild(tx);
+      } else if(s.mode==="entreno"){
+        const tx=document.createElement("button");tx.textContent="TCX";tx.title="Exportar para TrainingPeaks";
+        tx.style.minHeight="40px";tx.style.padding="8px 10px";tx.style.fontSize="12px";
+        tx.onclick=()=>exportTcxFor(s);
+        row.appendChild(tx);
       }
       const del=document.createElement("button");del.className="del";del.textContent="✕";
       del.onclick=()=>{ if(confirm("¿Borrar esta sesión?")){deleteByDate(s.date);renderHistorial();populateGhosts();} };
@@ -1277,6 +1511,71 @@ function importSesiones(text){
 }
 function saveRouteText(name,text){ if(!name)return; try{const r=JSON.parse(localStorage.getItem("bici_routes")||"{}"); r[name]=text; localStorage.setItem("bici_routes",JSON.stringify(r)); }catch(_){} }
 function getRouteText(name){ try{const r=JSON.parse(localStorage.getItem("bici_routes")||"{}"); return r[name]||null; }catch(_){ return null; } }
+
+// ---------- Exportar TCX (para TrainingPeaks) ----------
+function parseGpxStandalone(text){
+  const xml=new DOMParser().parseFromString(text,"application/xml");
+  if(xml.querySelector("parsererror")) return null;
+  let nodes=[...xml.getElementsByTagName("trkpt")]; if(!nodes.length) nodes=[...xml.getElementsByTagName("rtept")];
+  const pts=nodes.map(p=>{const e=p.getElementsByTagName("ele")[0];
+    return {lat:parseFloat(p.getAttribute("lat")),lon:parseFloat(p.getAttribute("lon")),ele:e?parseFloat(e.textContent):0};})
+    .filter(p=>isFinite(p.lat)&&isFinite(p.lon));
+  if(pts.length<2) return null;
+  const dist=[0]; for(let i=1;i<pts.length;i++) dist.push(dist[i-1]+haversine(pts[i-1],pts[i]));
+  return {pts,dist};
+}
+function posAtDistance(route,d){
+  const {pts,dist}=route, total=dist[dist.length-1];
+  d=Math.max(0,Math.min(total,d));
+  let i=0; while(i<dist.length-2 && dist[i+1]<d) i++;
+  const d0=dist[i], d1=dist[i+1], t=(d1>d0)?(d-d0)/(d1-d0):0;
+  return { lat:pts[i].lat+(pts[i+1].lat-pts[i].lat)*t, lon:pts[i].lon+(pts[i+1].lon-pts[i].lon)*t, ele:pts[i].ele+(pts[i+1].ele-pts[i].ele)*t };
+}
+function xmlEsc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function buildTcx(sess,route){
+  const startMs=sess.date||Date.now(), samples=sess.samples||[];
+  const startIso=new Date(startMs).toISOString();
+  const durSec=Math.round(sess.dur||(samples.length?samples[samples.length-1].t:0));
+  const distM=sess.dist!=null?sess.dist:(samples.length?samples[samples.length-1].d:0);
+  let tps="";
+  for(const s of samples){
+    const tIso=new Date(startMs+s.t*1000).toISOString();
+    let posBlock="", altBlock="";
+    if(route){ const p=posAtDistance(route,s.d);
+      posBlock=`<Position><LatitudeDegrees>${p.lat.toFixed(7)}</LatitudeDegrees><LongitudeDegrees>${p.lon.toFixed(7)}</LongitudeDegrees></Position>`;
+      altBlock=`<AltitudeMeters>${p.ele.toFixed(1)}</AltitudeMeters>`;
+    }
+    const hrBlock=s.hr?`<HeartRateBpm><Value>${Math.round(s.hr)}</Value></HeartRateBpm>`:"";
+    const cadBlock=(s.c!=null&&s.c<=254)?`<Cadence>${Math.round(s.c)}</Cadence>`:"";
+    const pwBlock=(s.p!=null)?`<Extensions><TPX xmlns="http://www.garmin.com/xmlschemas/ActivityExtension/v2"><Watts>${Math.round(s.p)}</Watts></TPX></Extensions>`:"";
+    tps+=`<Trackpoint><Time>${tIso}</Time>${posBlock}${altBlock}<DistanceMeters>${(s.d||0).toFixed(1)}</DistanceMeters>${hrBlock}${cadBlock}${pwBlock}</Trackpoint>`;
+  }
+  const name=xmlEsc(sess.name||sess.route||"Bici Indoor");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2 http://www.garmin.com/xmlschemas/TrainingCenterDatabasev2.xsd">
+<Activities><Activity Sport="Biking"><Id>${startIso}</Id>
+<Lap StartTime="${startIso}"><TotalTimeSeconds>${durSec}</TotalTimeSeconds><DistanceMeters>${distM.toFixed(1)}</DistanceMeters><Calories>0</Calories><Intensity>Active</Intensity><TriggerMethod>Manual</TriggerMethod>
+<Track>${tps}</Track></Lap>
+<Notes>${name} — Bici Indoor</Notes>
+<Creator xsi:type="Device_t"><Name>Bici Indoor</Name></Creator>
+</Activity></Activities></TrainingCenterDatabase>`;
+}
+function exportTcxFor(sess){
+  if(!sess.samples||!sess.samples.length){ alert("Esta sesión no tiene datos grabados para exportar."); return; }
+  let route=null;
+  if(sess.mode==="gpx"){
+    const gt=getRouteText(sess.route);
+    if(!gt){ alert("No tengo guardada la ruta de esta sesión, así que el TCX va a salir sin mapa. Si querés el mapa, cargá ese GPX una vez y volvé a intentar."); }
+    else{ route=parseGpxStandalone(gt); if(!route) alert("La ruta guardada no se pudo leer; el TCX sale sin mapa."); }
+  }
+  const xml=buildTcx(sess,route);
+  const blob=new Blob([xml],{type:"application/vnd.garmin.tcx+xml"});
+  const d=new Date(sess.date||Date.now());
+  const base=(sess.name||sess.route||"sesion").replace(/\.gpx$/i,"").replace(/[^\w\-]+/g,"_");
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+  a.download=base+"-"+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0")+".tcx";
+  a.click();
+}
 function shareRetoFor(sess,gpxTextArg){
   const bundle={kind:"bici-reto",v:1,mode:sess.mode,
     config:{smoothM:sess.smoothM!=null?sess.smoothM:$("smoothM").value, diff:sess.diff!=null?sess.diff:$("diff").value},
