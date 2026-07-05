@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v33</title>
+<title>Bici Indoor · v34</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -87,7 +87,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v33</h1>
+  <h1>Bici Indoor · v34</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -762,7 +762,7 @@ function ghostTimeAt(d){const s=ghost.samples;if(!s.length)return 0;
 function showGap(val,unit){const g=$("gapTx"),ahead=val>=0;
   g.textContent=(ahead?"+":"−")+Math.abs(Math.round(val))+" "+unit+(ahead?" adelante":" atrás");
   g.className="gap "+(ahead?"ahead":"behind");}
-function raceBar(you,gpos,maxD){ raceYou=you; raceGhost=gpos; raceMax=maxD||1; }
+function raceBar(you,gpos,maxD){ raceYou=you; raceGhost=gpos; raceMax=(isFinite(maxD)&&maxD>0)?maxD:Math.max(you,gpos,100); }
 let raceYou=0, raceGhost=0, raceMax=1, youCrank=0, ghostCrank=0, laneRAF=null, laneLast=0, laneCtx=null;
 let battleZoom=true;
 let pendingWorkout=null, woSteps=[], woIdx=0, woStepT=0, woName="", woSentKey="";
@@ -793,8 +793,9 @@ function laneLoop(ts){
   laneRAF=requestAnimationFrame(laneLoop);
 }
 function drawLane(){
-  if(!laneCtx) fitLane(); if(!laneCtx) return;
-  const {ctx,w,h}=laneCtx; if(w<10)return;
+  if(!laneCtx || laneCtx.w<10) fitLane();
+  if(!laneCtx || laneCtx.w<10) return;
+  const {ctx,w,h}=laneCtx;
   ctx.clearRect(0,0,w,h);
   const groundY=h-10, margin=32, maxD=raceMax||1;
   ctx.strokeStyle="#273040";ctx.lineWidth=2;
