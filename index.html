@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v29</title>
+<title>Bici Indoor · v33</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -74,6 +74,7 @@
   .progress > i{display:block;height:100%;background:var(--acc);width:0%}
   canvas{width:100%;display:block;border-radius:8px;background:#0a0d12;touch-action:none}
   #prof{height:150px} #map{height:220px}
+  #road{height:240px}
   #pvProf{height:130px} #pvMap{height:150px}
   #lane{height:84px}
   .controls{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
@@ -86,7 +87,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v29</h1>
+  <h1>Bici Indoor · v33</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -218,10 +219,13 @@
     <div class="progress"><i id="pbar"></i></div>
     <div id="nextGrade" style="color:var(--dim);font-size:13px;text-align:center;margin-top:6px;font-variant-numeric:tabular-nums"></div>
 
-    <canvas id="prof" height="150" style="margin-top:12px"></canvas>
-    <div id="zoomRow" style="display:flex;justify-content:flex-end;margin-top:10px">
+    <div style="display:flex;justify-content:space-between;margin-top:10px">
+      <button id="road3dBtn" style="min-height:40px;padding:8px 14px;font-size:13px">Vista 3D: OFF</button>
       <button id="zoomBtn" style="min-height:40px;padding:8px 14px;font-size:13px">Zoom disputa: ON</button>
     </div>
+    <canvas id="road" height="240" class="hidden" style="margin-top:8px"></canvas>
+    <canvas id="prof" height="150" style="margin-top:12px"></canvas>
+    <div id="zoomRow" style="display:none;justify-content:flex-end;margin-top:10px"></div>
     <canvas id="map" height="220" style="margin-top:8px"></canvas>
 
     <div class="controls">
@@ -303,8 +307,8 @@
   <div class="card hidden" id="replayCard">
     <h2>Carrera virtual (replay)</h2>
     <div id="replaySetup">
-      <div class="row"><label for="repA">Fantasma A</label><select id="repA" style="flex:1"></select></div>
-      <div class="row"><label for="repB">Fantasma B</label><select id="repB" style="flex:1"></select></div>
+      <div style="color:var(--dim);font-size:13px;margin-bottom:6px">Elegí los corredores (2 o más):</div>
+      <div id="repPick" style="max-height:280px;overflow:auto"></div>
       <div id="repNote" style="color:var(--warn);font-size:12px;margin-top:4px;display:none"></div>
       <button class="primary full" id="repStart" style="margin-top:10px">Iniciar carrera</button>
     </div>
@@ -312,19 +316,12 @@
       <div id="repWinner" style="text-align:center;font-weight:800;font-size:17px;margin-bottom:8px">—</div>
       <canvas id="repLane" height="90"></canvas>
       <canvas id="repProf" height="120" class="hidden"></canvas>
-      <canvas id="repMap" height="200" class="hidden"></canvas>
-      <div style="display:flex;gap:10px;margin-top:10px">
-        <div style="flex:1;border:1px solid var(--line);border-radius:12px;padding:10px;font-size:14px">
-          <div style="color:#4cc2ff;font-weight:800;margin-bottom:4px">A</div>
-          <div>Dist <b id="repAd">0.00</b> km</div><div>Pot <b id="repAp">—</b> W</div>
-          <div>Pulso <b id="repAh">—</b></div><div>Cad <b id="repAc">—</b></div>
-        </div>
-        <div style="flex:1;border:1px solid var(--line);border-radius:12px;padding:10px;font-size:14px">
-          <div style="color:#f0883e;font-weight:800;margin-bottom:4px">B</div>
-          <div>Dist <b id="repBd">0.00</b> km</div><div>Pot <b id="repBp">—</b> W</div>
-          <div>Pulso <b id="repBh">—</b></div><div>Cad <b id="repBc">—</b></div>
-        </div>
+      <div id="repZoomRow" class="hidden" style="display:flex;justify-content:flex-end;margin-top:8px">
+        <button id="repZoomBtn" style="min-height:40px;padding:8px 14px;font-size:13px">Zoom disputa: ON</button>
       </div>
+      <canvas id="repMap" height="200" class="hidden"></canvas>
+      <div style="color:var(--dim);font-size:12px;margin:10px 0 4px">Punteros (top 4)</div>
+      <div id="repStandings" style="border:1px solid var(--line);border-radius:12px;padding:8px 10px"></div>
       <div id="repTime" style="text-align:center;margin-top:10px;font-variant-numeric:tabular-nums">0:00 / 0:00</div>
       <input type="range" id="repScrub" min="0" max="1000" value="0" style="width:100%;accent-color:var(--acc);height:32px">
       <div class="controls" style="grid-template-columns:1fr 1fr">
@@ -803,8 +800,8 @@ function drawLane(){
   ctx.strokeStyle="#273040";ctx.lineWidth=2;
   ctx.beginPath();ctx.moveTo(margin,groundY+6);ctx.lineTo(w-margin,groundY+6);ctx.stroke();
   const xOf=d=>margin+Math.min(1,Math.max(0,d/maxD))*(w-2*margin);
-  pixelCyclist(ctx,xOf(raceGhost),groundY,15,ghostCrank,"#8b98a9",0.6);
-  pixelCyclist(ctx,xOf(raceYou),groundY,15,youCrank,"#e6edf3",1);
+  drawCyclist(ctx,xOf(raceGhost),groundY,15,ghostCrank,"#8b98a9",0.55);
+  drawCyclist(ctx,xOf(raceYou),groundY,15,youCrank,"#e6edf3",1);
 }
 let _offc=null;
 function pixelCyclist(ctx,cx,groundY,s,crank,color,alpha){
@@ -892,7 +889,71 @@ function fit(cv){const dpr=window.devicePixelRatio||1,w=cv.clientWidth,h=cv.clie
   ctx.setTransform(dpr,0,0,dpr,0,0);return{ctx,w,h};}
 function gradeColor(g){if(g<=-2)return"#4cc2ff";if(g<0)return"#7fd1e8";if(g<2)return"#3fb950";
   if(g<4)return"#9fd23f";if(g<6)return"#e3c53f";if(g<8)return"#f0883e";if(g<10)return"#f85149";return"#c0392b";}
-function drawRide(){ if(mode==="gpx"){drawProf();drawMap();} }
+function drawRide(){ if(mode==="gpx"){ if(road3d){drawRoad();} else {drawProf();drawMap();} } }
+let road3d=false;
+function bearingAt(d){
+  let i=0; while(i<dist.length-2 && dist[i+1]<d) i++;
+  const a=points[i], b=points[i+1], toR=Math.PI/180;
+  const y=Math.sin((b.lon-a.lon)*toR)*Math.cos(b.lat*toR);
+  const x=Math.cos(a.lat*toR)*Math.sin(b.lat*toR)-Math.sin(a.lat*toR)*Math.cos(b.lat*toR)*Math.cos((b.lon-a.lon)*toR);
+  return Math.atan2(y,x);
+}
+function eleAt(d){ return pe[Math.max(0,Math.min(pe.length-1,Math.round(d/STEP)))]; }
+function drawRoad(){
+  const cv=$("road"), {ctx,w,h}=fit(cv); if(w<10)return;
+  // parámetros ajustables
+  const N=90, seg=5, f=w*0.9, wRoad=5.2, camEyeH=1.4, horizon=Math.round(h*0.46), latK=0.9;
+  const d0=distanceM, camB=bearingAt(d0), camE=eleAt(d0);
+  // fondo: cielo arriba, suelo abajo (blanco y negro)
+  ctx.fillStyle="#0c0f14"; ctx.fillRect(0,0,w,horizon);
+  ctx.fillStyle="#05070a"; ctx.fillRect(0,horizon,w,h-horizon);
+  // muestreo hacia adelante
+  const S=[]; let x=0, prevB=camB;
+  for(let i=0;i<=N;i++){
+    const d=d0+i*seg;
+    let b=bearingAt(d), rel=b-camB; rel=Math.atan2(Math.sin(rel),Math.cos(rel));
+    if(i>0) x += Math.sin(rel)*seg*latK;
+    const Z=i*seg+0.5, sc=f/Z, e=eleAt(d);
+    const cxs=w/2 + x*sc;
+    const sy=horizon - (e-camE-camEyeH)*sc;
+    const halfW=wRoad*sc;
+    S.push({cx:cxs,y:sy,hw:halfW,Z});
+  }
+  // dibujar de lejos a cerca (painter)
+  for(let i=N-1;i>=0;i--){
+    const a=S[i+1], b=S[i]; // a lejos (arriba), b cerca (abajo)
+    const light=(i%2===0);
+    ctx.fillStyle=light?"#c9d1d9":"#8b98a9";
+    ctx.beginPath();
+    ctx.moveTo(b.cx-b.hw,b.y); ctx.lineTo(b.cx+b.hw,b.y);
+    ctx.lineTo(a.cx+a.hw,a.y); ctx.lineTo(a.cx-a.hw,a.y); ctx.closePath(); ctx.fill();
+    // bordes
+    ctx.strokeStyle=light?"#ffffff":"#e6edf3"; ctx.lineWidth=Math.max(1,b.hw*0.06);
+    ctx.beginPath();ctx.moveTo(b.cx-b.hw,b.y);ctx.lineTo(a.cx-a.hw,a.y);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(b.cx+b.hw,b.y);ctx.lineTo(a.cx+a.hw,a.y);ctx.stroke();
+    // línea de centro punteada
+    if(i%2===0){ ctx.strokeStyle="#04070a"; ctx.lineWidth=Math.max(1,b.hw*0.08);
+      ctx.beginPath();ctx.moveTo(b.cx,b.y);ctx.lineTo(a.cx,a.y);ctx.stroke(); }
+  }
+  // fantasma sobre la ruta (si va adelante)
+  if(ghost){ const rel=ghostDistNow-distanceM;
+    if(rel>0 && rel<N*seg){ const idx=rel/seg, i=Math.floor(idx), t=idx-i;
+      if(S[i]&&S[i+1]){ const gx=S[i].cx+(S[i+1].cx-S[i].cx)*t, gy=S[i].y+(S[i+1].y-S[i].y)*t, gh=(S[i].hw+(S[i+1].hw-S[i].hw)*t);
+        const rr=Math.max(3,gh*0.28);
+        ctx.fillStyle="#8b98a9"; ctx.strokeStyle="#04070a"; ctx.lineWidth=2;
+        ctx.beginPath();ctx.ellipse(gx,gy-rr,rr*0.7,rr,0,0,7);ctx.fill();ctx.stroke(); } } }
+  // vos (marcador fijo abajo al centro)
+  ctx.fillStyle="#4cc2ff"; ctx.strokeStyle="#04070a"; ctx.lineWidth=2;
+  ctx.beginPath();ctx.ellipse(w/2,h-16,9,14,0,0,7);ctx.fill();ctx.stroke();
+}
+function applyGpxView(){
+  const gpx=mode==="gpx", on=road3d && gpx;
+  $("road").classList.toggle("hidden",!on);
+  $("prof").classList.toggle("hidden", gpx?on:true);
+  $("map").classList.toggle("hidden", gpx?on:true);
+  $("road3dBtn").style.display=gpx?"":"none";
+  $("zoomBtn").style.display=(gpx&&!on)?"":"none";
+}
 
 function drawProf(){
   const cv=$("prof"),{ctx,w,h}=fit(cv);ctx.clearRect(0,0,w,h);
@@ -1064,7 +1125,10 @@ function startRide(){
   raceYou=0; raceGhost=0; raceMax=1; youCrank=0; ghostCrank=0;
   $("gPw").textContent="—"; $("gHr").textContent="—"; $("gCad").textContent="—";
   if(ghost) startLane(); else stopLane();
-  $("zoomRow").style.display=(mode==="gpx"&&ghost)?"flex":"none";
+  $("zoomRow").style.display="none";
+  $("road3dBtn").style.display=(mode==="gpx")?"":"none";
+  $("road3dBtn").textContent="Vista 3D: "+(road3d?"ON":"OFF");
+  applyGpxView();
   $("zoomBtn").textContent="Zoom disputa: "+(battleZoom?"ON":"OFF");
   sendUserConfig();
   state="riding";lastTs=performance.now();
@@ -1279,7 +1343,9 @@ $("woSave").onclick=()=>{
 };
 
 // ================= Carrera virtual (replay) =================
-let replayA=null, replayB=null, replayRoute=null, vt=0, replaySpeed=2, replayPlaying=false, replayRAF=null, replayLast=0, replayTotal=0, aCrank=0, bCrank=0, repMapProj=null, repList=[];
+let replayA=null, replayB=null, replayRoute=null, vt=0, replaySpeed=2, replayPlaying=false, replayRAF=null, replayLast=0, replayTotal=0, aCrank=0, bCrank=0, repMapProj=null, repList=[], repZoom=true;
+let repRacers=[], repPicked=new Set();
+const REP_COLORS=["#4cc2ff","#f0883e","#3fb950","#e3c53f","#b46bd6","#ff6b6b","#5ad1c8","#ff9ec4"];
 function interpAt(samples,t,key){
   if(!samples||!samples.length)return 0;
   if(t<=samples[0].t)return samples[0][key]||0;
@@ -1290,34 +1356,40 @@ function interpAt(samples,t,key){
 }
 function repDur(s){ return s.dur||(s.samples&&s.samples.length?s.samples[s.samples.length-1].t:0); }
 function repFinalDist(s){ return s.dist||(s.samples&&s.samples.length?s.samples[s.samples.length-1].d:0); }
+function repLabel(s){ const d=new Date(s.date); const modo=s.mode==="libre"?"Libre":s.mode==="tcx"?"TCX":s.mode==="entreno"?"Entreno":"Recorrido";
+  return modo+" "+d.getDate()+"/"+(d.getMonth()+1)+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }
 function populateReplay(){
   repList=loadSesiones().filter(s=>s.samples&&s.samples.length>1);
-  for(const id of ["repA","repB"]){ const sel=$(id); sel.innerHTML="";
-    repList.forEach((s,i)=>{ const d=new Date(s.date);
-      const modo=s.mode==="libre"?"Libre":s.mode==="tcx"?"TCX":s.mode==="entreno"?"Entreno":"Recorrido";
-      const o=document.createElement("option");o.value=i;
-      o.textContent=modo+" · "+fmtTime(repDur(s))+" · "+(repFinalDist(s)/1000).toFixed(2)+"km · "+d.getDate()+"/"+(d.getMonth()+1);
-      sel.appendChild(o); });
-  }
-  if(repList.length>1) $("repB").value=1;
+  repPicked.clear();
+  const wrap=$("repPick"); wrap.innerHTML="";
+  if(!repList.length){ wrap.innerHTML='<div style="color:var(--dim);font-size:13px">No hay sesiones con datos para correr.</div>'; return; }
+  repList.forEach((s,i)=>{
+    const row=document.createElement("label");
+    row.style.cssText="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--line);font-size:14px";
+    const cb=document.createElement("input"); cb.type="checkbox"; cb.style.width="20px"; cb.style.height="20px";
+    cb.onchange=()=>{ if(cb.checked)repPicked.add(i); else repPicked.delete(i); };
+    const txt=document.createElement("div"); txt.style.flex="1";
+    txt.innerHTML=`${repLabel(s)}<div style="color:var(--dim);font-size:12px">${fmtTime(repDur(s))} · ${(repFinalDist(s)/1000).toFixed(2)} km</div>`;
+    row.appendChild(cb); row.appendChild(txt); wrap.appendChild(row);
+  });
 }
 function startReplay(){
-  const ai=parseInt($("repA").value,10), bi=parseInt($("repB").value,10);
-  if(isNaN(ai)||isNaN(bi)||ai===bi){ alert("Elegí dos fantasmas distintos."); return; }
-  replayA=repList[ai]; replayB=repList[bi];
-  replayRoute=null; $("repNote").style.display="none";
-  if(replayA.mode==="gpx"&&replayB.mode==="gpx"&&replayA.route&&replayA.route===replayB.route){
-    const gt=getRouteText(replayA.route);
-    if(gt){ replayRoute=parseGpxStandalone(gt); repMapProj=null; }
-  }
-  if(!replayRoute && (replayA.mode==="gpx"||replayB.mode==="gpx")){
+  const idxs=[...repPicked];
+  if(idxs.length<2){ alert("Elegí al menos dos corredores."); return; }
+  repRacers=idxs.map((idx,k)=>({sess:repList[idx], color:REP_COLORS[k%REP_COLORS.length], crank:0}));
+  replayRoute=null; repMapProj=null; $("repNote").style.display="none";
+  const allGpx=repRacers.every(r=>r.sess.mode==="gpx");
+  const sameRoute=allGpx && repRacers.every(r=>r.sess.route===repRacers[0].sess.route);
+  if(sameRoute){ const gt=getRouteText(repRacers[0].sess.route); if(gt) replayRoute=parseGpxStandalone(gt); }
+  if(!replayRoute && repRacers.some(r=>r.sess.mode==="gpx")){
     $("repNote").textContent="Sin ruta común guardada: se muestra solo la pista y los datos."; $("repNote").style.display="block";
   }
-  replayTotal=Math.max(repDur(replayA),repDur(replayB));
-  vt=0; aCrank=0; bCrank=0; replaySpeed=2; replayPlaying=false;
-  setRepSpeed(2);
+  replayTotal=Math.max(...repRacers.map(r=>repDur(r.sess)));
+  vt=0; replaySpeed=2; replayPlaying=false; setRepSpeed(2);
   $("repProf").classList.toggle("hidden",!replayRoute);
   $("repMap").classList.toggle("hidden",!replayRoute);
+  $("repZoomRow").style.display=replayRoute?"flex":"none";
+  $("repZoomBtn").textContent="Zoom disputa: "+(repZoom?"ON":"OFF");
   $("replaySetup").classList.add("hidden"); $("replayView").classList.remove("hidden");
   renderReplay();
 }
@@ -1326,8 +1398,7 @@ function replayLoop(ts){
   if(!replayPlaying){ replayRAF=null; return; }
   const dt=replayLast?Math.min(0.1,(ts-replayLast)/1000):0; replayLast=ts;
   vt+=dt*replaySpeed;
-  aCrank+=2*Math.PI*(interpAt(replayA.samples,vt,'c')/60)*dt*replaySpeed;
-  bCrank+=2*Math.PI*(interpAt(replayB.samples,vt,'c')/60)*dt*replaySpeed;
+  for(const r of repRacers) r.crank += 2*Math.PI*(interpAt(r.sess.samples,vt,'c')/60)*dt*replaySpeed;
   if(vt>=replayTotal){ vt=replayTotal; replayPlaying=false; $("repPlay").textContent="▶ Play"; }
   renderReplay();
   if(replayPlaying) replayRAF=requestAnimationFrame(replayLoop);
@@ -1337,32 +1408,52 @@ function replayPlayPause(){
   replayPlaying=!replayPlaying; $("repPlay").textContent=replayPlaying?"❚❚ Pausa":"▶ Play";
   if(replayPlaying){ replayLast=0; replayRAF=requestAnimationFrame(replayLoop); }
 }
+function repState(){
+  const t=vt;
+  return repRacers.map(r=>({ r, d:interpAt(r.sess.samples,t,'d'), p:Math.round(interpAt(r.sess.samples,t,'p')),
+    hr:Math.round(interpAt(r.sess.samples,t,'hr')), c:Math.round(interpAt(r.sess.samples,t,'c')) }));
+}
 function renderReplay(){
-  const t=vt, A=replayA, B=replayB;
-  const ad=interpAt(A.samples,t,'d'), bd=interpAt(B.samples,t,'d');
-  $("repAd").textContent=(ad/1000).toFixed(2); $("repBd").textContent=(bd/1000).toFixed(2);
-  $("repAp").textContent=Math.round(interpAt(A.samples,t,'p'))||"—"; $("repBp").textContent=Math.round(interpAt(B.samples,t,'p'))||"—";
-  $("repAh").textContent=Math.round(interpAt(A.samples,t,'hr'))||"—"; $("repBh").textContent=Math.round(interpAt(B.samples,t,'hr'))||"—";
-  $("repAc").textContent=Math.round(interpAt(A.samples,t,'c'))||"—"; $("repBc").textContent=Math.round(interpAt(B.samples,t,'c'))||"—";
+  const st=repState(), t=vt;
+  const sorted=[...st].sort((a,b)=>b.d-a.d);
+  const top=sorted.slice(0,4);
   $("repTime").textContent=fmtTime(t)+" / "+fmtTime(replayTotal);
   $("repScrub").value=Math.round(replayTotal>0?t/replayTotal*1000:0);
-  if(t>=replayTotal){ const wa=repDur(A)<=repDur(B);
-    $("repWinner").textContent="🏁 Ganó "+(wa?"A":"B")+" — "+fmtTime(repDur(A))+" vs "+fmtTime(repDur(B));
-    $("repWinner").style.color=wa?"#4cc2ff":"#f0883e";
-  } else { const gap=ad-bd;
-    $("repWinner").textContent=(gap>=0?"A adelante +":"B adelante +")+Math.round(Math.abs(gap))+" m";
-    $("repWinner").style.color=gap>=0?"#4cc2ff":"#f0883e"; }
-  drawRepLane(ad,bd);
-  if(replayRoute){ drawRepMap(ad,bd); drawRepProf(ad,bd); }
+  // standings top 4
+  let html="";
+  top.forEach((x,i)=>{
+    html+=`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px">
+      <b style="width:20px">${i+1}º</b>
+      <span style="width:12px;height:12px;border-radius:3px;background:${x.r.color};display:inline-block;flex:none"></span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(x.d/1000).toFixed(2)} km</span>
+      <span style="width:52px;text-align:right">${x.p||"—"} W</span>
+      <span style="width:44px;text-align:right;color:#ff6b6b">${x.hr||"—"}</span>
+      <span style="width:52px;text-align:right;color:var(--dim)">${x.c||"—"} rpm</span>
+    </div>`;
+  });
+  $("repStandings").innerHTML=html;
+  // banner
+  if(t>=replayTotal){
+    const rank=[...repRacers].sort((a,b)=>repDur(a.sess)-repDur(b.sess));
+    const w=rank[0];
+    $("repWinner").innerHTML=`🏁 Ganó <span style="color:${w.color}">${repLabel(w.sess)}</span> — ${fmtTime(repDur(w.sess))}`;
+    $("repWinner").style.color="var(--tx)";
+  } else if(top.length>=2){
+    const gap=top[0].d-top[1].d;
+    $("repWinner").innerHTML=`Puntero <span style="color:${top[0].r.color}">1º</span> +${Math.round(gap)} m sobre el 2º`;
+    $("repWinner").style.color="var(--tx)";
+  }
+  drawRepLane(st);
+  if(replayRoute){ drawRepMap(st,top); drawRepProf(st); }
 }
-function drawRepLane(ad,bd){
+function drawRepLane(st){
   const cv=$("repLane"),r=fit(cv),ctx=r.ctx,w=r.w,h=r.h; if(w<10)return;
   ctx.clearRect(0,0,w,h);
-  const groundY=h-12,margin=34,maxD=Math.max(repFinalDist(replayA),repFinalDist(replayB),1);
+  const groundY=h-12,margin=34,maxD=Math.max(...repRacers.map(x=>repFinalDist(x.sess)),1);
   ctx.strokeStyle="#273040";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(margin,groundY+6);ctx.lineTo(w-margin,groundY+6);ctx.stroke();
   const xOf=d=>margin+Math.min(1,Math.max(0,d/maxD))*(w-2*margin);
-  pixelCyclist(ctx,xOf(bd),groundY,15,bCrank,"#f0883e",1);
-  pixelCyclist(ctx,xOf(ad),groundY,15,aCrank,"#4cc2ff",1);
+  const order=[...st].sort((a,b)=>a.d-b.d); // dibujar de atrás hacia adelante
+  for(const x of order) drawCyclist(ctx,xOf(x.d),groundY,14,x.r.crank,x.r.color,1);
 }
 function repProject(){
   const pts=replayRoute.pts;
@@ -1374,20 +1465,36 @@ function repProject(){
 function projAtDistRep(d){ const {pts,dist}=replayRoute,total=dist[dist.length-1]; d=Math.max(0,Math.min(total,d));
   let i=0;while(i<dist.length-2&&dist[i+1]<d)i++;const t=(dist[i+1]-dist[i])>0?(d-dist[i])/(dist[i+1]-dist[i]):0;
   const P=repMapProj.P; return {x:P[i].x+(P[i+1].x-P[i].x)*t,y:P[i].y+(P[i+1].y-P[i].y)*t}; }
-function drawRepMap(ad,bd){
+function drawRepMap(st,top){
   if(!repMapProj) repProject();
   const cv=$("repMap"),r=fit(cv),ctx=r.ctx,w=r.w,h=r.h; if(w<10)return;
   ctx.clearRect(0,0,w,h);
   const {P,mxmin,mxmax,mymin,mymax}=repMapProj;
-  const pad=14,cw=w-2*pad,ch=h-2*pad,bw=(mxmax-mxmin)||1e-9,bh=(mymax-mymin)||1e-9;
-  const scale=Math.min(cw/bw,ch/bh),ox=pad+(cw-bw*scale)/2,oy=pad+(ch-bh*scale)/2;
-  const X=p=>ox+(p.x-mxmin)*scale,Y=p=>oy+(mymax-p.y)*scale;
-  ctx.strokeStyle="#3a4658";ctx.lineWidth=3;ctx.lineJoin="round";ctx.lineCap="round";
-  ctx.beginPath();ctx.moveTo(X(P[0]),Y(P[0]));for(let i=1;i<P.length;i++)ctx.lineTo(X(P[i]),Y(P[i]));ctx.stroke();
-  const dot=(p,f)=>{ctx.beginPath();ctx.arc(X(p),Y(p),6,0,7);ctx.fillStyle=f;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#04121c";ctx.stroke();};
-  dot(projAtDistRep(bd),"#f0883e"); dot(projAtDistRep(ad),"#4cc2ff");
+  const dot=(x,y,f)=>{ctx.beginPath();ctx.arc(x,y,6,0,7);ctx.fillStyle=f;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#04121c";ctx.stroke();};
+  let X,Y;
+  if(repZoom){
+    const mp=16,cw=w-2*mp,ch=h-2*mp;
+    const ps=top.map(x=>projAtDistRep(x.d));
+    let bx0=Infinity,bx1=-Infinity,by0=Infinity,by1=-Infinity;
+    for(const p of ps){ if(p.x<bx0)bx0=p.x;if(p.x>bx1)bx1=p.x;if(p.y<by0)by0=p.y;if(p.y>by1)by1=p.y; }
+    const cx=(bx0+bx1)/2, cy=(by0+by1)/2;
+    const fullX=(mxmax-mxmin)||1e-9, fullY=(mymax-mymin)||1e-9, minS=0.05*Math.max(fullX,fullY);
+    const spanX=Math.max(bx1-bx0,minS)*2.0, spanY=Math.max(by1-by0,minS)*2.0;
+    const scale=Math.min(cw/spanX,ch/spanY);
+    X=p=>mp+cw/2+(p.x-cx)*scale; Y=p=>mp+ch/2-(p.y-cy)*scale;
+    ctx.strokeStyle="#3a4658";ctx.lineWidth=5;ctx.lineJoin="round";ctx.lineCap="round";
+    ctx.beginPath();ctx.moveTo(X(P[0]),Y(P[0]));for(let i=1;i<P.length;i++)ctx.lineTo(X(P[i]),Y(P[i]));ctx.stroke();
+  } else {
+    const pad=14,cw=w-2*pad,ch=h-2*pad,bw=(mxmax-mxmin)||1e-9,bh=(mymax-mymin)||1e-9;
+    const scale=Math.min(cw/bw,ch/bh),ox=pad+(cw-bw*scale)/2,oy=pad+(ch-bh*scale)/2;
+    X=p=>ox+(p.x-mxmin)*scale; Y=p=>oy+(mymax-p.y)*scale;
+    ctx.strokeStyle="#3a4658";ctx.lineWidth=3;ctx.lineJoin="round";ctx.lineCap="round";
+    ctx.beginPath();ctx.moveTo(X(P[0]),Y(P[0]));for(let i=1;i<P.length;i++)ctx.lineTo(X(P[i]),Y(P[i]));ctx.stroke();
+  }
+  const order=[...st].sort((a,b)=>a.d-b.d);
+  for(const x of order){ const p=projAtDistRep(x.d); dot(X(p),Y(p),x.r.color); }
 }
-function drawRepProf(ad,bd){
+function drawRepProf(st){
   const cv=$("repProf"),r=fit(cv),ctx=r.ctx,w=r.w,h=r.h; if(w<10)return;
   ctx.clearRect(0,0,w,h);
   const {pts,dist}=replayRoute,total=dist[dist.length-1];
@@ -1397,13 +1504,13 @@ function drawRepProf(ad,bd){
   ctx.beginPath();ctx.moveTo(x(0),y(eles[0]));for(let i=0;i<pts.length;i++)ctx.lineTo(x(dist[i]),y(eles[i]));
   ctx.lineTo(x(total),pad.t+ch);ctx.lineTo(x(0),pad.t+ch);ctx.closePath();ctx.fillStyle="rgba(76,194,255,.12)";ctx.fill();
   ctx.beginPath();ctx.moveTo(x(0),y(eles[0]));for(let i=0;i<pts.length;i++)ctx.lineTo(x(dist[i]),y(eles[i]));ctx.strokeStyle="#4cc2ff";ctx.lineWidth=1.4;ctx.stroke();
-  const eleAt=d=>{ const p=posAtDistance(replayRoute,d); return p.ele; };
-  const mk=(d,f)=>{ const xx=x(Math.min(d,total)); ctx.beginPath();ctx.arc(xx,y(eleAt(d)),5,0,7);ctx.fillStyle=f;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#04121c";ctx.stroke(); };
-  mk(bd,"#f0883e"); mk(ad,"#4cc2ff");
+  const eleD=d=>posAtDistance(replayRoute,d).ele;
+  for(const s of st){ const xx=x(Math.min(s.d,total)); ctx.beginPath();ctx.arc(xx,y(eleD(s.d)),5,0,7);ctx.fillStyle=s.r.color;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#04121c";ctx.stroke(); }
 }
 $("replayBtn").onclick=()=>{ populateReplay(); $("replaySetup").classList.remove("hidden"); $("replayView").classList.add("hidden"); $("setup").classList.add("hidden"); $("replayCard").classList.remove("hidden"); };
 $("replayBack").onclick=()=>{ replayPlaying=false; $("replayCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); };
 $("repStart").onclick=startReplay;
+$("repZoomBtn").onclick=()=>{ repZoom=!repZoom; $("repZoomBtn").textContent="Zoom disputa: "+(repZoom?"ON":"OFF"); if(replayRoute)renderReplay(); };
 $("repPlay").onclick=replayPlayPause;
 $("repRestart").onclick=()=>{ vt=0; replayPlaying=false; $("repPlay").textContent="▶ Play"; renderReplay(); };
 $("repScrub").addEventListener("input",()=>{ replayPlaying=false; $("repPlay").textContent="▶ Play"; vt=replayTotal*($("repScrub").value/1000); renderReplay(); });
@@ -1658,6 +1765,7 @@ $("gpxGhostSel").onchange=()=>{
   } else { note.style.display="none"; }
 };
 $("zoomBtn").onclick=()=>{ battleZoom=!battleZoom; $("zoomBtn").textContent="Zoom disputa: "+(battleZoom?"ON":"OFF"); if(state==="riding"||state==="paused")drawMap(); };
+$("road3dBtn").onclick=()=>{ road3d=!road3d; $("road3dBtn").textContent="Vista 3D: "+(road3d?"ON":"OFF"); applyGpxView(); if(state==="riding"||state==="paused")drawRide(); };
 $("selToggle").onclick=()=>setSelMode(true);
 $("selCancel").onclick=()=>setSelMode(false);
 $("selAll").onclick=()=>{ const list=loadSesiones();
