@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v34</title>
+<title>Bici Indoor · v36</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -87,7 +87,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v34</h1>
+  <h1>Bici Indoor · v36</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -890,8 +890,16 @@ function fit(cv){const dpr=window.devicePixelRatio||1,w=cv.clientWidth,h=cv.clie
   ctx.setTransform(dpr,0,0,dpr,0,0);return{ctx,w,h};}
 function gradeColor(g){if(g<=-2)return"#4cc2ff";if(g<0)return"#7fd1e8";if(g<2)return"#3fb950";
   if(g<4)return"#9fd23f";if(g<6)return"#e3c53f";if(g<8)return"#f0883e";if(g<10)return"#f85149";return"#c0392b";}
-function drawRide(){ if(mode==="gpx"){ if(road3d){drawRoad();} else {drawProf();drawMap();} } }
-let road3d=false;
+function drawRide(){ if(mode==="gpx" && !road3d){drawProf();drawMap();} }
+let road3d=false, roadCtx=null, roadRAF=null, roadCrank=0, roadLast=0;
+function roadActive(){ return road3d && mode==="gpx" && (state==="riding"||state==="paused") && !$("road").classList.contains("hidden"); }
+function fitRoad(){ roadCtx=fit($("road")); }
+function startRoad(){ fitRoad(); roadLast=0; if(!roadRAF) roadRAF=requestAnimationFrame(roadLoop); }
+function stopRoad(){ if(roadRAF){cancelAnimationFrame(roadRAF);roadRAF=null;} }
+function roadLoop(ts){ if(!roadActive()){ roadRAF=null; return; }
+  const dt=roadLast?Math.min(0.1,(ts-roadLast)/1000):0; roadLast=ts;
+  roadCrank += 2*Math.PI*((curCad||0)/60)*dt;
+  drawRoad(); roadRAF=requestAnimationFrame(roadLoop); }
 function bearingAt(d){
   let i=0; while(i<dist.length-2 && dist[i+1]<d) i++;
   const a=points[i], b=points[i+1], toR=Math.PI/180;
@@ -901,51 +909,76 @@ function bearingAt(d){
 }
 function eleAt(d){ return pe[Math.max(0,Math.min(pe.length-1,Math.round(d/STEP)))]; }
 function drawRoad(){
-  const cv=$("road"), {ctx,w,h}=fit(cv); if(w<10)return;
+  if(!roadCtx||roadCtx.w<10) fitRoad();
+  if(!roadCtx||roadCtx.w<10) return;
+  const {ctx,w,h}=roadCtx;
   // parámetros ajustables
-  const N=90, seg=5, f=w*0.9, wRoad=5.2, camEyeH=1.4, horizon=Math.round(h*0.46), latK=0.9;
+  const N=130, NEAR=2.0, GROW=0.045, f=w*0.95, wRoad=5.2, camEyeH=1.4, latK=0.9, bandLen=6, horizonK=5;
   const d0=distanceM, camB=bearingAt(d0), camE=eleAt(d0);
-  // fondo: cielo arriba, suelo abajo (blanco y negro)
-  ctx.fillStyle="#0c0f14"; ctx.fillRect(0,0,w,horizon);
-  ctx.fillStyle="#05070a"; ctx.fillRect(0,horizon,w,h-horizon);
-  // muestreo hacia adelante
-  const S=[]; let x=0, prevB=camB;
+  // horizonte dinámico: baja en subidas, sube en bajadas (según pendiente próxima)
+  const gAhead=(eleAt(d0+50)-camE)/50*100;
+  let horizon=Math.round(h*0.44 - gAhead*horizonK);
+  horizon=Math.max(Math.round(h*0.18),Math.min(Math.round(h*0.74),horizon));
+  // cielo celeste (degradé) y suelo verde
+  const sky=ctx.createLinearGradient(0,0,0,horizon);
+  sky.addColorStop(0,"#5bb0e6"); sky.addColorStop(1,"#bfe6f5");
+  ctx.fillStyle=sky; ctx.fillRect(0,0,w,horizon);
+  ctx.fillStyle="#213524"; ctx.fillRect(0,horizon,w,h-horizon);
+  // muestreo hacia adelante (paso creciente: fino cerca, grueso lejos)
+  const S=[]; let x=0, prevSeg=0, cum=0;
   for(let i=0;i<=N;i++){
-    const d=d0+i*seg;
-    let b=bearingAt(d), rel=b-camB; rel=Math.atan2(Math.sin(rel),Math.cos(rel));
-    if(i>0) x += Math.sin(rel)*seg*latK;
-    const Z=i*seg+0.5, sc=f/Z, e=eleAt(d);
-    const cxs=w/2 + x*sc;
-    const sy=horizon - (e-camE-camEyeH)*sc;
-    const halfW=wRoad*sc;
-    S.push({cx:cxs,y:sy,hw:halfW,Z});
+    const dd=d0+cum;
+    let rel=bearingAt(dd)-camB; rel=Math.atan2(Math.sin(rel),Math.cos(rel));
+    if(i>0) x += Math.sin(rel)*prevSeg*latK;
+    const Z=cum+0.5, sc=f/Z, e=eleAt(dd);
+    S.push({cx:w/2+x*sc, y:horizon-(e-camE-camEyeH)*sc, hw:wRoad*sc, d:dd, Z});
+    const seg=NEAR+i*GROW; prevSeg=seg; cum+=seg;
   }
-  // dibujar de lejos a cerca (painter)
+  // bandas de lejos a cerca (painter); color anclado a la distancia real → fluye sin parpadeo
   for(let i=N-1;i>=0;i--){
-    const a=S[i+1], b=S[i]; // a lejos (arriba), b cerca (abajo)
-    const light=(i%2===0);
+    const a=S[i+1], b=S[i];
+    const light=(Math.floor(b.d/bandLen)%2===0);
     ctx.fillStyle=light?"#c9d1d9":"#8b98a9";
-    ctx.beginPath();
-    ctx.moveTo(b.cx-b.hw,b.y); ctx.lineTo(b.cx+b.hw,b.y);
-    ctx.lineTo(a.cx+a.hw,a.y); ctx.lineTo(a.cx-a.hw,a.y); ctx.closePath(); ctx.fill();
-    // bordes
-    ctx.strokeStyle=light?"#ffffff":"#e6edf3"; ctx.lineWidth=Math.max(1,b.hw*0.06);
+    ctx.beginPath();ctx.moveTo(b.cx-b.hw,b.y);ctx.lineTo(b.cx+b.hw,b.y);ctx.lineTo(a.cx+a.hw,a.y);ctx.lineTo(a.cx-a.hw,a.y);ctx.closePath();ctx.fill();
+    ctx.strokeStyle=light?"#ffffff":"#e6edf3"; ctx.lineWidth=Math.max(0.6,b.hw*0.05);
     ctx.beginPath();ctx.moveTo(b.cx-b.hw,b.y);ctx.lineTo(a.cx-a.hw,a.y);ctx.stroke();
     ctx.beginPath();ctx.moveTo(b.cx+b.hw,b.y);ctx.lineTo(a.cx+a.hw,a.y);ctx.stroke();
-    // línea de centro punteada
-    if(i%2===0){ ctx.strokeStyle="#04070a"; ctx.lineWidth=Math.max(1,b.hw*0.08);
+    if(light){ ctx.strokeStyle="#04070a"; ctx.lineWidth=Math.max(0.8,b.hw*0.07);
       ctx.beginPath();ctx.moveTo(b.cx,b.y);ctx.lineTo(a.cx,a.y);ctx.stroke(); }
   }
   // fantasma sobre la ruta (si va adelante)
-  if(ghost){ const rel=ghostDistNow-distanceM;
-    if(rel>0 && rel<N*seg){ const idx=rel/seg, i=Math.floor(idx), t=idx-i;
-      if(S[i]&&S[i+1]){ const gx=S[i].cx+(S[i+1].cx-S[i].cx)*t, gy=S[i].y+(S[i+1].y-S[i].y)*t, gh=(S[i].hw+(S[i+1].hw-S[i].hw)*t);
-        const rr=Math.max(3,gh*0.28);
-        ctx.fillStyle="#8b98a9"; ctx.strokeStyle="#04070a"; ctx.lineWidth=2;
-        ctx.beginPath();ctx.ellipse(gx,gy-rr,rr*0.7,rr,0,0,7);ctx.fill();ctx.stroke(); } } }
-  // vos (marcador fijo abajo al centro)
-  ctx.fillStyle="#4cc2ff"; ctx.strokeStyle="#04070a"; ctx.lineWidth=2;
-  ctx.beginPath();ctx.ellipse(w/2,h-16,9,14,0,0,7);ctx.fill();ctx.stroke();
+  if(ghost && ghostDistNow>distanceM){ const gd=ghostDistNow;
+    let i=0; while(i<S.length-1 && S[i+1].d<gd) i++;
+    if(i<S.length-1 && S[i].d<=gd){ const t=(gd-S[i].d)/((S[i+1].d-S[i].d)||1);
+      const gx=S[i].cx+(S[i+1].cx-S[i].cx)*t, gy=S[i].y+(S[i+1].y-S[i].y)*t, gh=S[i].hw+(S[i+1].hw-S[i].hw)*t;
+      const rr=Math.max(3,gh*0.28);
+      ctx.fillStyle="#8b98a9"; ctx.strokeStyle="#04070a"; ctx.lineWidth=2;
+      ctx.beginPath();ctx.ellipse(gx,gy-rr,rr*0.7,rr,0,0,7);ctx.fill();ctx.stroke(); } }
+  // vos: ciclista de espaldas, piernas según cadencia
+  drawCyclistRear(ctx, w/2, h-12, 17, roadCrank, "#4cc2ff", 1);
+}
+function drawCyclistRear(ctx,cx,groundY,s,crank,color,alpha){
+  ctx.save(); ctx.globalAlpha=alpha; ctx.lineCap="round"; ctx.lineJoin="round";
+  const hipY=groundY-s*0.95, shY=groundY-s*2.0, headY=shY-s*0.5;
+  // rueda trasera (elipse angosta, vista de atrás)
+  ctx.strokeStyle="#0b0e12"; ctx.lineWidth=s*0.16;
+  ctx.beginPath();ctx.ellipse(cx,groundY,s*0.40,s*0.52,0,0,7);ctx.stroke();
+  // piernas: cadera → rodilla → pie, con pie que sube y baja desfasado
+  const foot=(ph)=>{ const b=Math.sin(ph); return {y:groundY-s*0.15 - b*s*0.33, out:0.14+0.06*(1-b)}; };
+  const drawLeg=(side,ph)=>{ const fo=foot(ph); const hipX=cx+side*s*0.22, footX=cx+side*(s*0.5), kneeX=cx+side*(s*(0.5+fo.out)), kneeY=(hipY+fo.y)/2;
+    ctx.strokeStyle=color; ctx.lineWidth=s*0.24;
+    ctx.beginPath();ctx.moveTo(hipX,hipY);ctx.lineTo(kneeX,kneeY);ctx.lineTo(footX,fo.y);ctx.stroke(); };
+  drawLeg(-1,crank); drawLeg(1,crank+Math.PI);
+  // torso (espalda), más ancho en hombros
+  ctx.fillStyle=color;
+  ctx.beginPath();ctx.moveTo(cx-s*0.42,hipY);ctx.lineTo(cx+s*0.42,hipY);ctx.lineTo(cx+s*0.6,shY);ctx.lineTo(cx-s*0.6,shY);ctx.closePath();ctx.fill();
+  // brazos hacia el manubrio
+  ctx.strokeStyle=color; ctx.lineWidth=s*0.2;
+  ctx.beginPath();ctx.moveTo(cx-s*0.55,shY);ctx.lineTo(cx-s*0.5,shY+s*0.7);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(cx+s*0.55,shY);ctx.lineTo(cx+s*0.5,shY+s*0.7);ctx.stroke();
+  // cabeza/casco
+  ctx.fillStyle=color; ctx.beginPath();ctx.arc(cx,headY,s*0.3,0,7);ctx.fill();
+  ctx.restore();
 }
 function applyGpxView(){
   const gpx=mode==="gpx", on=road3d && gpx;
@@ -954,6 +987,7 @@ function applyGpxView(){
   $("map").classList.toggle("hidden", gpx?on:true);
   $("road3dBtn").style.display=gpx?"":"none";
   $("zoomBtn").style.display=(gpx&&!on)?"":"none";
+  if(on && (state==="riding"||state==="paused")) startRoad(); else stopRoad();
 }
 
 function drawProf(){
@@ -1144,6 +1178,7 @@ function pauseRide(){
 }
 function finishRide(){
   state="finished";
+  stopRoad();
   linkLost=false; if(linkTimer){clearTimeout(linkTimer);linkTimer=null;} releaseWake();
   const avgP=nP?sumP/nP:0, avgV=elapsed>0?(distanceM/elapsed)*3.6:0, avgHr=hrN?Math.round(hrSum/hrN):0;
   session.dur=+elapsed.toFixed(1); session.dist=+distanceM.toFixed(1); session.hrAvg=avgHr; session.hrMax=hrMax;
@@ -1766,7 +1801,7 @@ $("gpxGhostSel").onchange=()=>{
   } else { note.style.display="none"; }
 };
 $("zoomBtn").onclick=()=>{ battleZoom=!battleZoom; $("zoomBtn").textContent="Zoom disputa: "+(battleZoom?"ON":"OFF"); if(state==="riding"||state==="paused")drawMap(); };
-$("road3dBtn").onclick=()=>{ road3d=!road3d; $("road3dBtn").textContent="Vista 3D: "+(road3d?"ON":"OFF"); applyGpxView(); if(state==="riding"||state==="paused")drawRide(); };
+$("road3dBtn").onclick=()=>{ road3d=!road3d; $("road3dBtn").textContent="Vista 3D: "+(road3d?"ON":"OFF"); applyGpxView(); if(!road3d && (state==="riding"||state==="paused"))drawRide(); };
 $("selToggle").onclick=()=>setSelMode(true);
 $("selCancel").onclick=()=>setSelMode(false);
 $("selAll").onclick=()=>{ const list=loadSesiones();
