@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v47</title>
+<title>Bici Indoor · v48</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v47</h1>
+  <h1>Bici Indoor · v48</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -170,6 +170,10 @@
       <div class="row"><label for="smoothM">Suavizado altimetría (m)</label><input type="number" id="smoothM" value="100" min="0" max="300" step="10"></div>
       <div class="row"><label for="diff">Dificultad rodillo (%)</label><input type="number" id="diff" value="100" min="10" max="100" step="5"></div>
       <div class="row"><label for="ftp">FTP (W)</label><input type="number" id="ftp" value="200" min="50" max="600" step="5"></div>
+      <div class="row"><label for="hrMax">FC máx (bpm)</label><input type="number" id="hrMax" value="190" min="120" max="230" step="1"></div>
+      <div class="row"><label for="hrRest">FC reposo (bpm)</label><input type="number" id="hrRest" value="55" min="30" max="90" step="1"></div>
+      <div class="row"><label for="cadPref">Cadencia preferida (rpm)</label><input type="number" id="cadPref" value="90" min="50" max="120" step="1"></div>
+      <div class="row"><label for="crankLen">Longitud de biela (mm)</label><input type="number" id="crankLen" value="172.5" min="150" max="185" step="0.5"></div>
     </details>
 
     <button class="primary full" id="start" style="margin-top:14px" disabled>Empezar</button>
@@ -212,13 +216,14 @@
       <div class="tile big"><div class="l">Velocidad</div><div class="v" id="hSpd">0.0</div><div class="u">km/h</div></div>
     </div>
     <div class="hud hud4" style="margin-top:10px">
-      <div class="tile"><div class="l">Potencia</div><div class="v" id="hPw">0</div><div class="u">W · <b id="hZone" style="color:var(--dim)">—</b></div></div>
+      <div class="tile"><div class="l">Potencia</div><div class="v" id="hPw">0</div><div class="u">W · <b id="hZone" style="color:var(--dim)">—</b><br><span id="hPwAvg" style="font-size:11px">3s — · 10s —</span></div></div>
       <div class="tile pulse"><div class="l">Pulso</div><div class="v" id="hHr">—</div><div class="u">bpm</div></div>
       <div class="tile"><div class="l">Cadencia</div><div class="v" id="hCad">0</div><div class="u">rpm</div></div>
       <div class="tile grade-pos"><div class="l">Pendiente</div><div class="v" id="hGr">0.0</div><div class="u">%</div></div>
     </div>
     <div class="progress"><i id="pbar"></i></div>
     <div id="nextGrade" style="color:var(--dim);font-size:13px;text-align:center;margin-top:6px;font-variant-numeric:tabular-nums"></div>
+    <div id="liveMetrics" style="color:var(--dim);font-size:13px;text-align:center;margin-top:4px;font-variant-numeric:tabular-nums"></div>
 
     <div style="display:flex;justify-content:space-between;margin-top:10px">
       <button id="road3dBtn" style="min-height:40px;padding:8px 14px;font-size:13px">Vista 3D: OFF</button>
@@ -248,6 +253,8 @@
     </div>
     <div id="sVerdict" class="verdict hidden"></div>
     <div id="sRival" class="hidden" style="margin:8px 0"></div>
+    <div id="sMetrics" style="margin:8px 0;font-size:14px;text-align:center;color:var(--dim)"></div>
+    <div id="sZones" style="margin:8px 0"></div>
     <div class="msg" id="savedMsg" style="color:var(--ok)"></div>
     <button class="full" id="shareReto" style="margin-top:10px">Compartir reto</button>
     <button class="primary full" id="again" style="margin-top:10px">Nueva sesión</button>
@@ -748,7 +755,14 @@ function tick(){
     raceBar(distanceM,ghostDistNow,total);
   }
   // grabación 1 Hz
-  if(elapsed-lastRec>=1){lastRec=elapsed;session.samples.push({t:+elapsed.toFixed(1),d:+distanceM.toFixed(1),hr:curHR||0,c:curCad||0,p:curPower||0});}
+  if(elapsed-lastRec>=1){lastRec=elapsed;session.samples.push({t:+elapsed.toFixed(1),d:+distanceM.toFixed(1),hr:curHR||0,c:curCad||0,p:curPower||0});
+    pw30.push(curPower||0); if(pw30.length>30)pw30.shift();
+    const avg30=pw30.reduce((a,b)=>a+b,0)/pw30.length;
+    npSum+=Math.pow(avg30,4); npCount++;
+    npVal=Math.pow(npSum/npCount,0.25);
+    const ftp=ftpVal(); ifVal=npVal/ftp; tssVal=(elapsed*npVal*ifVal)/(ftp*3600)*100;
+  }
+  pwBuf.push({t:elapsed,p:curPower||0}); while(pwBuf.length && pwBuf[0].t<elapsed-10) pwBuf.shift();
   if(mode==="entreno") updateWoHud();
   hud(grade); drawRide();
 }
@@ -789,6 +803,7 @@ let raceYou=0, raceGhost=0, raceMax=1, youCrank=0, ghostCrank=0, laneRAF=null, l
 let battleZoom=true;
 let pendingWorkout=null, woSteps=[], woIdx=0, woStepT=0, woName="", woSentKey="";
 let ergCur=0, ergTarget=-1, ergFrom=0, ergRampStart=0; const ERG_RAMP_MS=4000;
+let pwBuf=[], pw30=[], npSum=0, npCount=0, npVal=0, ifVal=0, tssVal=0;
 const ZMID={1:0.50,2:0.65,3:0.83,4:0.98,5:1.13,6:1.35,7:1.60};
 function zoneMidWatts(z){ return Math.round(ZMID[z]*ftpVal()); }
 function ghostCadAt(t){ const s=ghost?ghost.samples:null; if(!s||!s.length)return 0;
@@ -886,6 +901,11 @@ function hud(grade){
   $("hGr").textContent=grade.toFixed(1);
   $("hCad").textContent=curCad;
   $("hHr").textContent=curHR||"—";
+  const b3=pwBuf.filter(x=>x.t>=elapsed-3), b10=pwBuf;
+  const a3=b3.length?Math.round(b3.reduce((s,x)=>s+x.p,0)/b3.length):0;
+  const a10=b10.length?Math.round(b10.reduce((s,x)=>s+x.p,0)/b10.length):0;
+  $("hPwAvg").textContent="3s "+(a3||"—")+" · 10s "+(a10||"—");
+  $("liveMetrics").textContent = npCount ? ("NP "+Math.round(npVal)+" W · IF "+ifVal.toFixed(2)+" · TSS "+Math.round(tssVal)) : "";
   if(curPower>0){ const z=zoneOf(curPower); $("hZone").textContent="Z"+z; $("hZone").style.color=ZCOL[z]; }
   else { $("hZone").textContent="—"; $("hZone").style.color="var(--dim)"; }
   const prog = mode==="gpx" ? distanceM/total : (raceBy==="tiempo" ? elapsed/targetTime : distanceM/targetDist);
@@ -1210,6 +1230,7 @@ function updateWoHud(){
 function startRide(){
   mode = pendingWorkout ? "entreno" : $("modeSel").value;
   distanceM=0;v=0;elapsed=0;lastRec=0;sumP=0;nP=0;hrSum=0;hrN=0;hrMax=0;lastSentGrade=999;lastSentAt=0;
+  pwBuf=[]; pw30=[]; npSum=0; npCount=0; npVal=0; ifVal=0; tssVal=0;
   verdictDone=false; ghost=null; woSentKey="";
   if(mode==="entreno"){
     woSteps=pendingWorkout.steps; woIdx=0; woStepT=0; woName=pendingWorkout.name; pendingWorkout=null;
@@ -1274,6 +1295,7 @@ function finishRide(){
   linkLost=false; if(linkTimer){clearTimeout(linkTimer);linkTimer=null;} releaseWake();
   const avgP=nP?sumP/nP:0, avgV=elapsed>0?(distanceM/elapsed)*3.6:0, avgHr=hrN?Math.round(hrSum/hrN):0;
   session.dur=+elapsed.toFixed(1); session.dist=+distanceM.toFixed(1); session.hrAvg=avgHr; session.hrMax=hrMax;
+  session.np=Math.round(npVal); session.if=+ifVal.toFixed(2); session.tss=Math.round(tssVal);
   saveSesion(session); populateGhosts();
   $("sTime").textContent=fmtTime(elapsed);
   $("sDist").textContent=(distanceM/1000).toFixed(2);
@@ -1306,6 +1328,21 @@ function finishRide(){
     } else $("sRival").classList.add("hidden");
   } else $("sRival").classList.add("hidden");
   $("savedMsg").textContent="Guardada. Vas a poder correr contra este fantasma.";
+  // NP/IF/TSS + tiempo por zona
+  if(npCount){ $("sMetrics").innerHTML=`<b>NP</b> ${Math.round(npVal)} W · <b>IF</b> ${ifVal.toFixed(2)} · <b>TSS</b> ${Math.round(tssVal)}`; }
+  else $("sMetrics").innerHTML="";
+  { const zsec={}; let tot=0;
+    for(const s of session.samples){ if(s.p>0){ const z=zoneOf(s.p); zsec[z]=(zsec[z]||0)+1; tot++; } }
+    if(tot>0){ let html='<div style="color:var(--dim);font-size:12px;margin-bottom:4px">Tiempo por zona</div>';
+      const ZN={1:"Rec",2:"Res",3:"Tempo",4:"Umbral",5:"VO2",6:"Anaer",7:"Neuro"};
+      for(let z=1;z<=7;z++){ const sec=zsec[z]||0, pct=tot?sec/tot*100:0; if(sec===0)continue;
+        html+=`<div style="display:flex;align-items:center;gap:8px;margin:3px 0;font-size:13px">
+          <span style="width:70px;color:var(--dim)">Z${z} ${ZN[z]}</span>
+          <div style="flex:1;background:#1b2129;border-radius:4px;height:14px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${ZCOL[z]}"></div></div>
+          <span style="width:52px;text-align:right">${fmtTime(sec)}</span></div>`; }
+      $("sZones").innerHTML=html;
+    } else $("sZones").innerHTML="";
+  }
   $("ride").classList.add("hidden");$("summary").classList.remove("hidden");
   sendGrade(0);
   if($("modeSel").value==="gpx") populateGpxGhosts();
@@ -1354,7 +1391,7 @@ $("reconnBtn").onclick=()=>{ conn==="ble"?reconnectBle():connect(); };
 $("connType").onchange=()=>{ conn=$("connType").value; $("hrBleBtn").classList.toggle("hidden",conn!=="ble"); saveCfg(); };
 $("hrBleBtn").onclick=connectHrBle;
 
-const CFG_KEY="bici_config", CFG_IDS=["weight","bike","crr","cda","smoothM","diff","connType","ftp"];
+const CFG_KEY="bici_config", CFG_IDS=["weight","bike","crr","cda","smoothM","diff","connType","ftp","hrMax","hrRest","cadPref","crankLen"];
 function saveCfg(){ const o={}; CFG_IDS.forEach(id=>{const el=$(id);if(el)o[id]=el.value;}); try{localStorage.setItem(CFG_KEY,JSON.stringify(o));}catch(_){} }
 function loadCfg(){ let o; try{o=JSON.parse(localStorage.getItem(CFG_KEY)||"{}");}catch(_){o={};}
   CFG_IDS.forEach(id=>{const el=$(id);if(el&&o[id]!=null)el.value=o[id];});
