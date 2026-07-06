@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v37</title>
+<title>Bici Indoor · v45</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -52,6 +52,7 @@
   .repSpeed{flex:1} .repSpeed.on{background:var(--acc);color:#04121c;border-color:transparent}
   #repLane,#repProf,#repMap{width:100%;display:block;border-radius:8px;background:#0a0d12}
   #repLane{height:90px} #repProf{height:120px} #repMap{height:200px}
+  #repRoad{width:100%;display:block;border-radius:8px;height:220px}
   textarea{width:100%;min-height:180px;font:14px/1.5 ui-monospace,monospace;color:var(--tx);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;resize:vertical}
   #woName{width:100%;font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px}
   select{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;min-height:44px}
@@ -82,12 +83,12 @@
   pre#log{background:#0a0d12;border:1px solid var(--line);border-radius:12px;padding:10px;
     font-size:11px;line-height:1.5;max-height:120px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:12px 0 0;color:var(--dim)}
   .summary .v{font-size:26px;font-weight:800}
-  .hidden{display:none}
+  .hidden{display:none!important}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v37</h1>
+  <h1>Bici Indoor · v45</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -310,15 +311,23 @@
       <div style="color:var(--dim);font-size:13px;margin-bottom:6px">Elegí los corredores (2 o más):</div>
       <div id="repPick" style="max-height:280px;overflow:auto"></div>
       <div id="repNote" style="color:var(--warn);font-size:12px;margin-top:4px;display:none"></div>
+      <button class="full" id="repLoadGpx" style="margin-top:8px">Cargar ruta del recorrido (GPX)</button>
+      <input type="file" id="repGpxFile" accept=".gpx,application/gpx+xml,text/xml" style="display:none">
+      <div id="repGpxInfo" style="color:var(--dim);font-size:12px;margin-top:4px"></div>
       <button class="primary full" id="repStart" style="margin-top:10px">Iniciar carrera</button>
     </div>
     <div id="replayView" class="hidden">
       <div id="repWinner" style="text-align:center;font-weight:800;font-size:17px;margin-bottom:8px">—</div>
       <canvas id="repLane" height="90"></canvas>
       <canvas id="repProf" height="120" class="hidden"></canvas>
-      <div id="repZoomRow" class="hidden" style="display:flex;justify-content:flex-end;margin-top:8px">
-        <button id="repZoomBtn" style="min-height:40px;padding:8px 14px;font-size:13px">Zoom disputa: ON</button>
+      <div id="repViewBtns" class="hidden" style="display:flex;gap:8px;margin-top:8px">
+        <button id="rep3dBtn" style="flex:1;min-height:40px;font-size:13px">Vista 3D: OFF</button>
+        <button id="repZoomBtn" style="flex:1;min-height:40px;font-size:13px">Zoom disputa: ON</button>
       </div>
+      <div id="repCamRow" class="hidden" style="margin-top:8px">
+        <button id="repCamBtn" class="full">Cámara: corredor 1</button>
+      </div>
+      <canvas id="repRoad" height="220" class="hidden"></canvas>
       <canvas id="repMap" height="200" class="hidden"></canvas>
       <div style="color:var(--dim);font-size:12px;margin:10px 0 4px">Punteros (top 4)</div>
       <div id="repStandings" style="border:1px solid var(--line);border-radius:12px;padding:8px 10px"></div>
@@ -891,7 +900,7 @@ function fit(cv){const dpr=window.devicePixelRatio||1,w=cv.clientWidth,h=cv.clie
 function gradeColor(g){if(g<=-2)return"#4cc2ff";if(g<0)return"#7fd1e8";if(g<2)return"#3fb950";
   if(g<4)return"#9fd23f";if(g<6)return"#e3c53f";if(g<8)return"#f0883e";if(g<10)return"#f85149";return"#c0392b";}
 function drawRide(){ if(mode==="gpx" && !road3d){drawProf();drawMap();} }
-let road3d=false, roadCtx=null, roadRAF=null, roadCrank=0, roadLast=0;
+let road3d=false, roadCtx=null, roadRAF=null, roadCrank=0, roadLast=0, ghostRoadCrank=0;
 function roadActive(){ return road3d && mode==="gpx" && (state==="riding"||state==="paused") && !$("road").classList.contains("hidden"); }
 function fitRoad(){ roadCtx=fit($("road")); }
 function startRoad(){ fitRoad(); roadLast=0; if(!roadRAF) roadRAF=requestAnimationFrame(roadLoop); }
@@ -899,6 +908,7 @@ function stopRoad(){ if(roadRAF){cancelAnimationFrame(roadRAF);roadRAF=null;} }
 function roadLoop(ts){ if(!roadActive()){ roadRAF=null; return; }
   const dt=roadLast?Math.min(0.1,(ts-roadLast)/1000):0; roadLast=ts;
   roadCrank += 2*Math.PI*((curCad||0)/60)*dt;
+  ghostRoadCrank += 2*Math.PI*((ghost?ghostCadAt(elapsed):0)/60)*dt;
   drawRoad(); roadRAF=requestAnimationFrame(roadLoop); }
 function bearingAt(d){
   let i=0; while(i<dist.length-2 && dist[i+1]<d) i++;
@@ -908,62 +918,95 @@ function bearingAt(d){
   return Math.atan2(y,x);
 }
 function eleAt(d){ return pe[Math.max(0,Math.min(pe.length-1,Math.round(d/STEP)))]; }
-function drawRoad(){
-  if(!roadCtx||roadCtx.w<10) fitRoad();
-  if(!roadCtx||roadCtx.w<10) return;
-  const {ctx,w,h}=roadCtx;
-  // parámetros ajustables
+function roadBands(ctx,w,h,d0,bFn,eFn){
   const N=130, NEAR=2.0, GROW=0.045, f=w*0.95, wRoad=5.2, camEyeH=1.4, latK=0.9, bandLen=6, horizonK=5;
-  const d0=distanceM, camB=bearingAt(d0), camE=eleAt(d0);
-  // horizonte dinámico: baja en subidas, sube en bajadas (según pendiente próxima)
-  const gAhead=(eleAt(d0+50)-camE)/50*100;
+  const camB=bFn(d0), camE=eFn(d0);
+  const gAhead=(eFn(d0+50)-camE)/50*100;
   let horizon=Math.round(h*0.44 - gAhead*horizonK);
   horizon=Math.max(Math.round(h*0.18),Math.min(Math.round(h*0.74),horizon));
-  // cielo celeste (degradé) y suelo verde
   const sky=ctx.createLinearGradient(0,0,0,horizon);
   sky.addColorStop(0,"#5bb0e6"); sky.addColorStop(1,"#bfe6f5");
   ctx.fillStyle=sky; ctx.fillRect(0,0,w,horizon);
   ctx.fillStyle="#213524"; ctx.fillRect(0,horizon,w,h-horizon);
-  // muestreo hacia adelante (paso creciente: fino cerca, grueso lejos)
   const S=[]; let x=0, prevSeg=0, cum=0;
   for(let i=0;i<=N;i++){
-    const dd=d0+cum;
-    let rel=bearingAt(dd)-camB; rel=Math.atan2(Math.sin(rel),Math.cos(rel));
+    const dd=d0+cum; let rel=bFn(dd)-camB; rel=Math.atan2(Math.sin(rel),Math.cos(rel));
     if(i>0) x += Math.sin(rel)*prevSeg*latK;
-    const Z=cum+0.5, sc=f/Z, e=eleAt(dd);
-    S.push({cx:w/2+x*sc, y:horizon-(e-camE-camEyeH)*sc, hw:wRoad*sc, d:dd, Z});
+    const Z=cum+0.5, sc=f/Z, e=eFn(dd);
+    S.push({cx:w/2+x*sc, y:horizon-(e-camE-camEyeH)*sc, hw:wRoad*sc, d:dd});
     const seg=NEAR+i*GROW; prevSeg=seg; cum+=seg;
   }
-  // bandas de lejos a cerca (painter); color anclado a la distancia real → fluye sin parpadeo
+
   for(let i=N-1;i>=0;i--){
-    const a=S[i+1], b=S[i];
-    const light=(Math.floor(b.d/bandLen)%2===0);
-    // rumble strips (bordes rojo/blanco, fuera del asfalto)
+    const a=S[i+1], b=S[i], light=(Math.floor(b.d/bandLen)%2===0);
     const rb=Math.max(1.5,b.hw*0.26), ra=Math.max(1,a.hw*0.26);
     ctx.fillStyle=light?"#eeeeee":"#d8452f";
     ctx.beginPath();ctx.moveTo(b.cx-b.hw-rb,b.y);ctx.lineTo(b.cx-b.hw,b.y);ctx.lineTo(a.cx-a.hw,a.y);ctx.lineTo(a.cx-a.hw-ra,a.y);ctx.closePath();ctx.fill();
     ctx.beginPath();ctx.moveTo(b.cx+b.hw+rb,b.y);ctx.lineTo(b.cx+b.hw,b.y);ctx.lineTo(a.cx+a.hw,a.y);ctx.lineTo(a.cx+a.hw+ra,a.y);ctx.closePath();ctx.fill();
-    // asfalto oscuro
     ctx.fillStyle=light?"#4c5661":"#434d57";
     ctx.beginPath();ctx.moveTo(b.cx-b.hw,b.y);ctx.lineTo(b.cx+b.hw,b.y);ctx.lineTo(a.cx+a.hw,a.y);ctx.lineTo(a.cx-a.hw,a.y);ctx.closePath();ctx.fill();
-    // línea de centro discontinua
     if(light){ const cb=Math.max(1,b.hw*0.06), ca=Math.max(0.7,a.hw*0.06);
       ctx.fillStyle="#efe7c8";
       ctx.beginPath();ctx.moveTo(b.cx-cb,b.y);ctx.lineTo(b.cx+cb,b.y);ctx.lineTo(a.cx+ca,a.y);ctx.lineTo(a.cx-ca,a.y);ctx.closePath();ctx.fill(); }
+    // arbolitos al costado (sobre el pasto), bajos y verdes: no cargan el horizonte
+    const treeSpacing=30;
+    if(Math.floor(b.d/treeSpacing)!==Math.floor(a.d/treeSpacing) && b.hw>6){
+      for(const side of [-1,1]){
+        const seed=Math.sin(Math.floor(b.d/treeSpacing)*7.3 + side*2.1);
+        const off=b.hw*(0.45+0.5*Math.abs(seed));
+        const tx=b.cx+side*(b.hw+off), ty=b.y, th=b.hw*(0.45+0.3*Math.abs(seed));
+        ctx.fillStyle="#5a4634"; ctx.fillRect(tx-th*0.05, ty-th*0.32, th*0.1, th*0.32);
+        ctx.fillStyle=(seed>0)?"#2f6b39":"#367a3f";
+        ctx.beginPath();ctx.ellipse(tx, ty-th*0.5, th*0.28, th*0.5, 0, 0, 7);ctx.fill();
+      }
+    }
   }
-  // fantasma sobre la ruta (si va adelante)
-  if(ghost && ghostDistNow>distanceM){ const gd=ghostDistNow;
-    let i=0; while(i<S.length-1 && S[i+1].d<gd) i++;
-    if(i<S.length-1 && S[i].d<=gd){ const t=(gd-S[i].d)/((S[i+1].d-S[i].d)||1);
-      const gx=S[i].cx+(S[i+1].cx-S[i].cx)*t, gy=S[i].y+(S[i+1].y-S[i].y)*t, gh=S[i].hw+(S[i+1].hw-S[i].hw)*t;
-      const rr=Math.max(3,gh*0.28);
-      ctx.fillStyle="#8b98a9"; ctx.strokeStyle="#04070a"; ctx.lineWidth=2;
-      ctx.beginPath();ctx.ellipse(gx,gy-rr,rr*0.7,rr,0,0,7);ctx.fill();ctx.stroke(); } }
-  // vos: ciclista de espaldas, piernas según cadencia
-  drawCyclistRear(ctx, w/2, h-6, Math.max(20,h*0.135), roadCrank, "#2f6f9c");
+  // niebla/haze hacia el horizonte (funde el corte lejano)
+  const fogH=Math.round(h*0.13);
+  const fog=ctx.createLinearGradient(0,horizon,0,horizon+fogH);
+  fog.addColorStop(0,"rgba(191,230,245,.9)"); fog.addColorStop(1,"rgba(191,230,245,0)");
+  ctx.fillStyle=fog; ctx.fillRect(0,horizon,w,fogH);
+  return S;
 }
-function drawCyclistRear(ctx,cx,gy,s,crank,jersey){
-  ctx.save(); ctx.lineJoin="round"; ctx.lineCap="round";
+function roadPointAt(S,d){
+  if(d<=S[0].d || d>=S[S.length-1].d) return null;
+  let i=0; while(i<S.length-1 && S[i+1].d<d) i++;
+  const t=(d-S[i].d)/((S[i+1].d-S[i].d)||1);
+  return {cx:S[i].cx+(S[i+1].cx-S[i].cx)*t, y:S[i].y+(S[i+1].y-S[i].y)*t, hw:S[i].hw+(S[i+1].hw-S[i].hw)*t};
+}
+function roadInterpDt(){ if(state!=="riding"||linkLost)return 0; const e=(performance.now()-lastTs)/1000; return (e>0&&e<0.5)?e:0; }
+function drawRoad(){
+  if(!roadCtx||roadCtx.w<10) fitRoad();
+  if(!roadCtx||roadCtx.w<10) return;
+  const {ctx,w,h}=roadCtx;
+  const idt=roadInterpDt();
+  let dNow=distanceM + v*idt; if(mode==="gpx") dNow=Math.min(total,dNow);
+  const gNow=ghost?ghostDistAt(elapsed+idt):0;
+  const S=roadBands(ctx,w,h,dNow,bearingAt,eleAt);
+  const youS=Math.max(20,h*0.135);
+  if(ghost && gNow>dNow){ const p=roadPointAt(S,gNow);
+    if(p){ const gs=Math.max(5, Math.min(youS*0.8, p.hw*0.14));
+      drawCyclistRear(ctx, p.cx, p.y, gs, ghostRoadCrank, "#9fb0c0", 0.45);
+      const gap=Math.round(dNow-gNow), label=(gap>=0?"+":"")+gap+" m";
+      ctx.font="700 13px system-ui"; ctx.textAlign="center";
+      const ly=p.y-gs*3.5, tw=ctx.measureText(label).width;
+      ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(p.cx-tw/2-5,ly-13,tw+10,18);
+      ctx.fillStyle=gap<0?"#ff6b6b":"#3fb950"; ctx.fillText(label,p.cx,ly);
+      ctx.textAlign="start";
+    } }
+  drawCyclistRear(ctx, w/2, h-6, youS, roadCrank, "#2f6f9c", 1);
+}
+function bearingRoute(route,d){ const {pts,dist}=route; let i=0; while(i<dist.length-2&&dist[i+1]<d)i++;
+  const a=pts[i],b=pts[i+1],toR=Math.PI/180;
+  const y=Math.sin((b.lon-a.lon)*toR)*Math.cos(b.lat*toR);
+  const x=Math.cos(a.lat*toR)*Math.sin(b.lat*toR)-Math.sin(a.lat*toR)*Math.cos(b.lat*toR)*Math.cos((b.lon-a.lon)*toR);
+  return Math.atan2(y,x); }
+function eleRoute(route,d){ return posAtDistance(route,d).ele; }
+function drawCyclistRear(ctx,cx,gy,s,crank,jersey,alpha){
+  ctx.save(); ctx.globalAlpha=alpha==null?1:alpha; ctx.lineJoin="round"; ctx.lineCap="round";
+  // sombra en el piso
+  ctx.fillStyle="rgba(0,0,0,.28)";
+  ctx.beginPath();ctx.ellipse(cx,gy+s*0.18,s*0.62,s*0.16,0,0,7);ctx.fill();
   const hipY=gy-1.45*s, shY=gy-2.5*s, headY=gy-3.0*s;
   const skin="#c98d5e", dark="#12161c";
   // rueda trasera + cuadro insinuado
@@ -971,21 +1014,26 @@ function drawCyclistRear(ctx,cx,gy,s,crank,jersey){
   ctx.beginPath();ctx.ellipse(cx,gy,s*0.26,s*0.5,0,0,7);ctx.stroke();
   ctx.strokeStyle="#252b34"; ctx.lineWidth=s*0.09;
   ctx.beginPath();ctx.moveTo(cx,hipY);ctx.lineTo(cx,gy-s*0.5);ctx.stroke();
-  // piernas (muslo+pantorrilla+pie), pedaleo desfasado; la de pie más alto se dibuja primero
+  // piernas (rodillas alineadas, sin abrirse); la de pie más alto se dibuja primero
   const pedalCY=gy-0.5*s, rc=s*0.34;
   const leg=(side,ph)=>{
     const py=pedalCY - Math.cos(ph)*rc*0.95;
-    const px=cx + side*(s*0.24);
-    const hipX=cx+side*s*0.22, kneeX=cx+side*s*0.45, kneeY=(hipY+py)/2+s*0.05;
+    const px=cx + side*(s*0.23);
+    const hipX=cx+side*s*0.23, kneeX=cx+side*s*0.23, kneeY=(hipY+py)/2+s*0.05;
     ctx.strokeStyle=skin; ctx.lineWidth=s*0.30;
     ctx.beginPath();ctx.moveTo(hipX,hipY);ctx.lineTo(kneeX,kneeY);ctx.stroke();
     ctx.lineWidth=s*0.20;
     ctx.beginPath();ctx.moveTo(kneeX,kneeY);ctx.lineTo(px,py);ctx.stroke();
-    ctx.strokeStyle=dark; ctx.lineWidth=s*0.16;
-    ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(px+side*s*0.2,py+s*0.03);ctx.stroke();
+    // zapatilla vista desde atrás (talón/suela)
+    ctx.fillStyle=dark;
+    ctx.beginPath();ctx.ellipse(px, py+s*0.05, s*0.15, s*0.1, 0, 0, 7);ctx.fill();
+    ctx.fillStyle="#2a2f37";
+    ctx.beginPath();ctx.ellipse(px, py+s*0.11, s*0.15, s*0.04, 0, 0, 7);ctx.fill();
   };
   const lPh=crank, rPh=crank+Math.PI;
   if(Math.cos(lPh)>Math.cos(rPh)){ leg(1,rPh); leg(-1,lPh); } else { leg(-1,lPh); leg(1,rPh); }
+  // cuello (detrás del tronco)
+  ctx.fillStyle=skin; ctx.beginPath();ctx.arc(cx,shY-s*0.05,s*0.15,0,7);ctx.fill();
   // short
   ctx.fillStyle="#1b1f26";
   ctx.beginPath();ctx.moveTo(cx-s*0.4,hipY-s*0.15);ctx.lineTo(cx+s*0.4,hipY-s*0.15);ctx.lineTo(cx+s*0.32,hipY+s*0.4);ctx.lineTo(cx-s*0.32,hipY+s*0.4);ctx.closePath();ctx.fill();
@@ -1000,8 +1048,7 @@ function drawCyclistRear(ctx,cx,gy,s,crank,jersey){
   ctx.fillStyle=dark;
   ctx.beginPath();ctx.arc(cx-s*0.4,shY+s*0.88,s*0.09,0,7);ctx.fill();
   ctx.beginPath();ctx.arc(cx+s*0.4,shY+s*0.88,s*0.09,0,7);ctx.fill();
-  // cuello + cabeza + casco
-  ctx.fillStyle=skin; ctx.beginPath();ctx.arc(cx,shY-s*0.05,s*0.15,0,7);ctx.fill();
+  // cabeza + casco (arriba de todo)
   ctx.fillStyle="#11151b";
   ctx.beginPath();ctx.ellipse(cx,headY,s*0.28,s*0.24,0,0,7);ctx.fill();
   ctx.fillStyle="#2a313b";
@@ -1407,8 +1454,8 @@ $("woSave").onclick=()=>{
 };
 
 // ================= Carrera virtual (replay) =================
-let replayA=null, replayB=null, replayRoute=null, vt=0, replaySpeed=2, replayPlaying=false, replayRAF=null, replayLast=0, replayTotal=0, aCrank=0, bCrank=0, repMapProj=null, repList=[], repZoom=true;
-let repRacers=[], repPicked=new Set();
+let replayA=null, replayB=null, replayRoute=null, vt=0, replaySpeed=2, replayPlaying=false, replayRAF=null, replayLast=0, replayTotal=0, aCrank=0, bCrank=0, repMapProj=null, repList=[], repZoom=true, rep3d=false, repRoadCtx=null, repGpxOverride=null;
+let repRacers=[], repPicked=new Set(), repCam=0;
 const REP_COLORS=["#4cc2ff","#f0883e","#3fb950","#e3c53f","#b46bd6","#ff6b6b","#5ad1c8","#ff9ec4"];
 function interpAt(samples,t,key){
   if(!samples||!samples.length)return 0;
@@ -1423,7 +1470,7 @@ function repFinalDist(s){ return s.dist||(s.samples&&s.samples.length?s.samples[
 function repLabel(s){ const d=new Date(s.date); const modo=s.mode==="libre"?"Libre":s.mode==="tcx"?"TCX":s.mode==="entreno"?"Entreno":"Recorrido";
   return modo+" "+d.getDate()+"/"+(d.getMonth()+1)+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }
 function populateReplay(){
-  repList=loadSesiones().filter(s=>s.samples&&s.samples.length>1);
+  repList=loadSesiones().filter(s=>s.samples&&s.samples.length>1).sort((a,b)=>b.date-a.date);
   repPicked.clear();
   const wrap=$("repPick"); wrap.innerHTML="";
   if(!repList.length){ wrap.innerHTML='<div style="color:var(--dim);font-size:13px">No hay sesiones con datos para correr.</div>'; return; }
@@ -1442,17 +1489,23 @@ function startReplay(){
   if(idxs.length<2){ alert("Elegí al menos dos corredores."); return; }
   repRacers=idxs.map((idx,k)=>({sess:repList[idx], color:REP_COLORS[k%REP_COLORS.length], crank:0}));
   replayRoute=null; repMapProj=null; $("repNote").style.display="none";
-  const allGpx=repRacers.every(r=>r.sess.mode==="gpx");
-  const sameRoute=allGpx && repRacers.every(r=>r.sess.route===repRacers[0].sess.route);
-  if(sameRoute){ const gt=getRouteText(repRacers[0].sess.route); if(gt) replayRoute=parseGpxStandalone(gt); }
+  if(repGpxOverride){ replayRoute=repGpxOverride; }
+  else {
+    const allGpx=repRacers.every(r=>r.sess.mode==="gpx");
+    const sameRoute=allGpx && repRacers.every(r=>r.sess.route===repRacers[0].sess.route);
+    if(sameRoute){ const gt=getRouteText(repRacers[0].sess.route); if(gt) replayRoute=parseGpxStandalone(gt); }
+  }
   if(!replayRoute && repRacers.some(r=>r.sess.mode==="gpx")){
-    $("repNote").textContent="Sin ruta común guardada: se muestra solo la pista y los datos."; $("repNote").style.display="block";
+    $("repNote").textContent="Sin ruta cargada: se muestra solo la pista y los datos. Usá \"Cargar ruta\" para ver mapa y 3D."; $("repNote").style.display="block";
   }
   replayTotal=Math.max(...repRacers.map(r=>repDur(r.sess)));
   vt=0; replaySpeed=2; replayPlaying=false; setRepSpeed(2);
   $("repProf").classList.toggle("hidden",!replayRoute);
   $("repMap").classList.toggle("hidden",!replayRoute);
-  $("repZoomRow").style.display=replayRoute?"flex":"none";
+  $("repViewBtns").classList.toggle("hidden",!replayRoute);
+  $("rep3dBtn").textContent="Vista 3D: "+(rep3d?"ON":"OFF");
+  repCam=0; updateCamBtn();
+  applyRepView();
   $("repZoomBtn").textContent="Zoom disputa: "+(repZoom?"ON":"OFF");
   $("replaySetup").classList.add("hidden"); $("replayView").classList.remove("hidden");
   renderReplay();
@@ -1508,7 +1561,7 @@ function renderReplay(){
     $("repWinner").style.color="var(--tx)";
   }
   drawRepLane(st);
-  if(replayRoute){ drawRepMap(st,top); drawRepProf(st); }
+  if(replayRoute){ if(rep3d) drawRepRoad(st); else { drawRepMap(st,top); drawRepProf(st); } }
 }
 function drawRepLane(st){
   const cv=$("repLane"),r=fit(cv),ctx=r.ctx,w=r.w,h=r.h; if(w<10)return;
@@ -1575,6 +1628,48 @@ $("replayBtn").onclick=()=>{ populateReplay(); $("replaySetup").classList.remove
 $("replayBack").onclick=()=>{ replayPlaying=false; $("replayCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); };
 $("repStart").onclick=startReplay;
 $("repZoomBtn").onclick=()=>{ repZoom=!repZoom; $("repZoomBtn").textContent="Zoom disputa: "+(repZoom?"ON":"OFF"); if(replayRoute)renderReplay(); };
+function applyRepView(){
+  const on=rep3d && !!replayRoute;
+  $("repRoad").classList.toggle("hidden",!on);
+  $("repMap").classList.toggle("hidden",on);
+  $("repProf").classList.toggle("hidden",on);
+  $("repZoomBtn").style.display=on?"none":"";
+  $("repCamRow").classList.toggle("hidden",!on);
+}
+function updateCamBtn(){ const r=repRacers[repCam];
+  if(r) $("repCamBtn").innerHTML=`Cámara: <span style="color:${r.color}">●</span> corredor ${repCam+1}`; }
+function fitRepRoad(){ repRoadCtx=fit($("repRoad")); }
+function drawRepRoad(st){
+  if(!repRoadCtx||repRoadCtx.w<10) fitRepRoad();
+  if(!repRoadCtx||repRoadCtx.w<10) return;
+  const {ctx,w,h}=repRoadCtx;
+  const camRacer=repRacers[repCam]||repRacers[0];
+  const cam=st.find(x=>x.r===camRacer)||st[0];
+  const camD=cam.d;
+  const S=roadBands(ctx,w,h,camD, d=>bearingRoute(replayRoute,d), d=>eleRoute(replayRoute,d));
+  const youS=Math.max(20,h*0.135);
+  // otros corredores (adelante de la cámara), de lejos a cerca
+  const others=st.filter(x=>x.r!==camRacer).sort((a,b)=>b.d-a.d);
+  for(const x of others){ const p=roadPointAt(S,x.d); if(!p)continue;
+    const s=Math.max(5, Math.min(youS*0.85, p.hw*0.14));
+    drawCyclistRear(ctx, p.cx, p.y, s, x.r.crank, x.r.color, 0.9);
+    const gap=Math.round(x.d-camD), label="+"+gap+" m";
+    ctx.font="700 12px system-ui"; ctx.textAlign="center";
+    const ly=p.y-s*3.5, tw=ctx.measureText(label).width;
+    ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(p.cx-tw/2-4,ly-12,tw+8,16);
+    ctx.fillStyle=x.r.color; ctx.fillText(label,p.cx,ly); ctx.textAlign="start";
+  }
+  // cámara = ciclista elegido, de espaldas abajo
+  drawCyclistRear(ctx, w/2, h-6, youS, camRacer.crank, camRacer.color, 1);
+}
+$("repCamBtn")&&($("repCamBtn").onclick=()=>{ if(!repRacers.length)return; repCam=(repCam+1)%repRacers.length; updateCamBtn(); renderReplay(); });
+$("rep3dBtn").onclick=()=>{ rep3d=!rep3d; $("rep3dBtn").textContent="Vista 3D: "+(rep3d?"ON":"OFF"); applyRepView(); if(replayRoute)renderReplay(); };
+$("repLoadGpx").onclick=()=>$("repGpxFile").click();
+$("repGpxFile").onchange=e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader();
+  r.onload=()=>{ const route=parseGpxStandalone(r.result); if(!route){ $("repGpxInfo").textContent="No se pudo leer el GPX."; return; }
+    repGpxOverride=route; saveRouteText(f.name,r.result);
+    $("repGpxInfo").innerHTML='<b style="color:var(--ok)">Ruta cargada:</b> '+f.name+" ("+(route.dist[route.dist.length-1]/1000).toFixed(1)+" km) — habilita mapa y 3D"; };
+  r.readAsText(f); e.target.value=""; };
 $("repPlay").onclick=replayPlayPause;
 $("repRestart").onclick=()=>{ vt=0; replayPlaying=false; $("repPlay").textContent="▶ Play"; renderReplay(); };
 $("repScrub").addEventListener("input",()=>{ replayPlaying=false; $("repPlay").textContent="▶ Play"; vt=replayTotal*($("repScrub").value/1000); renderReplay(); });
