@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v45</title>
+<title>Bici Indoor · v47</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v45</h1>
+  <h1>Bici Indoor · v47</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -294,8 +294,18 @@
     <button class="full" id="woNew" style="margin-top:8px">Nuevo entrenamiento</button>
     <div id="woEditor" class="hidden" style="margin-top:12px">
       <input id="woName" placeholder="Nombre del entrenamiento">
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+        <button class="woIns" data-snip="10' Z1&#10;" style="font-size:12px;padding:6px 10px;min-height:36px">+ Entrada</button>
+        <button class="woIns" data-snip="1' Z4&#10;" style="font-size:12px;padding:6px 10px;min-height:36px">+ Intervalo</button>
+        <button class="woIns" data-snip="3x&#10;  4' Z3&#10;  2' Z1&#10;end&#10;" style="font-size:12px;padding:6px 10px;min-height:36px">+ Serie (Nx)</button>
+        <button class="woIns" data-snip="3' Z1&#10;" style="font-size:12px;padding:6px 10px;min-height:36px">+ Recuperación</button>
+        <button class="woIns" data-snip="2' 4%&#10;" style="font-size:12px;padding:6px 10px;min-height:36px">+ Pendiente</button>
+        <button class="woIns" data-snip="10' Z1&#10;" style="font-size:12px;padding:6px 10px;min-height:36px">+ Afloje</button>
+      </div>
       <textarea id="woText" spellcheck="false"></textarea>
       <div style="color:var(--dim);font-size:12px;margin-top:6px">Duración: <b>10'</b> min, <b>15"</b> seg, <b>1'30"</b> combinado. Objetivo: <b>Z1</b>–<b>Z7</b> (zona/ERG), <b>200W</b> (watts/ERG) o <b>4%</b> / <b>-2%</b> (pendiente). Repetición: <b>3x</b> … <b>end</b>.</div>
+      <canvas id="woHist" height="120" style="margin-top:10px;width:100%;display:block;border-radius:8px;background:#0a0d12"></canvas>
+      <div id="woZoneBreak" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;font-size:12px"></div>
       <div id="woPreview" style="margin-top:10px"></div>
       <div class="controls" style="margin-top:10px">
         <button id="woCancel">Cancelar</button>
@@ -706,7 +716,10 @@ function tick(){
     while(step && woStepT>=step.dur){ woStepT-=step.dur; woIdx++; step=woSteps[woIdx]; }
     if(!step){ finishRide(); return; }
     if(step.kind==="erg"){ grade=0; const w=step.z?zoneMidWatts(step.z):step.w;
-      const key="e"+w; if(key!==woSentKey||now-lastSentAt>2000){ sendTargetPower(w); woSentKey=key; lastSentAt=now; } }
+      if(w!==ergTarget){ ergFrom=ergCur; ergTarget=w; ergRampStart=now; }
+      const prog=Math.min(1,(now-ergRampStart)/ERG_RAMP_MS);
+      const cur=Math.round(ergFrom+(ergTarget-ergFrom)*prog);
+      if(cur!==ergCur || now-lastSentAt>1500){ sendTargetPower(cur); ergCur=cur; lastSentAt=now; } }
     else { grade=step.slope; const tg=grade*(Math.max(10,Math.min(100,parseFloat($("diff").value)||100))/100);
       const key="s"+tg.toFixed(1); if(key!==woSentKey||now-lastSentAt>2000){ sendGrade(tg); woSentKey=key; lastSentAt=now; lastSentGrade=tg; } }
   } else {
@@ -775,6 +788,7 @@ function raceBar(you,gpos,maxD){ raceYou=you; raceGhost=gpos; raceMax=(isFinite(
 let raceYou=0, raceGhost=0, raceMax=1, youCrank=0, ghostCrank=0, laneRAF=null, laneLast=0, laneCtx=null;
 let battleZoom=true;
 let pendingWorkout=null, woSteps=[], woIdx=0, woStepT=0, woName="", woSentKey="";
+let ergCur=0, ergTarget=-1, ergFrom=0, ergRampStart=0; const ERG_RAMP_MS=4000;
 const ZMID={1:0.50,2:0.65,3:0.83,4:0.98,5:1.13,6:1.35,7:1.60};
 function zoneMidWatts(z){ return Math.round(ZMID[z]*ftpVal()); }
 function ghostCadAt(t){ const s=ghost?ghost.samples:null; if(!s||!s.length)return 0;
@@ -1187,7 +1201,9 @@ function updateWoHud(){
   $("woNext").textContent=nx?("Sigue: "+woStepLabel(nx)+" "+fmtDur(nx.dur)):"Último paso";
   $("woTarget").textContent=woStepLabel(step);
   $("woTarget").style.color=woStepColor(step);
-  $("woTargetSub").textContent=step.kind==="erg"?(step.z?(zoneMidWatts(step.z)+" W objetivo"):(step.w+" W")):"pendiente";
+  if(step.kind==="erg"){ const tgt=step.z?zoneMidWatts(step.z):step.w;
+    $("woTargetSub").textContent = (ergCur<tgt-2||ergCur>tgt+2) ? (ergCur+" → "+tgt+" W") : (tgt+" W objetivo");
+  } else $("woTargetSub").textContent="pendiente";
   $("woLeft").textContent=fmtTime(left);
   $("woBar").style.width=(100*woStepT/step.dur)+"%";
 }
@@ -1197,6 +1213,7 @@ function startRide(){
   verdictDone=false; ghost=null; woSentKey="";
   if(mode==="entreno"){
     woSteps=pendingWorkout.steps; woIdx=0; woStepT=0; woName=pendingWorkout.name; pendingWorkout=null;
+    ergCur=0; ergTarget=-1; ergFrom=0; ergRampStart=0;
     $("woPending").style.display="none";
     $("prof").classList.add("hidden");$("map").classList.add("hidden");$("raceWrap").classList.add("hidden");
     $("zoomRow").style.display="none";$("woHud").classList.remove("hidden");$("verdict").classList.add("hidden");
@@ -1406,9 +1423,38 @@ function parseWorkout(text){
 function fmtDur(sec){ const m=Math.floor(sec/60), s=sec%60; return (m?m+"'":"")+(s?s+'"':"")||'0"'; }
 function woStepColor(s){ return s.kind==="erg" ? (s.z?ZCOL[s.z]:"#4cc2ff") : gradeColor(s.slope); }
 function woStepLabel(s){ return s.kind==="erg" ? (s.z?("Z"+s.z):(s.w+" W")) : (s.slope+"%"); }
+function woIntensity(s){ return s.kind==="erg" ? (s.z?ZMID[s.z]:(s.w/ftpVal())) : Math.max(0.3, 0.5+s.slope*0.12); }
+function drawWoHist(steps,totalSec){
+  const cv=$("woHist"); if(!cv)return; const r=fit(cv),ctx=r.ctx,w=r.w,h=r.h;
+  ctx.clearRect(0,0,w,h);
+  if(!steps.length||totalSec<=0) return;
+  const pad=6, cw=w-2*pad, ch=h-2*pad;
+  let maxI=0.1; for(const s of steps) maxI=Math.max(maxI,woIntensity(s));
+  maxI=Math.max(maxI,1.2);
+  // línea FTP (100%)
+  const yF=pad+ch*(1-1/maxI);
+  let x=pad;
+  for(const s of steps){ const bw=cw*(s.dur/totalSec), bh=ch*(woIntensity(s)/maxI);
+    ctx.fillStyle=woStepColor(s); ctx.fillRect(x, pad+ch-bh, Math.max(1,bw-0.5), bh);
+    x+=bw;
+  }
+  ctx.strokeStyle="rgba(230,237,243,.35)"; ctx.setLineDash([4,3]); ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,yF);ctx.lineTo(w-pad,yF);ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle="rgba(230,237,243,.5)"; ctx.font="10px system-ui"; ctx.fillText("FTP",pad+2,yF-2);
+}
+function renderWoZoneBreak(steps){
+  const zsec={}, wrap=$("woZoneBreak"); let pend=0;
+  for(const s of steps){ if(s.kind==="erg"){ const z=s.z||zoneOf(s.w); zsec[z]=(zsec[z]||0)+s.dur; } else pend+=s.dur; }
+  let html="";
+  for(let z=1;z<=7;z++){ if(zsec[z]) html+=`<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:${ZCOL[z]};display:inline-block"></span>Z${z} ${fmtTime(zsec[z])}</span>`; }
+  if(pend) html+=`<span style="color:var(--dim)">Pendiente ${fmtTime(pend)}</span>`;
+  wrap.innerHTML=html;
+}
 function renderWoPreview(){
   const {steps,totalSec,error}=parseWorkout($("woText").value), pv=$("woPreview");
-  if(error){ pv.innerHTML='<div style="color:var(--err);font-size:13px;white-space:pre-wrap">'+error+'</div>'; return; }
+  if(error){ pv.innerHTML='<div style="color:var(--err);font-size:13px;white-space:pre-wrap">'+error+'</div>';
+    $("woHist").getContext("2d").clearRect(0,0,$("woHist").width,$("woHist").height); $("woZoneBreak").innerHTML=""; return; }
+  drawWoHist(steps,totalSec); renderWoZoneBreak(steps);
   let html=`<div style="color:var(--dim);font-size:12px;margin-bottom:6px">${steps.length} pasos · ${fmtTime(totalSec)} total</div>`;
   for(const s of steps){ html+=`<div class="srow"><div class="info"><span class="badge" style="background:${woStepColor(s)};color:#04121c">${s.kind==="erg"?"ERG":"PEND"}</span>${fmtDur(s.dur)} · ${woStepLabel(s)}</div></div>`; }
   pv.innerHTML=html;
@@ -1434,6 +1480,15 @@ $("entrenoBack").onclick=()=>{ $("entrenoCard").classList.add("hidden"); $("setu
 $("woNew").onclick=()=>{ woEditIdx=-1; $("woName").value=""; $("woText").value=WO_EXAMPLE; openEditor(); };
 $("woCancel").onclick=()=>{ $("woEditor").classList.add("hidden"); };
 $("woText").addEventListener("input",renderWoPreview);
+function woInsert(snip){
+  const ta=$("woText"); let v=ta.value;
+  let pos=ta.selectionStart!=null?ta.selectionStart:v.length;
+  if(pos>0 && v[pos-1]!=="\n" && v.length>0) snip="\n"+snip;
+  ta.value=v.slice(0,pos)+snip+v.slice(pos);
+  const np=pos+snip.length; ta.selectionStart=ta.selectionEnd=np; ta.focus();
+  renderWoPreview();
+}
+document.querySelectorAll(".woIns").forEach(b=>b.onclick=()=>woInsert(b.dataset.snip));
 function runWorkout(i){
   const w=loadWorkouts()[i], p=parseWorkout(w.text);
   if(p.error||!p.steps.length){ alert("El entrenamiento tiene errores, no se puede correr."); return; }
