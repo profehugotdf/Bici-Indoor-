@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v48</title>
+<title>Bici Indoor · v50</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v48</h1>
+  <h1>Bici Indoor · v50</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -170,7 +170,9 @@
       <div class="row"><label for="smoothM">Suavizado altimetría (m)</label><input type="number" id="smoothM" value="100" min="0" max="300" step="10"></div>
       <div class="row"><label for="diff">Dificultad rodillo (%)</label><input type="number" id="diff" value="100" min="10" max="100" step="5"></div>
       <div class="row"><label for="ftp">FTP (W)</label><input type="number" id="ftp" value="200" min="50" max="600" step="5"></div>
-      <div class="row"><label for="hrMax">FC máx (bpm)</label><input type="number" id="hrMax" value="190" min="120" max="230" step="1"></div>
+      <div class="row"><label for="age">Edad (años)</label><input type="number" id="age" value="40" min="10" max="90" step="1"></div>
+      <div class="row"><label for="hrMax">FC máx (bpm)</label><input type="number" id="hrMax" placeholder="auto por edad" min="120" max="230" step="1"></div>
+      <div id="hrMaxHint" style="color:var(--dim);font-size:12px;margin:-2px 0 6px"></div>
       <div class="row"><label for="hrRest">FC reposo (bpm)</label><input type="number" id="hrRest" value="55" min="30" max="90" step="1"></div>
       <div class="row"><label for="cadPref">Cadencia preferida (rpm)</label><input type="number" id="cadPref" value="90" min="50" max="120" step="1"></div>
       <div class="row"><label for="crankLen">Longitud de biela (mm)</label><input type="number" id="crankLen" value="172.5" min="150" max="185" step="0.5"></div>
@@ -288,6 +290,7 @@
   <div class="card hidden" id="zonesCard">
     <h2>Zonas de potencia y FTP</h2>
     <div class="row"><label for="ftp2">FTP (W)</label><input type="number" id="ftp2" min="50" max="600" step="5" style="width:100px"></div>
+    <div class="row"><label for="zoneModel">Modelo de zonas</label><select id="zoneModel" style="flex:1"><option value="7">7 zonas (Coggan)</option><option value="5">5 zonas</option></select></div>
     <div id="zonesTable" style="margin-top:10px"></div>
     <button class="full" id="estFtpBtn" style="margin-top:10px">Estimar FTP desde mis sesiones</button>
     <button class="full" id="ftpTestBtn" style="margin-top:8px">Configurar test de 20 min</button>
@@ -804,8 +807,19 @@ let battleZoom=true;
 let pendingWorkout=null, woSteps=[], woIdx=0, woStepT=0, woName="", woSentKey="";
 let ergCur=0, ergTarget=-1, ergFrom=0, ergRampStart=0; const ERG_RAMP_MS=4000;
 let pwBuf=[], pw30=[], npSum=0, npCount=0, npVal=0, ifVal=0, tssVal=0;
-const ZMID={1:0.50,2:0.65,3:0.83,4:0.98,5:1.13,6:1.35,7:1.60};
-function zoneMidWatts(z){ return Math.round(ZMID[z]*ftpVal()); }
+let ZDEF;
+function setZoneModel(n){
+  if(n===5){ ZDEF={ n:5, lo:[0,0,0.55,0.75,0.90,1.05],
+    name:{1:"Recuperación",2:"Resistencia",3:"Tempo",4:"Umbral",5:"VO2máx+"},
+    col:{1:"#4cc2ff",2:"#3fb950",3:"#9fd23f",4:"#f0883e",5:"#f85149"},
+    mid:{1:0.50,2:0.65,3:0.83,4:0.98,5:1.20} }; }
+  else { ZDEF={ n:7, lo:[0,0,0.55,0.75,0.90,1.05,1.20,1.50],
+    name:{1:"Recuperación",2:"Resistencia",3:"Tempo",4:"Umbral",5:"VO2máx",6:"Anaeróbico",7:"Neuromuscular"},
+    col:{1:"#4cc2ff",2:"#3fb950",3:"#9fd23f",4:"#e3c53f",5:"#f0883e",6:"#f85149",7:"#b46bd6"},
+    mid:{1:0.50,2:0.65,3:0.83,4:0.98,5:1.13,6:1.35,7:1.60} }; }
+}
+setZoneModel(7);
+function zoneMidWatts(z){ return Math.round((ZDEF.mid[z]||0.6)*ftpVal()); }
 function ghostCadAt(t){ const s=ghost?ghost.samples:null; if(!s||!s.length)return 0;
   if(t<=s[0].t)return s[0].c||0; if(t>=s[s.length-1].t)return s[s.length-1].c||0;
   let i=0;while(i<s.length-1&&s[i+1].t<t)i++;const a=s[i],b=s[i+1];const ca=a.c||0,cb=b.c||0;
@@ -906,7 +920,7 @@ function hud(grade){
   const a10=b10.length?Math.round(b10.reduce((s,x)=>s+x.p,0)/b10.length):0;
   $("hPwAvg").textContent="3s "+(a3||"—")+" · 10s "+(a10||"—");
   $("liveMetrics").textContent = npCount ? ("NP "+Math.round(npVal)+" W · IF "+ifVal.toFixed(2)+" · TSS "+Math.round(tssVal)) : "";
-  if(curPower>0){ const z=zoneOf(curPower); $("hZone").textContent="Z"+z; $("hZone").style.color=ZCOL[z]; }
+  if(curPower>0){ const z=zoneOf(curPower); $("hZone").textContent="Z"+z; $("hZone").style.color=ZDEF.col[z]; }
   else { $("hZone").textContent="—"; $("hZone").style.color="var(--dim)"; }
   const prog = mode==="gpx" ? distanceM/total : (raceBy==="tiempo" ? elapsed/targetTime : distanceM/targetDist);
   $("pbar").style.width=Math.min(100,prog*100)+"%";
@@ -952,6 +966,17 @@ function bearingAt(d){
   return Math.atan2(y,x);
 }
 function eleAt(d){ return pe[Math.max(0,Math.min(pe.length-1,Math.round(d/STEP)))]; }
+function shadeHex(hex,f){ const n=parseInt(hex.slice(1),16); let r=(n>>16)&255,g=(n>>8)&255,b=n&255;
+  r=Math.min(255,r*f)|0; g=Math.min(255,g*f)|0; b=Math.min(255,b*f)|0; return "rgb("+r+","+g+","+b+")"; }
+function drawMountains(ctx,w,horizon,camB){
+  const layers=[{amp:0.10,freq:0.9,pan:55,col:"#7492ad"},{amp:0.17,freq:1.5,pan:100,col:"#54718d"}];
+  for(const L of layers){ const base=horizon, amp=L.amp*horizon, phase=camB*L.pan;
+    ctx.fillStyle=L.col; ctx.beginPath(); ctx.moveTo(0,base);
+    for(let px=0;px<=w;px+=6){ const t=(px/w)*6.2832*L.freq+phase;
+      const yy=base-amp*(0.55+0.45*Math.sin(t)+0.28*Math.sin(t*2.3+1));
+      ctx.lineTo(px,yy); }
+    ctx.lineTo(w,base); ctx.closePath(); ctx.fill(); }
+}
 function roadBands(ctx,w,h,d0,bFn,eFn){
   const N=130, NEAR=2.0, GROW=0.045, f=w*0.95, wRoad=5.2, camEyeH=1.4, latK=0.9, bandLen=6, horizonK=5;
   const camB=bFn(d0), camE=eFn(d0);
@@ -961,24 +986,30 @@ function roadBands(ctx,w,h,d0,bFn,eFn){
   const sky=ctx.createLinearGradient(0,0,0,horizon);
   sky.addColorStop(0,"#5bb0e6"); sky.addColorStop(1,"#bfe6f5");
   ctx.fillStyle=sky; ctx.fillRect(0,0,w,horizon);
+  drawMountains(ctx,w,horizon,camB);
   ctx.fillStyle="#213524"; ctx.fillRect(0,horizon,w,h-horizon);
+  const gShade=Math.max(0.72,Math.min(1.15,1-gAhead*0.02)); // luz según pendiente (sube=oscuro)
+  const asphaltL=shadeHex("#4c5661",gShade), asphaltD=shadeHex("#434d57",gShade);
+  const BANK_K=0.5;
   const S=[]; let x=0, prevSeg=0, cum=0;
   for(let i=0;i<=N;i++){
     const dd=d0+cum; let rel=bFn(dd)-camB; rel=Math.atan2(Math.sin(rel),Math.cos(rel));
     if(i>0) x += Math.sin(rel)*prevSeg*latK;
     const Z=cum+0.5, sc=f/Z, e=eFn(dd);
-    S.push({cx:w/2+x*sc, y:horizon-(e-camE-camEyeH)*sc, hw:wRoad*sc, d:dd});
+    S.push({cx:w/2+x*sc, y:horizon-(e-camE-camEyeH)*sc, hw:wRoad*sc, d:dd, bank:Math.max(-0.6,Math.min(0.6,rel))});
     const seg=NEAR+i*GROW; prevSeg=seg; cum+=seg;
   }
 
   for(let i=N-1;i>=0;i--){
     const a=S[i+1], b=S[i], light=(Math.floor(b.d/bandLen)%2===0);
+    const bo=b.bank*b.hw*BANK_K, ao=a.bank*a.hw*BANK_K;   // peralte: desnivel de bordes
+    const bLY=b.y-bo, bRY=b.y+bo, aLY=a.y-ao, aRY=a.y+ao;
     const rb=Math.max(1.5,b.hw*0.26), ra=Math.max(1,a.hw*0.26);
     ctx.fillStyle=light?"#eeeeee":"#d8452f";
-    ctx.beginPath();ctx.moveTo(b.cx-b.hw-rb,b.y);ctx.lineTo(b.cx-b.hw,b.y);ctx.lineTo(a.cx-a.hw,a.y);ctx.lineTo(a.cx-a.hw-ra,a.y);ctx.closePath();ctx.fill();
-    ctx.beginPath();ctx.moveTo(b.cx+b.hw+rb,b.y);ctx.lineTo(b.cx+b.hw,b.y);ctx.lineTo(a.cx+a.hw,a.y);ctx.lineTo(a.cx+a.hw+ra,a.y);ctx.closePath();ctx.fill();
-    ctx.fillStyle=light?"#4c5661":"#434d57";
-    ctx.beginPath();ctx.moveTo(b.cx-b.hw,b.y);ctx.lineTo(b.cx+b.hw,b.y);ctx.lineTo(a.cx+a.hw,a.y);ctx.lineTo(a.cx-a.hw,a.y);ctx.closePath();ctx.fill();
+    ctx.beginPath();ctx.moveTo(b.cx-b.hw-rb,bLY);ctx.lineTo(b.cx-b.hw,bLY);ctx.lineTo(a.cx-a.hw,aLY);ctx.lineTo(a.cx-a.hw-ra,aLY);ctx.closePath();ctx.fill();
+    ctx.beginPath();ctx.moveTo(b.cx+b.hw+rb,bRY);ctx.lineTo(b.cx+b.hw,bRY);ctx.lineTo(a.cx+a.hw,aRY);ctx.lineTo(a.cx+a.hw+ra,aRY);ctx.closePath();ctx.fill();
+    ctx.fillStyle=light?asphaltL:asphaltD;
+    ctx.beginPath();ctx.moveTo(b.cx-b.hw,bLY);ctx.lineTo(b.cx+b.hw,bRY);ctx.lineTo(a.cx+a.hw,aRY);ctx.lineTo(a.cx-a.hw,aLY);ctx.closePath();ctx.fill();
     if(light){ const cb=Math.max(1,b.hw*0.06), ca=Math.max(0.7,a.hw*0.06);
       ctx.fillStyle="#efe7c8";
       ctx.beginPath();ctx.moveTo(b.cx-cb,b.y);ctx.lineTo(b.cx+cb,b.y);ctx.lineTo(a.cx+ca,a.y);ctx.lineTo(a.cx-ca,a.y);ctx.closePath();ctx.fill(); }
@@ -1029,6 +1060,15 @@ function drawRoad(){
       ctx.textAlign="start";
     } }
   drawCyclistRear(ctx, w/2, h-6, youS, roadCrank, "#2f6f9c", 1);
+  // cartel de ventaja/desventaja respecto del fantasma (arriba)
+  if(ghost){ const gapNow=Math.round(dNow-gNow), ahead=gapNow>=0;
+    const lbl=(ahead?"+":"−")+Math.abs(gapNow)+" m "+(ahead?"adelante":"atrás");
+    ctx.font="700 15px system-ui"; ctx.textAlign="center";
+    const tw=ctx.measureText(lbl).width;
+    ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(w/2-tw/2-7,8,tw+14,24);
+    ctx.fillStyle=ahead?"#3fb950":"#ff6b6b"; ctx.fillText(lbl,w/2,25);
+    ctx.textAlign="start";
+  }
 }
 function bearingRoute(route,d){ const {pts,dist}=route; let i=0; while(i<dist.length-2&&dist[i+1]<d)i++;
   const a=pts[i],b=pts[i+1],toR=Math.PI/180;
@@ -1334,11 +1374,10 @@ function finishRide(){
   { const zsec={}; let tot=0;
     for(const s of session.samples){ if(s.p>0){ const z=zoneOf(s.p); zsec[z]=(zsec[z]||0)+1; tot++; } }
     if(tot>0){ let html='<div style="color:var(--dim);font-size:12px;margin-bottom:4px">Tiempo por zona</div>';
-      const ZN={1:"Rec",2:"Res",3:"Tempo",4:"Umbral",5:"VO2",6:"Anaer",7:"Neuro"};
-      for(let z=1;z<=7;z++){ const sec=zsec[z]||0, pct=tot?sec/tot*100:0; if(sec===0)continue;
+      for(let z=1;z<=ZDEF.n;z++){ const sec=zsec[z]||0, pct=tot?sec/tot*100:0; if(sec===0)continue;
         html+=`<div style="display:flex;align-items:center;gap:8px;margin:3px 0;font-size:13px">
-          <span style="width:70px;color:var(--dim)">Z${z} ${ZN[z]}</span>
-          <div style="flex:1;background:#1b2129;border-radius:4px;height:14px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${ZCOL[z]}"></div></div>
+          <span style="width:96px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Z${z} ${ZDEF.name[z]}</span>
+          <div style="flex:1;background:#1b2129;border-radius:4px;height:14px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${ZDEF.col[z]}"></div></div>
           <span style="width:52px;text-align:right">${fmtTime(sec)}</span></div>`; }
       $("sZones").innerHTML=html;
     } else $("sZones").innerHTML="";
@@ -1391,26 +1430,28 @@ $("reconnBtn").onclick=()=>{ conn==="ble"?reconnectBle():connect(); };
 $("connType").onchange=()=>{ conn=$("connType").value; $("hrBleBtn").classList.toggle("hidden",conn!=="ble"); saveCfg(); };
 $("hrBleBtn").onclick=connectHrBle;
 
-const CFG_KEY="bici_config", CFG_IDS=["weight","bike","crr","cda","smoothM","diff","connType","ftp","hrMax","hrRest","cadPref","crankLen"];
+const CFG_KEY="bici_config", CFG_IDS=["weight","bike","crr","cda","smoothM","diff","connType","ftp","age","hrMax","hrRest","cadPref","crankLen","zoneModel"];
+function hrMaxVal(){ const m=parseInt($("hrMax").value,10); if(m>0)return m; const a=parseInt($("age").value,10)||40; return Math.round(207-0.7*a); }
+function updateHrMaxHint(){ const el=$("hrMaxHint"); if(!el)return; const own=parseInt($("hrMax").value,10)>0;
+  el.textContent="FC máx en uso: "+hrMaxVal()+" bpm"+(own?" (propia)":" (estimada por edad)"); }
 function saveCfg(){ const o={}; CFG_IDS.forEach(id=>{const el=$(id);if(el)o[id]=el.value;}); try{localStorage.setItem(CFG_KEY,JSON.stringify(o));}catch(_){} }
 function loadCfg(){ let o; try{o=JSON.parse(localStorage.getItem(CFG_KEY)||"{}");}catch(_){o={};}
   CFG_IDS.forEach(id=>{const el=$(id);if(el&&o[id]!=null)el.value=o[id];});
   conn=$("connType").value; $("hrBleBtn").classList.toggle("hidden",conn!=="ble");
 }
 CFG_IDS.forEach(id=>{const el=$(id);if(el)el.addEventListener("change",saveCfg);});
-loadCfg();
+["age","hrMax"].forEach(id=>{const el=$(id);if(el)el.addEventListener("input",updateHrMaxHint);});
+$("zoneModel").addEventListener("change",()=>{ setZoneModel(parseInt($("zoneModel").value,10)); saveCfg(); renderZones(); });
+loadCfg(); setZoneModel(parseInt(($("zoneModel").value)||"7",10)); updateHrMaxHint();
 
 // ---------- Zonas / FTP ----------
-const ZCOL={1:"#4cc2ff",2:"#3fb950",3:"#9fd23f",4:"#e3c53f",5:"#f0883e",6:"#f85149",7:"#b46bd6"};
-const ZNAME={1:"Recuperación",2:"Resistencia",3:"Tempo",4:"Umbral",5:"VO2máx",6:"Anaeróbico",7:"Neuromuscular"};
-const ZLO=[0,0,0.55,0.75,0.90,1.05,1.20,1.50], ZHI=[0,0.55,0.75,0.90,1.05,1.20,1.50,99];
 function ftpVal(){ return Math.max(50,parseInt($("ftp").value,10)||200); }
-function zoneOf(p){ const r=p/ftpVal(); if(r<0.55)return 1;if(r<0.75)return 2;if(r<0.90)return 3;if(r<1.05)return 4;if(r<1.20)return 5;if(r<1.50)return 6;return 7; }
+function zoneOf(p){ const r=p/ftpVal(); let z=1; for(let i=1;i<=ZDEF.n;i++){ if(r>=ZDEF.lo[i]) z=i; } return z; }
 function renderZones(){
   const ftp=ftpVal(); $("ftp").value=ftp; $("ftp2").value=ftp;
   let html="";
-  for(let z=1;z<=7;z++){ const lo=Math.round(ZLO[z]*ftp), hi=z===7?"∞":Math.round(ZHI[z]*ftp);
-    html+=`<div class="srow"><div class="info"><span class="badge" style="background:${ZCOL[z]};color:#04121c">Z${z}</span>${ZNAME[z]}<div class="tag">${lo}–${hi} W</div></div></div>`; }
+  for(let z=1;z<=ZDEF.n;z++){ const lo=Math.round(ZDEF.lo[z]*ftp), hi=z===ZDEF.n?"∞":Math.round(ZDEF.lo[z+1]*ftp);
+    html+=`<div class="srow"><div class="info"><span class="badge" style="background:${ZDEF.col[z]};color:#04121c">Z${z}</span>${ZDEF.name[z]}<div class="tag">${lo}–${hi} W</div></div></div>`; }
   $("zonesTable").innerHTML=html;
 }
 function estimateFtp(){
@@ -1458,9 +1499,9 @@ function parseWorkout(text){
   return {steps,totalSec,error:err.length?err.join("\n"):null};
 }
 function fmtDur(sec){ const m=Math.floor(sec/60), s=sec%60; return (m?m+"'":"")+(s?s+'"':"")||'0"'; }
-function woStepColor(s){ return s.kind==="erg" ? (s.z?ZCOL[s.z]:"#4cc2ff") : gradeColor(s.slope); }
+function woStepColor(s){ return s.kind==="erg" ? (s.z?ZDEF.col[s.z]:"#4cc2ff") : gradeColor(s.slope); }
 function woStepLabel(s){ return s.kind==="erg" ? (s.z?("Z"+s.z):(s.w+" W")) : (s.slope+"%"); }
-function woIntensity(s){ return s.kind==="erg" ? (s.z?ZMID[s.z]:(s.w/ftpVal())) : Math.max(0.3, 0.5+s.slope*0.12); }
+function woIntensity(s){ return s.kind==="erg" ? (s.z?ZDEF.mid[s.z]:(s.w/ftpVal())) : Math.max(0.3, 0.5+s.slope*0.12); }
 function drawWoHist(steps,totalSec){
   const cv=$("woHist"); if(!cv)return; const r=fit(cv),ctx=r.ctx,w=r.w,h=r.h;
   ctx.clearRect(0,0,w,h);
@@ -1483,7 +1524,7 @@ function renderWoZoneBreak(steps){
   const zsec={}, wrap=$("woZoneBreak"); let pend=0;
   for(const s of steps){ if(s.kind==="erg"){ const z=s.z||zoneOf(s.w); zsec[z]=(zsec[z]||0)+s.dur; } else pend+=s.dur; }
   let html="";
-  for(let z=1;z<=7;z++){ if(zsec[z]) html+=`<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:${ZCOL[z]};display:inline-block"></span>Z${z} ${fmtTime(zsec[z])}</span>`; }
+  for(let z=1;z<=ZDEF.n;z++){ if(zsec[z]) html+=`<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:${ZDEF.col[z]};display:inline-block"></span>Z${z} ${fmtTime(zsec[z])}</span>`; }
   if(pend) html+=`<span style="color:var(--dim)">Pendiente ${fmtTime(pend)}</span>`;
   wrap.innerHTML=html;
 }
