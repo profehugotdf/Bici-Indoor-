@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v50</title>
+<title>Bici Indoor · v51</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v50</h1>
+  <h1>Bici Indoor · v51</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -987,6 +987,11 @@ function roadBands(ctx,w,h,d0,bFn,eFn){
   sky.addColorStop(0,"#5bb0e6"); sky.addColorStop(1,"#bfe6f5");
   ctx.fillStyle=sky; ctx.fillRect(0,0,w,horizon);
   drawMountains(ctx,w,horizon,camB);
+  // niebla suave en la franja del horizonte (debajo de la ruta cercana)
+  const fogH=Math.round(h*0.10);
+  const fog=ctx.createLinearGradient(0,horizon-fogH*0.5,0,horizon+fogH);
+  fog.addColorStop(0,"rgba(191,230,245,0)"); fog.addColorStop(0.5,"rgba(191,230,245,.75)"); fog.addColorStop(1,"rgba(191,230,245,0)");
+  ctx.fillStyle=fog; ctx.fillRect(0,horizon-fogH*0.5,w,fogH*1.5);
   ctx.fillStyle="#213524"; ctx.fillRect(0,horizon,w,h-horizon);
   const gShade=Math.max(0.72,Math.min(1.15,1-gAhead*0.02)); // luz según pendiente (sube=oscuro)
   const asphaltL=shadeHex("#4c5661",gShade), asphaltD=shadeHex("#434d57",gShade);
@@ -1026,11 +1031,6 @@ function roadBands(ctx,w,h,d0,bFn,eFn){
       }
     }
   }
-  // niebla/haze hacia el horizonte (funde el corte lejano)
-  const fogH=Math.round(h*0.13);
-  const fog=ctx.createLinearGradient(0,horizon,0,horizon+fogH);
-  fog.addColorStop(0,"rgba(191,230,245,.9)"); fog.addColorStop(1,"rgba(191,230,245,0)");
-  ctx.fillStyle=fog; ctx.fillRect(0,horizon,w,fogH);
   return S;
 }
 function roadPointAt(S,d){
