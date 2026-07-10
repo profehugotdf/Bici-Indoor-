@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v51</title>
+<title>Bici Indoor · v53</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v51</h1>
+  <h1>Bici Indoor · v53</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1078,55 +1078,59 @@ function bearingRoute(route,d){ const {pts,dist}=route; let i=0; while(i<dist.le
 function eleRoute(route,d){ return posAtDistance(route,d).ele; }
 function drawCyclistRear(ctx,cx,gy,s,crank,jersey,alpha){
   ctx.save(); ctx.globalAlpha=alpha==null?1:alpha; ctx.lineJoin="round"; ctx.lineCap="round";
+  const skin="#c98d5e", shorts="#1e2c4a", helmet="#3a3f47", bike="#565b63", hand="#242830";
+  const hipY=gy-1.45*s, shY=gy-2.5*s, headY=gy-2.82*s, barY=gy-1.5*s;
   // sombra en el piso
   ctx.fillStyle="rgba(0,0,0,.28)";
   ctx.beginPath();ctx.ellipse(cx,gy+s*0.18,s*0.62,s*0.16,0,0,7);ctx.fill();
-  const hipY=gy-1.45*s, shY=gy-2.5*s, headY=gy-3.0*s;
-  const skin="#c98d5e", dark="#12161c";
-  // rueda trasera + cuadro insinuado
-  ctx.strokeStyle=dark; ctx.lineWidth=s*0.13;
-  ctx.beginPath();ctx.ellipse(cx,gy,s*0.26,s*0.5,0,0,7);ctx.stroke();
-  ctx.strokeStyle="#252b34"; ctx.lineWidth=s*0.09;
-  ctx.beginPath();ctx.moveTo(cx,hipY);ctx.lineTo(cx,gy-s*0.5);ctx.stroke();
-  // piernas (rodillas alineadas, sin abrirse); la de pie más alto se dibuja primero
+  // --- bicicleta ---
+  ctx.strokeStyle=bike; ctx.lineWidth=s*0.12;
+  ctx.beginPath();ctx.ellipse(cx,gy,s*0.24,s*0.5,0,0,7);ctx.stroke();           // rueda trasera
+  ctx.lineWidth=s*0.09;
+  ctx.beginPath();ctx.moveTo(cx,hipY-s*0.05);ctx.lineTo(cx,gy-s*0.45);ctx.stroke(); // tija+tubo asiento
+  ctx.beginPath();ctx.moveTo(cx,hipY);ctx.lineTo(cx,barY);ctx.stroke();          // tubo hacia manubrio
+  ctx.lineWidth=s*0.1;
+  ctx.beginPath();ctx.moveTo(cx-s*0.42,barY-s*0.02);ctx.lineTo(cx+s*0.42,barY-s*0.02);ctx.stroke(); // manubrio
+  // --- piernas (rodillas alineadas; la de pie más alto primero) ---
   const pedalCY=gy-0.5*s, rc=s*0.34;
   const leg=(side,ph)=>{
-    const py=pedalCY - Math.cos(ph)*rc*0.95;
-    const px=cx + side*(s*0.23);
+    const py=pedalCY - Math.cos(ph)*rc*0.95, px=cx+side*s*0.23;
     const hipX=cx+side*s*0.23, kneeX=cx+side*s*0.23, kneeY=(hipY+py)/2+s*0.05;
     ctx.strokeStyle=skin; ctx.lineWidth=s*0.30;
     ctx.beginPath();ctx.moveTo(hipX,hipY);ctx.lineTo(kneeX,kneeY);ctx.stroke();
-    ctx.lineWidth=s*0.20;
-    ctx.beginPath();ctx.moveTo(kneeX,kneeY);ctx.lineTo(px,py);ctx.stroke();
-    // zapatilla vista desde atrás (talón/suela)
-    ctx.fillStyle=dark;
-    ctx.beginPath();ctx.ellipse(px, py+s*0.05, s*0.15, s*0.1, 0, 0, 7);ctx.fill();
-    ctx.fillStyle="#2a2f37";
-    ctx.beginPath();ctx.ellipse(px, py+s*0.11, s*0.15, s*0.04, 0, 0, 7);ctx.fill();
+    ctx.lineWidth=s*0.20; ctx.beginPath();ctx.moveTo(kneeX,kneeY);ctx.lineTo(px,py);ctx.stroke();
+    ctx.fillStyle="#20242b"; ctx.beginPath();ctx.ellipse(px,py+s*0.05,s*0.15,s*0.1,0,0,7);ctx.fill();
+    ctx.fillStyle="#33383f"; ctx.beginPath();ctx.ellipse(px,py+s*0.11,s*0.15,s*0.04,0,0,7);ctx.fill();
   };
   const lPh=crank, rPh=crank+Math.PI;
   if(Math.cos(lPh)>Math.cos(rPh)){ leg(1,rPh); leg(-1,lPh); } else { leg(-1,lPh); leg(1,rPh); }
-  // cuello (detrás del tronco)
-  ctx.fillStyle=skin; ctx.beginPath();ctx.arc(cx,shY-s*0.05,s*0.15,0,7);ctx.fill();
-  // short
-  ctx.fillStyle="#1b1f26";
-  ctx.beginPath();ctx.moveTo(cx-s*0.4,hipY-s*0.15);ctx.lineTo(cx+s*0.4,hipY-s*0.15);ctx.lineTo(cx+s*0.32,hipY+s*0.4);ctx.lineTo(cx-s*0.32,hipY+s*0.4);ctx.closePath();ctx.fill();
-  // torso jersey (hombros anchos → cintura)
+  // --- short ---
+  ctx.fillStyle=shorts;
+  ctx.beginPath();ctx.moveTo(cx-s*0.4,hipY-s*0.18);ctx.lineTo(cx+s*0.4,hipY-s*0.18);ctx.lineTo(cx+s*0.33,hipY+s*0.42);ctx.lineTo(cx-s*0.33,hipY+s*0.42);ctx.closePath();ctx.fill();
+  // --- cuello (detrás del tronco) ---
+  ctx.fillStyle=skin; ctx.beginPath();ctx.arc(cx,shY-s*0.02,s*0.15,0,7);ctx.fill();
+  // --- torso jersey (rectangular, ancho de caderas), color del corredor ---
   ctx.fillStyle=jersey;
-  ctx.beginPath();ctx.moveTo(cx-s*0.36,hipY-s*0.05);ctx.lineTo(cx+s*0.36,hipY-s*0.05);ctx.lineTo(cx+s*0.6,shY);ctx.lineTo(cx-s*0.6,shY);ctx.closePath();ctx.fill();
-  ctx.strokeStyle="rgba(0,0,0,.2)";ctx.lineWidth=s*0.05;ctx.beginPath();ctx.moveTo(cx,shY+s*0.1);ctx.lineTo(cx,hipY-s*0.05);ctx.stroke();
-  // brazos hacia el manubrio (bajan y adelante)
-  ctx.strokeStyle=jersey; ctx.lineWidth=s*0.17;
-  ctx.beginPath();ctx.moveTo(cx-s*0.58,shY+s*0.05);ctx.lineTo(cx-s*0.4,shY+s*0.85);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(cx+s*0.58,shY+s*0.05);ctx.lineTo(cx+s*0.4,shY+s*0.85);ctx.stroke();
-  ctx.fillStyle=dark;
-  ctx.beginPath();ctx.arc(cx-s*0.4,shY+s*0.88,s*0.09,0,7);ctx.fill();
-  ctx.beginPath();ctx.arc(cx+s*0.4,shY+s*0.88,s*0.09,0,7);ctx.fill();
-  // cabeza + casco (arriba de todo)
-  ctx.fillStyle="#11151b";
-  ctx.beginPath();ctx.ellipse(cx,headY,s*0.28,s*0.24,0,0,7);ctx.fill();
-  ctx.fillStyle="#2a313b";
-  ctx.beginPath();ctx.ellipse(cx,headY-s*0.02,s*0.26,s*0.18,0,Math.PI,2*Math.PI);ctx.fill();
+  ctx.beginPath();ctx.moveTo(cx-s*0.38,hipY-s*0.08);ctx.lineTo(cx+s*0.38,hipY-s*0.08);ctx.lineTo(cx+s*0.4,shY);ctx.lineTo(cx-s*0.4,shY);ctx.closePath();ctx.fill();
+  ctx.strokeStyle="rgba(0,0,0,.18)";ctx.lineWidth=s*0.05;ctx.beginPath();ctx.moveTo(cx,shY+s*0.12);ctx.lineTo(cx,hipY-s*0.08);ctx.stroke();
+  // --- brazos con codo (hombro→codo→muñeca→manubrio) ---
+  const elbow=(side)=>({x:cx+side*s*0.55, y:shY+s*0.42});
+  const wrist=(side)=>({x:cx+side*s*0.42, y:barY});
+  for(const side of [-1,1]){ const sh0={x:cx+side*s*0.38,y:shY+s*0.04}, el=elbow(side), wr=wrist(side);
+    ctx.strokeStyle=jersey; ctx.lineWidth=s*0.17;
+    ctx.beginPath();ctx.moveTo(sh0.x,sh0.y);ctx.lineTo(el.x,el.y);ctx.stroke();
+    ctx.strokeStyle=skin; ctx.lineWidth=s*0.15;
+    ctx.beginPath();ctx.moveTo(el.x,el.y);ctx.lineTo(wr.x,wr.y);ctx.stroke();
+  }
+  // manos/guantes en el manubrio
+  ctx.fillStyle=hand;
+  ctx.beginPath();ctx.ellipse(cx-s*0.42,barY,s*0.1,s*0.08,0,0,7);ctx.fill();
+  ctx.beginPath();ctx.ellipse(cx+s*0.42,barY,s*0.1,s*0.08,0,0,7);ctx.fill();
+  // --- cabeza + casco ---
+  ctx.fillStyle=helmet;
+  ctx.beginPath();ctx.ellipse(cx,headY,s*0.27,s*0.24,0,0,7);ctx.fill();
+  ctx.fillStyle="#4a5058";
+  ctx.beginPath();ctx.ellipse(cx,headY-s*0.03,s*0.25,s*0.17,0,Math.PI,2*Math.PI);ctx.fill();
   ctx.restore();
 }
 function applyGpxView(){
