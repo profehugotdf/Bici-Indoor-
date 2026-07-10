@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v53</title>
+<title>Bici Indoor · v55</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v53</h1>
+  <h1>Bici Indoor · v55</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -132,6 +132,19 @@
           <label id="pvSmoothV" style="color:var(--dim);font-size:13px;width:48px">100 m</label>
         </div>
         <div id="pvReadout" style="color:var(--dim);font-size:12px;margin-top:6px">Deslizá el dedo por la altimetría para ubicar el punto</div>
+        <button class="full" id="sceneEditBtn" style="margin-top:10px">Editar escenario de la ruta</button>
+      </div>
+    </div>
+
+    <div class="card hidden" id="sceneCard">
+      <h2>Escenario de la ruta</h2>
+      <div id="sceneRouteInfo" style="color:var(--dim);font-size:13px;margin-bottom:8px"></div>
+      <canvas id="sceneStrip" height="26" style="width:100%;display:block;border-radius:6px;margin-bottom:10px"></canvas>
+      <div id="sceneRows"></div>
+      <button class="full" id="sceneAddBtn" style="margin-top:8px">+ Agregar tramo</button>
+      <div class="controls" style="margin-top:12px">
+        <button id="sceneCancel">Cancelar</button>
+        <button class="primary" id="sceneSave">Guardar</button>
       </div>
     </div>
 
@@ -334,6 +347,7 @@
       <button class="full" id="repLoadGpx" style="margin-top:8px">Cargar ruta del recorrido (GPX)</button>
       <input type="file" id="repGpxFile" accept=".gpx,application/gpx+xml,text/xml" style="display:none">
       <div id="repGpxInfo" style="color:var(--dim);font-size:12px;margin-top:4px"></div>
+      <button class="full hidden" id="repSceneBtn" style="margin-top:8px">Editar escenario de la ruta</button>
       <button class="primary full" id="repStart" style="margin-top:10px">Iniciar carrera</button>
     </div>
     <div id="replayView" class="hidden">
@@ -968,40 +982,149 @@ function bearingAt(d){
 function eleAt(d){ return pe[Math.max(0,Math.min(pe.length-1,Math.round(d/STEP)))]; }
 function shadeHex(hex,f){ const n=parseInt(hex.slice(1),16); let r=(n>>16)&255,g=(n>>8)&255,b=n&255;
   r=Math.min(255,r*f)|0; g=Math.min(255,g*f)|0; b=Math.min(255,b*f)|0; return "rgb("+r+","+g+","+b+")"; }
-function drawMountains(ctx,w,horizon,camB){
-  const layers=[{amp:0.10,freq:0.9,pan:55,col:"#7492ad"},{amp:0.17,freq:1.5,pan:100,col:"#54718d"}];
-  for(const L of layers){ const base=horizon, amp=L.amp*horizon, phase=camB*L.pan;
+function hexRgba(hex,a){ const n=parseInt(hex.slice(1),16); return "rgba("+((n>>16)&255)+","+((n>>8)&255)+","+(n&255)+","+a+")"; }
+// ---------- Escenarios de ruta ----------
+const SCENES={
+  rural:{ label:"Rural", sky:["#5bb0e6","#bfe6f5"], ground:"#213524", asphalt:"#4c5661", mtnCol:["#7492ad","#54718d"], mtnAmp:1, decor:"trees" },
+  urbana:{ label:"Urbana", sky:["#8fb3cf","#d8e6ec"], ground:"#3a3d42", asphalt:"#54595f", mtnCol:["#93a0ad","#717d89"], mtnAmp:1.5, decor:"buildings" },
+  cornisa:{ label:"Cornisa", sky:["#4f8fc0","#a9d3e8"], ground:"#4a4034", asphalt:"#4c4640", mtnCol:["#8f7f6e","#6e6156"], mtnAmp:1.9, decor:"rocks" },
+  mar:{ label:"Costa / Mar", sky:["#57b6e0","#cdeffb"], ground:"#cdb583", asphalt:"#565049", mtnCol:["#6fb0d6","#3f80ab"], mtnAmp:0.35, decor:"waves" },
+};
+function loadScenes(){ try{return JSON.parse(localStorage.getItem("bici_scenes")||"{}");}catch(_){ return {}; } }
+function saveScenes(o){ try{localStorage.setItem("bici_scenes",JSON.stringify(o));}catch(_){} }
+function getRouteScenes(routeName){ const all=loadScenes(); return (routeName&&all[routeName])||[{km:0,scene:"rural"}]; }
+function setRouteScenes(routeName,segs){ if(!routeName)return; const all=loadScenes(); all[routeName]=segs; saveScenes(all); }
+
+// ---------- Editor de escenario ----------
+let sceneEditRows=[], sceneEditRoute=null, sceneEditTotal=0, sceneReturnTo="gpx";
+function openSceneEditor(routeName,totalM,returnTo){
+  routeName = routeName || fname; totalM = totalM || total; returnTo = returnTo || "gpx";
+  if(!routeName || !totalM){ alert("Cargá primero un recorrido (GPX)."); return; }
+  sceneEditRoute=routeName; sceneEditTotal=totalM; sceneReturnTo=returnTo;
+  sceneEditRows=getRouteScenes(routeName).map(s=>({km:s.km,scene:s.scene}));
+  $("sceneRouteInfo").textContent=routeName+" · "+(totalM/1000).toFixed(2)+" km";
+  renderSceneRows();
+  if(returnTo==="gpx"){ $("gpxSetup").classList.add("hidden"); $("preview").classList.add("hidden"); }
+  else { $("replayCard").classList.add("hidden"); }
+  $("sceneCard").classList.remove("hidden");
+}
+function closeSceneEditor(){
+  $("sceneCard").classList.add("hidden");
+  if(sceneReturnTo==="gpx"){ $("gpxSetup").classList.remove("hidden"); $("preview").classList.remove("hidden"); }
+  else { $("replayCard").classList.remove("hidden"); }
+}
+function renderSceneRows(){
+  sceneEditRows.sort((a,b)=>a.km-b.km);
+  const wrap=$("sceneRows"); wrap.innerHTML="";
+  sceneEditRows.forEach((row,i)=>{
+    const div=document.createElement("div");
+    div.style.cssText="display:flex;align-items:center;gap:8px;margin:6px 0";
+    const lbl=document.createElement("span"); lbl.style.cssText="font-size:13px;color:var(--dim)"; lbl.textContent="Desde";
+    const km=document.createElement("input"); km.type="number"; km.min="0"; km.step="0.1"; km.value=row.km.toFixed(1);
+    km.style.cssText="width:70px"; km.disabled=(i===0);
+    km.onchange=()=>{ row.km=Math.max(0,Math.min(sceneEditTotal/1000,parseFloat(km.value)||0)); renderSceneRows(); drawSceneStrip(); };
+    const kmU=document.createElement("span"); kmU.style.cssText="font-size:13px;color:var(--dim)"; kmU.textContent="km";
+    const sel=document.createElement("select"); sel.style.flex="1";
+    for(const key in SCENES){ const o=document.createElement("option"); o.value=key; o.textContent=SCENES[key].label; if(key===row.scene)o.selected=true; sel.appendChild(o); }
+    sel.onchange=()=>{ row.scene=sel.value; drawSceneStrip(); };
+    div.appendChild(lbl);div.appendChild(km);div.appendChild(kmU);div.appendChild(sel);
+    if(i>0){ const del=document.createElement("button"); del.className="del"; del.textContent="✕"; del.style.minHeight="36px";
+      del.onclick=()=>{ sceneEditRows.splice(i,1); renderSceneRows(); drawSceneStrip(); };
+      div.appendChild(del); }
+    wrap.appendChild(div);
+  });
+  drawSceneStrip();
+}
+function drawSceneStrip(){
+  const cv=$("sceneStrip"); if(!cv||!sceneEditTotal)return;
+  const r=fit(cv), ctx=r.ctx, w=r.w, h=r.h; if(w<10)return;
+  ctx.clearRect(0,0,w,h);
+  const segs=[...sceneEditRows].sort((a,b)=>a.km-b.km), totKm=sceneEditTotal/1000;
+  for(let i=0;i<segs.length;i++){
+    const x0=w*(segs[i].km/totKm), x1= i+1<segs.length? w*(segs[i+1].km/totKm) : w;
+    ctx.fillStyle=(SCENES[segs[i].scene]||SCENES.rural).sky[0];
+    ctx.fillRect(x0,0,Math.max(1,x1-x0),h);
+  }
+}
+$("sceneEditBtn").onclick=()=>openSceneEditor(fname,total,"gpx");
+$("sceneAddBtn").onclick=()=>{
+  const lastKm=sceneEditRows.length?Math.max(...sceneEditRows.map(s=>s.km)):0;
+  const nextKm=Math.min(sceneEditTotal/1000, +(lastKm+1).toFixed(1));
+  sceneEditRows.push({km:nextKm, scene:"rural"}); renderSceneRows();
+};
+$("sceneCancel").onclick=closeSceneEditor;
+$("sceneSave").onclick=()=>{
+  const segs=sceneEditRows.map(s=>({km:+s.km.toFixed(2),scene:s.scene})).sort((a,b)=>a.km-b.km);
+  if(!segs.length||segs[0].km!==0) segs.unshift({km:0,scene:"rural"});
+  setRouteScenes(sceneEditRoute,segs);
+  closeSceneEditor();
+};
+function sceneAt(routeName,d){
+  const segs=getRouteScenes(routeName), km=d/1000;
+  let cur=segs[0]?segs[0].scene:"rural";
+  for(const s of segs){ if(s.km<=km+1e-6) cur=s.scene; else break; }
+  return SCENES[cur]||SCENES.rural;
+}
+function drawMountains(ctx,w,horizon,camB,sc){
+  const layers=[{amp:0.10,freq:0.9,pan:55,col:sc.mtnCol[0]},{amp:0.17,freq:1.5,pan:100,col:sc.mtnCol[1]}];
+  for(const L of layers){ const base=horizon, amp=L.amp*sc.mtnAmp*horizon, phase=camB*L.pan;
     ctx.fillStyle=L.col; ctx.beginPath(); ctx.moveTo(0,base);
     for(let px=0;px<=w;px+=6){ const t=(px/w)*6.2832*L.freq+phase;
       const yy=base-amp*(0.55+0.45*Math.sin(t)+0.28*Math.sin(t*2.3+1));
       ctx.lineTo(px,yy); }
     ctx.lineTo(w,base); ctx.closePath(); ctx.fill(); }
 }
-function roadBands(ctx,w,h,d0,bFn,eFn){
+function drawSideDecor(ctx,decor,tx,ty,th,seed,side){
+  if(decor==="buildings"){
+    const bw=th*0.62, bh=th*(0.9+0.5*Math.abs(seed));
+    ctx.fillStyle=seed>0?"#5b6470":"#4a525c";
+    ctx.fillRect(tx-bw/2, ty-bh, bw, bh);
+    ctx.fillStyle="#e8c96a";
+    const rows=Math.max(1,Math.floor(bh/(th*0.22))), cols=2;
+    for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
+      if(Math.sin(seed*13+r*3+c*7)>0.1) ctx.fillRect(tx-bw/2+bw*0.18+c*bw*0.42, ty-bh+bh*0.12+r*(th*0.22), bw*0.14, th*0.1);
+    }
+  } else if(decor==="rocks"){
+    const rw=th*0.55, rh=th*(0.8+0.5*Math.abs(seed));
+    ctx.fillStyle=seed>0?"#7d7266":"#69604f";
+    ctx.beginPath();
+    ctx.moveTo(tx-rw*0.5,ty); ctx.lineTo(tx-rw*0.3,ty-rh*0.55); ctx.lineTo(tx-rw*0.05,ty-rh);
+    ctx.lineTo(tx+rw*0.25,ty-rh*0.6); ctx.lineTo(tx+rw*0.5,ty); ctx.closePath(); ctx.fill();
+  } else if(decor==="waves"){
+    ctx.strokeStyle="rgba(255,255,255,.75)"; ctx.lineWidth=Math.max(1,th*0.08);
+    ctx.beginPath(); ctx.arc(tx, ty-th*0.06, th*0.32, Math.PI*0.15, Math.PI*0.85); ctx.stroke();
+  } else { // trees
+    ctx.fillStyle="#5a4634"; ctx.fillRect(tx-th*0.05, ty-th*0.32, th*0.1, th*0.32);
+    ctx.fillStyle=(seed>0)?"#2f6b39":"#367a3f";
+    ctx.beginPath();ctx.ellipse(tx, ty-th*0.5, th*0.28, th*0.5, 0, 0, 7);ctx.fill();
+  }
+}
+function roadBands(ctx,w,h,d0,bFn,eFn,routeName){
   const N=130, NEAR=2.0, GROW=0.045, f=w*0.95, wRoad=5.2, camEyeH=1.4, latK=0.9, bandLen=6, horizonK=5;
   const camB=bFn(d0), camE=eFn(d0);
   const gAhead=(eFn(d0+50)-camE)/50*100;
   let horizon=Math.round(h*0.44 - gAhead*horizonK);
   horizon=Math.max(Math.round(h*0.18),Math.min(Math.round(h*0.74),horizon));
+  const sc=sceneAt(routeName,d0);
   const sky=ctx.createLinearGradient(0,0,0,horizon);
-  sky.addColorStop(0,"#5bb0e6"); sky.addColorStop(1,"#bfe6f5");
+  sky.addColorStop(0,sc.sky[0]); sky.addColorStop(1,sc.sky[1]);
   ctx.fillStyle=sky; ctx.fillRect(0,0,w,horizon);
-  drawMountains(ctx,w,horizon,camB);
+  drawMountains(ctx,w,horizon,camB,sc);
   // niebla suave en la franja del horizonte (debajo de la ruta cercana)
   const fogH=Math.round(h*0.10);
   const fog=ctx.createLinearGradient(0,horizon-fogH*0.5,0,horizon+fogH);
-  fog.addColorStop(0,"rgba(191,230,245,0)"); fog.addColorStop(0.5,"rgba(191,230,245,.75)"); fog.addColorStop(1,"rgba(191,230,245,0)");
+  fog.addColorStop(0,hexRgba(sc.sky[1],0)); fog.addColorStop(0.5,hexRgba(sc.sky[1],.75)); fog.addColorStop(1,hexRgba(sc.sky[1],0));
   ctx.fillStyle=fog; ctx.fillRect(0,horizon-fogH*0.5,w,fogH*1.5);
-  ctx.fillStyle="#213524"; ctx.fillRect(0,horizon,w,h-horizon);
+  ctx.fillStyle=sc.ground; ctx.fillRect(0,horizon,w,h-horizon);
   const gShade=Math.max(0.72,Math.min(1.15,1-gAhead*0.02)); // luz según pendiente (sube=oscuro)
-  const asphaltL=shadeHex("#4c5661",gShade), asphaltD=shadeHex("#434d57",gShade);
+  const asphaltL=shadeHex(sc.asphalt,gShade*1.1), asphaltD=shadeHex(sc.asphalt,gShade*0.96);
   const BANK_K=0.5;
   const S=[]; let x=0, prevSeg=0, cum=0;
   for(let i=0;i<=N;i++){
     const dd=d0+cum; let rel=bFn(dd)-camB; rel=Math.atan2(Math.sin(rel),Math.cos(rel));
     if(i>0) x += Math.sin(rel)*prevSeg*latK;
-    const Z=cum+0.5, sc=f/Z, e=eFn(dd);
-    S.push({cx:w/2+x*sc, y:horizon-(e-camE-camEyeH)*sc, hw:wRoad*sc, d:dd, bank:Math.max(-0.6,Math.min(0.6,rel))});
+    const Z=cum+0.5, sc2=f/Z, e=eFn(dd);
+    S.push({cx:w/2+x*sc2, y:horizon-(e-camE-camEyeH)*sc2, hw:wRoad*sc2, d:dd, bank:Math.max(-0.6,Math.min(0.6,rel))});
     const seg=NEAR+i*GROW; prevSeg=seg; cum+=seg;
   }
 
@@ -1018,16 +1141,15 @@ function roadBands(ctx,w,h,d0,bFn,eFn){
     if(light){ const cb=Math.max(1,b.hw*0.06), ca=Math.max(0.7,a.hw*0.06);
       ctx.fillStyle="#efe7c8";
       ctx.beginPath();ctx.moveTo(b.cx-cb,b.y);ctx.lineTo(b.cx+cb,b.y);ctx.lineTo(a.cx+ca,a.y);ctx.lineTo(a.cx-ca,a.y);ctx.closePath();ctx.fill(); }
-    // arbolitos al costado (sobre el pasto), bajos y verdes: no cargan el horizonte
-    const treeSpacing=30;
-    if(Math.floor(b.d/treeSpacing)!==Math.floor(a.d/treeSpacing) && b.hw>6){
+    // decorado lateral según escenario en este tramo
+    const decorSpacing=30;
+    if(Math.floor(b.d/decorSpacing)!==Math.floor(a.d/decorSpacing) && b.hw>6){
+      const bsc=sceneAt(routeName,b.d);
       for(const side of [-1,1]){
-        const seed=Math.sin(Math.floor(b.d/treeSpacing)*7.3 + side*2.1);
+        const seed=Math.sin(Math.floor(b.d/decorSpacing)*7.3 + side*2.1);
         const off=b.hw*(0.45+0.5*Math.abs(seed));
         const tx=b.cx+side*(b.hw+off), ty=b.y, th=b.hw*(0.45+0.3*Math.abs(seed));
-        ctx.fillStyle="#5a4634"; ctx.fillRect(tx-th*0.05, ty-th*0.32, th*0.1, th*0.32);
-        ctx.fillStyle=(seed>0)?"#2f6b39":"#367a3f";
-        ctx.beginPath();ctx.ellipse(tx, ty-th*0.5, th*0.28, th*0.5, 0, 0, 7);ctx.fill();
+        drawSideDecor(ctx,bsc.decor,tx,ty,th,seed,side);
       }
     }
   }
@@ -1047,7 +1169,7 @@ function drawRoad(){
   const idt=roadInterpDt();
   let dNow=distanceM + v*idt; if(mode==="gpx") dNow=Math.min(total,dNow);
   const gNow=ghost?ghostDistAt(elapsed+idt):0;
-  const S=roadBands(ctx,w,h,dNow,bearingAt,eleAt);
+  const S=roadBands(ctx,w,h,dNow,bearingAt,eleAt,fname);
   const youS=Math.max(20,h*0.135);
   if(ghost && gNow>dNow){ const p=roadPointAt(S,gNow);
     if(p){ const gs=Math.max(5, Math.min(youS*0.8, p.hw*0.14));
@@ -1591,7 +1713,7 @@ $("woSave").onclick=()=>{
 };
 
 // ================= Carrera virtual (replay) =================
-let replayA=null, replayB=null, replayRoute=null, vt=0, replaySpeed=2, replayPlaying=false, replayRAF=null, replayLast=0, replayTotal=0, aCrank=0, bCrank=0, repMapProj=null, repList=[], repZoom=true, rep3d=false, repRoadCtx=null, repGpxOverride=null;
+let replayA=null, replayB=null, replayRoute=null, vt=0, replaySpeed=2, replayPlaying=false, replayRAF=null, replayLast=0, replayTotal=0, aCrank=0, bCrank=0, repMapProj=null, repList=[], repZoom=true, rep3d=false, repRoadCtx=null, repGpxOverride=null, repRouteName=null, repGpxOverrideName=null;
 let repRacers=[], repPicked=new Set(), repCam=0;
 const REP_COLORS=["#4cc2ff","#f0883e","#3fb950","#e3c53f","#b46bd6","#ff6b6b","#5ad1c8","#ff9ec4"];
 function interpAt(samples,t,key){
@@ -1625,12 +1747,12 @@ function startReplay(){
   const idxs=[...repPicked];
   if(idxs.length<2){ alert("Elegí al menos dos corredores."); return; }
   repRacers=idxs.map((idx,k)=>({sess:repList[idx], color:REP_COLORS[k%REP_COLORS.length], crank:0}));
-  replayRoute=null; repMapProj=null; $("repNote").style.display="none";
-  if(repGpxOverride){ replayRoute=repGpxOverride; }
+  replayRoute=null; repMapProj=null; repRouteName=null; $("repNote").style.display="none";
+  if(repGpxOverride){ replayRoute=repGpxOverride; repRouteName=repGpxOverrideName; }
   else {
     const allGpx=repRacers.every(r=>r.sess.mode==="gpx");
     const sameRoute=allGpx && repRacers.every(r=>r.sess.route===repRacers[0].sess.route);
-    if(sameRoute){ const gt=getRouteText(repRacers[0].sess.route); if(gt) replayRoute=parseGpxStandalone(gt); }
+    if(sameRoute){ const gt=getRouteText(repRacers[0].sess.route); if(gt){ replayRoute=parseGpxStandalone(gt); repRouteName=repRacers[0].sess.route; } }
   }
   if(!replayRoute && repRacers.some(r=>r.sess.mode==="gpx")){
     $("repNote").textContent="Sin ruta cargada: se muestra solo la pista y los datos. Usá \"Cargar ruta\" para ver mapa y 3D."; $("repNote").style.display="block";
@@ -1761,7 +1883,7 @@ function drawRepProf(st){
   const eleD=d=>posAtDistance(replayRoute,d).ele;
   for(const s of st){ const xx=x(Math.min(s.d,total)); ctx.beginPath();ctx.arc(xx,y(eleD(s.d)),5,0,7);ctx.fillStyle=s.r.color;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#04121c";ctx.stroke(); }
 }
-$("replayBtn").onclick=()=>{ populateReplay(); $("replaySetup").classList.remove("hidden"); $("replayView").classList.add("hidden"); $("setup").classList.add("hidden"); $("replayCard").classList.remove("hidden"); };
+$("replayBtn").onclick=()=>{ populateReplay(); $("repSceneBtn").classList.add("hidden"); $("repGpxInfo").textContent=""; $("replaySetup").classList.remove("hidden"); $("replayView").classList.add("hidden"); $("setup").classList.add("hidden"); $("replayCard").classList.remove("hidden"); };
 $("replayBack").onclick=()=>{ replayPlaying=false; $("replayCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); };
 $("repStart").onclick=startReplay;
 $("repZoomBtn").onclick=()=>{ repZoom=!repZoom; $("repZoomBtn").textContent="Zoom disputa: "+(repZoom?"ON":"OFF"); if(replayRoute)renderReplay(); };
@@ -1783,7 +1905,7 @@ function drawRepRoad(st){
   const camRacer=repRacers[repCam]||repRacers[0];
   const cam=st.find(x=>x.r===camRacer)||st[0];
   const camD=cam.d;
-  const S=roadBands(ctx,w,h,camD, d=>bearingRoute(replayRoute,d), d=>eleRoute(replayRoute,d));
+  const S=roadBands(ctx,w,h,camD, d=>bearingRoute(replayRoute,d), d=>eleRoute(replayRoute,d), repRouteName);
   const youS=Math.max(20,h*0.135);
   // otros corredores (adelante de la cámara), de lejos a cerca
   const others=st.filter(x=>x.r!==camRacer).sort((a,b)=>b.d-a.d);
@@ -1804,9 +1926,11 @@ $("rep3dBtn").onclick=()=>{ rep3d=!rep3d; $("rep3dBtn").textContent="Vista 3D: "
 $("repLoadGpx").onclick=()=>$("repGpxFile").click();
 $("repGpxFile").onchange=e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader();
   r.onload=()=>{ const route=parseGpxStandalone(r.result); if(!route){ $("repGpxInfo").textContent="No se pudo leer el GPX."; return; }
-    repGpxOverride=route; saveRouteText(f.name,r.result);
-    $("repGpxInfo").innerHTML='<b style="color:var(--ok)">Ruta cargada:</b> '+f.name+" ("+(route.dist[route.dist.length-1]/1000).toFixed(1)+" km) — habilita mapa y 3D"; };
+    repGpxOverride=route; repGpxOverrideName=f.name; saveRouteText(f.name,r.result);
+    $("repGpxInfo").innerHTML='<b style="color:var(--ok)">Ruta cargada:</b> '+f.name+" ("+(route.dist[route.dist.length-1]/1000).toFixed(1)+" km) — habilita mapa y 3D";
+    $("repSceneBtn").classList.remove("hidden"); $("repSceneBtn").dataset.route=f.name; $("repSceneBtn").dataset.total=route.dist[route.dist.length-1]; };
   r.readAsText(f); e.target.value=""; };
+$("repSceneBtn").onclick=()=>{ const b=$("repSceneBtn"); openSceneEditor(b.dataset.route, parseFloat(b.dataset.total), "replay"); };
 $("repPlay").onclick=replayPlayPause;
 $("repRestart").onclick=()=>{ vt=0; replayPlaying=false; $("repPlay").textContent="▶ Play"; renderReplay(); };
 $("repScrub").addEventListener("input",()=>{ replayPlaying=false; $("repPlay").textContent="▶ Play"; vt=replayTotal*($("repScrub").value/1000); renderReplay(); });
@@ -1890,7 +2014,8 @@ function setSelMode(on){ selMode=on; selected.clear(); updateDelCount();
 function exportAll(){
   let cfg={}; try{cfg=JSON.parse(localStorage.getItem("bici_config")||"{}");}catch(_){}
   let routes={}; try{routes=JSON.parse(localStorage.getItem("bici_routes")||"{}");}catch(_){}
-  const bundle={kind:"bici-backup",sesiones:loadSesiones(),config:cfg,routes};
+  let scenes={}; try{scenes=JSON.parse(localStorage.getItem("bici_scenes")||"{}");}catch(_){}
+  const bundle={kind:"bici-backup",sesiones:loadSesiones(),config:cfg,routes,scenes};
   const blob=new Blob([JSON.stringify(bundle)],{type:"application/json"});const d=new Date();
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
   a.download="bici-respaldo-"+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0")+".json";
@@ -1898,9 +2023,9 @@ function exportAll(){
 }
 function importSesiones(text){
   let inc; try{inc=JSON.parse(text);}catch{alert("Archivo inválido");return;}
-  let arr, cfg=null, routes=null;
+  let arr, cfg=null, routes=null, scenes=null;
   if(Array.isArray(inc)) arr=inc;                       // formato viejo
-  else if(inc && Array.isArray(inc.sesiones)){ arr=inc.sesiones; cfg=inc.config; routes=inc.routes; }
+  else if(inc && Array.isArray(inc.sesiones)){ arr=inc.sesiones; cfg=inc.config; routes=inc.routes; scenes=inc.scenes; }
   else { alert("Formato inesperado"); return; }
   const cur=loadSesiones(), seen=new Set(cur.map(s=>s.date));
   let added=0;
@@ -1909,8 +2034,9 @@ function importSesiones(text){
   localStorage.setItem("bici_sesiones",JSON.stringify(cur));
   if(cfg){ try{localStorage.setItem("bici_config",JSON.stringify(cfg));}catch(_){} loadCfg(); }
   if(routes){ try{const r=JSON.parse(localStorage.getItem("bici_routes")||"{}"); Object.assign(r,routes); localStorage.setItem("bici_routes",JSON.stringify(r)); }catch(_){} }
+  if(scenes){ try{const s2=loadScenes(); Object.assign(s2,scenes); saveScenes(s2); }catch(_){} }
   renderHistorial();populateGhosts();
-  alert("Importadas "+added+" sesiones nuevas"+(cfg?" y tu configuración":"")+(routes?" y tus rutas":"")+".");
+  alert("Importadas "+added+" sesiones nuevas"+(cfg?" y tu configuración":"")+(routes?" y tus rutas":"")+(scenes?" y tus escenarios":"")+".");
 }
 function saveRouteText(name,text){ if(!name)return; try{const r=JSON.parse(localStorage.getItem("bici_routes")||"{}"); r[name]=text; localStorage.setItem("bici_routes",JSON.stringify(r)); }catch(_){} }
 function getRouteText(name){ try{const r=JSON.parse(localStorage.getItem("bici_routes")||"{}"); return r[name]||null; }catch(_){ return null; } }
