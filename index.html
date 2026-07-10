@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v58</title>
+<title>Bici Indoor · v59</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v58</h1>
+  <h1>Bici Indoor · v59</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1773,15 +1773,19 @@ function populateReplay(){
 }
 function updateRepSceneBtn(){
   const btn=$("repSceneBtn"); if(!btn)return;
+  // prioridad 1: ruta cargada a mano en esta pantalla (acción explícita más reciente)
+  if(repGpxOverrideName){
+    btn.classList.remove("hidden");
+    btn.dataset.route=repGpxOverrideName; btn.dataset.total=repGpxOverride?repGpxOverride.dist[repGpxOverride.dist.length-1]:0;
+    return;
+  }
+  // prioridad 2: dos o más corredores marcados que comparten recorrido
   const picked=[...repPicked].map(i=>repList[i]);
   const gpxPicked=picked.filter(s=>s.mode==="gpx" && s.route);
-  const sameRoute=gpxPicked.length && gpxPicked.every(s=>s.route===gpxPicked[0].route);
+  const sameRoute=gpxPicked.length>=2 && gpxPicked.every(s=>s.route===gpxPicked[0].route);
   if(sameRoute){
     btn.classList.remove("hidden");
     btn.dataset.route=gpxPicked[0].route; btn.dataset.total=gpxPicked[0].total||0;
-  } else if(repGpxOverrideName){
-    btn.classList.remove("hidden");
-    btn.dataset.route=repGpxOverrideName; btn.dataset.total=repGpxOverride?repGpxOverride.dist[repGpxOverride.dist.length-1]:0;
   } else {
     btn.classList.add("hidden");
   }
