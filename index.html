@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v55</title>
+<title>Bici Indoor · v56</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v55</h1>
+  <h1>Bici Indoor · v56</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -425,7 +425,7 @@ const FILTERS=[{vendorId:0x0fcf,productId:0x1008},{vendorId:0x0fcf,productId:0x1
 
 function antMsg(id,data){const l=data.length,b=new Uint8Array(4+l);
   b[0]=ANT_SYNC;b[1]=l;b[2]=id;b.set(data,3);let cs=0;for(let i=0;i<3+l;i++)cs^=b[i];b[3+l]=cs;return b;}
-async function send(b){try{await device.transferOut(epOut,b);}catch(e){log("TX "+e.message,"#f85149");}}
+async function send(b){ if(!device){ return; } try{await device.transferOut(epOut,b);}catch(e){log("TX "+e.message,"#f85149"); if(device){device=null; onLinkLost();} }}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 async function openDevice(dev){
@@ -459,7 +459,7 @@ async function connectAnt(){
     if(/claim|busy|access/i.test(e.message)) msg("Forzá detención de ANT USB Service y reintentá.");
   }
 }
-function showReconnect(on){ const r=$("reconn"); if(r)r.classList.toggle("hidden",!on); }
+function showReconnect(on){ const r=$("reconn"); if(!r)return; r.classList.toggle("hidden",!on); if(on) r.scrollIntoView({behavior:"smooth",block:"center"}); }
 function afterReconnect(){
   linkLost=false; if(linkTimer){clearTimeout(linkTimer);linkTimer=null;}
   showReconnect(false);
@@ -1453,7 +1453,16 @@ function startRide(){
 }
 function pauseRide(){
   if(state==="riding"){state="paused";$("pause").textContent="Reanudar";sendGrade(0);}
-  else if(state==="paused"){ if(!connected){log("Reconectá el rodillo primero","#f0883e");return;} autoPaused=false;state="riding";lastTs=performance.now();$("pause").textContent="Pausar";}
+  else if(state==="paused"){
+    if(!connected){
+      log("Reconectando…","#f0883e");
+      showReconnect(true);
+      const p=conn==="ble"?reconnectBle():connectAnt();
+      Promise.resolve(p).catch(()=>{});
+      return;
+    }
+    autoPaused=false;state="riding";lastTs=performance.now();$("pause").textContent="Pausar";
+  }
 }
 function finishRide(){
   state="finished";
