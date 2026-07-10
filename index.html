@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v56</title>
+<title>Bici Indoor · v57</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v56</h1>
+  <h1>Bici Indoor · v57</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -419,6 +419,8 @@ function msg(t){$("msg").textContent=t||"";}
 const ANT_SYNC=0xA4, ANTPLUS_KEY=[0xB9,0xA5,0x21,0xFB,0xBD,0x72,0xC3,0x45];
 const NET=0,CH=0,RF=57,PERIOD=8192,FEC=17;
 const HRCH=1,HRDEV=120,HRPER=8070;
+const CADCH=2,CADDEV=122,CADPER=8102;
+let cadSensorActive=false, cadPrevEvt=null, cadPrevRev=null, cadLastRealUpdate=0;
 const M={RESET:0x4A,KEY:0x46,ASSIGN:0x42,ID:0x51,STO:0x44,RF:0x45,PER:0x43,OPEN:0x4B,CLOSE:0x4C,
   BCAST:0x4E,ACK:0x4F,EVENT:0x40,STARTUP:0x6F};
 const FILTERS=[{vendorId:0x0fcf,productId:0x1008},{vendorId:0x0fcf,productId:0x1009},{vendorId:0x0fcf}];
@@ -482,6 +484,7 @@ async function requestWake(){ try{ if("wakeLock" in navigator && !wakeLockRef){ 
 function releaseWake(){ try{ wakeLockRef&&wakeLockRef.release(); }catch(_){} wakeLockRef=null; }
 async function initAnt(){
   setState("Inicializando…","searching");
+  cadPrevEvt=null; cadPrevRev=null; cadSensorActive=false;
   await send(antMsg(M.RESET,[0]));               await sleep(600);
   await send(antMsg(M.KEY,[NET,...ANTPLUS_KEY])); await sleep(50);
   await send(antMsg(M.ASSIGN,[CH,0x00,NET]));     await sleep(50);
@@ -497,8 +500,15 @@ async function initAnt(){
   await send(antMsg(M.RF,[HRCH,RF]));            await sleep(50);
   await send(antMsg(M.PER,[HRCH,HRPER&0xFF,(HRPER>>8)&0xFF])); await sleep(50);
   await send(antMsg(M.OPEN,[HRCH]));
+  // canal 2: sensor de cadencia dedicado (opcional)
+  await send(antMsg(M.ASSIGN,[CADCH,0x00,NET])); await sleep(50);
+  await send(antMsg(M.ID,[CADCH,0,0,CADDEV,0]));  await sleep(50);
+  await send(antMsg(M.STO,[CADCH,0xFF]));         await sleep(50);
+  await send(antMsg(M.RF,[CADCH,RF]));            await sleep(50);
+  await send(antMsg(M.PER,[CADCH,CADPER&0xFF,(CADPER>>8)&0xFF])); await sleep(50);
+  await send(antMsg(M.OPEN,[CADCH]));
   setState("Buscando rodillo… pedaleá","searching");
-  log("Canales FE-C + pulso abiertos");
+  log("Canales FE-C + pulso + cadencia abiertos");
 }
 async function readLoop(){
   let fails=0;
@@ -525,9 +535,17 @@ function frame(f){
     const ch=d[0], p=d.slice(1), page=p[0];
     if(ch===CH){
       if(!sawTrainer){sawTrainer=true;setState("Rodillo conectado","live");log("¡Rodillo FE-C!","#3fb950");refreshStart();}
-      if(page===0x19){const c=p[2],pw=p[5]|((p[6]&0x0F)<<8); if(c!==0xFF)curCad=c; if(pw!==0xFFF)curPower=pw;}
+      if(page===0x19){const c=p[2],pw=p[5]|((p[6]&0x0F)<<8); if(c!==0xFF && !cadSensorActive)curCad=c; if(pw!==0xFFF)curPower=pw;}
     } else if(ch===HRCH){
       const hr=p[7]; if(hr>0){ if(!curHR)log("Pulsómetro OK","#3fb950"); curHR=hr; }
+    } else if(ch===CADCH){
+      if(!cadSensorActive){cadSensorActive=true; log("Sensor de cadencia dedicado detectado (reemplaza al del rodillo)","#3fb950");}
+      const evt=p[4]|(p[5]<<8), rev=p[6]|(p[7]<<8);
+      if(cadPrevEvt!=null){
+        const dEvt=(evt-cadPrevEvt+65536)%65536, dRev=(rev-cadPrevRev+65536)%65536;
+        if(dEvt>0 && dRev>0 && dEvt<32768){ curCad=Math.round(dRev*60*1024/dEvt); cadLastRealUpdate=performance.now(); }
+      }
+      cadPrevEvt=evt; cadPrevRev=rev;
     }
   }
 }
@@ -1954,6 +1972,7 @@ $("ftpTestBtn").onclick=()=>{
 toggleMode();
 
 document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible" && state==="riding") requestWake(); });
+setInterval(()=>{ if(cadSensorActive && curCad>0 && performance.now()-cadLastRealUpdate>3000) curCad=0; }, 1000);
 if("usb" in navigator){
   navigator.usb.addEventListener("disconnect",e=>{
     if(device && e.device===device){
