@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v57</title>
+<title>Bici Indoor · v58</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v57</h1>
+  <h1>Bici Indoor · v58</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1764,11 +1764,27 @@ function populateReplay(){
     const row=document.createElement("label");
     row.style.cssText="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--line);font-size:14px";
     const cb=document.createElement("input"); cb.type="checkbox"; cb.style.width="20px"; cb.style.height="20px";
-    cb.onchange=()=>{ if(cb.checked)repPicked.add(i); else repPicked.delete(i); };
+    cb.onchange=()=>{ if(cb.checked)repPicked.add(i); else repPicked.delete(i); updateRepSceneBtn(); };
     const txt=document.createElement("div"); txt.style.flex="1";
     txt.innerHTML=`${repLabel(s)}<div style="color:var(--dim);font-size:12px">${fmtTime(repDur(s))} · ${(repFinalDist(s)/1000).toFixed(2)} km</div>`;
     row.appendChild(cb); row.appendChild(txt); wrap.appendChild(row);
   });
+  updateRepSceneBtn();
+}
+function updateRepSceneBtn(){
+  const btn=$("repSceneBtn"); if(!btn)return;
+  const picked=[...repPicked].map(i=>repList[i]);
+  const gpxPicked=picked.filter(s=>s.mode==="gpx" && s.route);
+  const sameRoute=gpxPicked.length && gpxPicked.every(s=>s.route===gpxPicked[0].route);
+  if(sameRoute){
+    btn.classList.remove("hidden");
+    btn.dataset.route=gpxPicked[0].route; btn.dataset.total=gpxPicked[0].total||0;
+  } else if(repGpxOverrideName){
+    btn.classList.remove("hidden");
+    btn.dataset.route=repGpxOverrideName; btn.dataset.total=repGpxOverride?repGpxOverride.dist[repGpxOverride.dist.length-1]:0;
+  } else {
+    btn.classList.add("hidden");
+  }
 }
 function startReplay(){
   const idxs=[...repPicked];
@@ -1910,7 +1926,7 @@ function drawRepProf(st){
   const eleD=d=>posAtDistance(replayRoute,d).ele;
   for(const s of st){ const xx=x(Math.min(s.d,total)); ctx.beginPath();ctx.arc(xx,y(eleD(s.d)),5,0,7);ctx.fillStyle=s.r.color;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#04121c";ctx.stroke(); }
 }
-$("replayBtn").onclick=()=>{ populateReplay(); $("repSceneBtn").classList.add("hidden"); $("repGpxInfo").textContent=""; $("replaySetup").classList.remove("hidden"); $("replayView").classList.add("hidden"); $("setup").classList.add("hidden"); $("replayCard").classList.remove("hidden"); };
+$("replayBtn").onclick=()=>{ repGpxOverride=null; repGpxOverrideName=null; populateReplay(); $("repGpxInfo").textContent=""; $("replaySetup").classList.remove("hidden"); $("replayView").classList.add("hidden"); $("setup").classList.add("hidden"); $("replayCard").classList.remove("hidden"); };
 $("replayBack").onclick=()=>{ replayPlaying=false; $("replayCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); };
 $("repStart").onclick=startReplay;
 $("repZoomBtn").onclick=()=>{ repZoom=!repZoom; $("repZoomBtn").textContent="Zoom disputa: "+(repZoom?"ON":"OFF"); if(replayRoute)renderReplay(); };
@@ -1955,7 +1971,7 @@ $("repGpxFile").onchange=e=>{ const f=e.target.files[0]; if(!f)return; const r=n
   r.onload=()=>{ const route=parseGpxStandalone(r.result); if(!route){ $("repGpxInfo").textContent="No se pudo leer el GPX."; return; }
     repGpxOverride=route; repGpxOverrideName=f.name; saveRouteText(f.name,r.result);
     $("repGpxInfo").innerHTML='<b style="color:var(--ok)">Ruta cargada:</b> '+f.name+" ("+(route.dist[route.dist.length-1]/1000).toFixed(1)+" km) — habilita mapa y 3D";
-    $("repSceneBtn").classList.remove("hidden"); $("repSceneBtn").dataset.route=f.name; $("repSceneBtn").dataset.total=route.dist[route.dist.length-1]; };
+    updateRepSceneBtn(); };
   r.readAsText(f); e.target.value=""; };
 $("repSceneBtn").onclick=()=>{ const b=$("repSceneBtn"); openSceneEditor(b.dataset.route, parseFloat(b.dataset.total), "replay"); };
 $("repPlay").onclick=replayPlayPause;
