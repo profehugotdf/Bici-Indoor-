@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v66</title>
+<title>Bici Indoor · v67</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v66</h1>
+  <h1>Bici Indoor · v67</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -136,32 +136,7 @@
       </div>
     </div>
 
-    <div class="card hidden" id="routesCard">
-      <h2>Rutas guardadas</h2>
-      <div style="color:var(--dim);font-size:12px;margin-bottom:8px">Se guardan solas cada vez que cargás un GPX (acá o en Carrera virtual).</div>
-      <div id="routesStorageInfo" style="color:var(--dim);font-size:12px;margin-bottom:6px"></div>
-      <button class="full" id="routesCompressBtn" style="margin-bottom:10px">Comprimir rutas guardadas (liberar espacio)</button>
-      <div style="border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px">
-        <div style="font-weight:600;margin-bottom:6px">¿Altimetría con saltos que el suavizado no arregla?</div>
-        <div style="color:var(--dim);font-size:13px;margin-bottom:8px">GPS Visualizer reemplaza la altura de tu GPS por datos satelitales reales (gratis, sin registro). 1) Bajá el GPX de la ruta acá abajo (⬇ GPX). 2) Subilo ahí, elegí "Output: GPX file". 3) Volvé a cargar el archivo corregido en la app.</div>
-        <a href="https://www.gpsvisualizer.com/elevation" target="_blank" rel="noopener" style="display:block;text-align:center;padding:10px;border-radius:10px;background:var(--acc);color:#04121c;font-weight:700;text-decoration:none">Abrir GPS Visualizer ↗</a>
-      </div>
-      <div id="routesList"></div>
-      <button class="full" id="routesToHistBtn" style="margin-top:6px">Ver/borrar sesiones (Historial)</button>
-      <button class="primary full" id="routesBack" style="margin-top:12px">Volver</button>
-    </div>
 
-    <div class="card hidden" id="sceneCard">
-      <h2>Escenario de la ruta</h2>
-      <div id="sceneRouteInfo" style="color:var(--dim);font-size:13px;margin-bottom:8px"></div>
-      <canvas id="sceneStrip" height="26" style="width:100%;display:block;border-radius:6px;margin-bottom:10px"></canvas>
-      <div id="sceneRows"></div>
-      <button class="full" id="sceneAddBtn" style="margin-top:8px">+ Agregar tramo</button>
-      <div class="controls" style="margin-top:12px">
-        <button id="sceneCancel">Cancelar</button>
-        <button class="primary" id="sceneSave">Guardar</button>
-      </div>
-    </div>
 
     <div id="libreSetup" class="hidden">
       <div class="row" style="margin-top:10px">
@@ -215,6 +190,33 @@
     <button class="full" id="routesBtn" style="margin-top:10px">Rutas guardadas</button>
     <button class="full" id="replayBtn" style="margin-top:10px">Carrera virtual (replay)</button>
   </div>
+
+    <div class="card hidden" id="routesCard">
+      <h2>Rutas guardadas</h2>
+      <div style="color:var(--dim);font-size:12px;margin-bottom:8px">Se guardan solas cada vez que cargás un GPX (acá o en Carrera virtual).</div>
+      <div id="routesStorageInfo" style="color:var(--dim);font-size:12px;margin-bottom:6px"></div>
+      <button class="full" id="routesCompressBtn" style="margin-bottom:10px">Comprimir rutas guardadas (liberar espacio)</button>
+      <div style="border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px">
+        <div style="font-weight:600;margin-bottom:6px">¿Altimetría con saltos que el suavizado no arregla?</div>
+        <div style="color:var(--dim);font-size:13px;margin-bottom:8px">GPS Visualizer reemplaza la altura de tu GPS por datos satelitales reales (gratis, sin registro). 1) Bajá el GPX de la ruta acá abajo (⬇ GPX). 2) Subilo ahí, elegí "Output: GPX file". 3) Volvé a cargar el archivo corregido en la app.</div>
+        <a href="https://www.gpsvisualizer.com/elevation" target="_blank" rel="noopener" style="display:block;text-align:center;padding:10px;border-radius:10px;background:var(--acc);color:#04121c;font-weight:700;text-decoration:none">Abrir GPS Visualizer ↗</a>
+      </div>
+      <div id="routesList"></div>
+      <button class="full" id="routesToHistBtn" style="margin-top:6px">Ver/borrar sesiones (Historial)</button>
+      <button class="primary full" id="routesBack" style="margin-top:12px">Volver</button>
+    </div>
+
+    <div class="card hidden" id="sceneCard">
+      <h2>Escenario de la ruta</h2>
+      <div id="sceneRouteInfo" style="color:var(--dim);font-size:13px;margin-bottom:8px"></div>
+      <canvas id="sceneStrip" height="26" style="width:100%;display:block;border-radius:6px;margin-bottom:10px"></canvas>
+      <div id="sceneRows"></div>
+      <button class="full" id="sceneAddBtn" style="margin-top:8px">+ Agregar tramo</button>
+      <div class="controls" style="margin-top:12px">
+        <button id="sceneCancel">Cancelar</button>
+        <button class="primary" id="sceneSave">Guardar</button>
+      </div>
+    </div>
 
   <!-- RIDE -->
   <div class="card hidden" id="ride">
