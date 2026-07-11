@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v60</title>
+<title>Bici Indoor · v61</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v60</h1>
+  <h1>Bici Indoor · v61</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -139,6 +139,7 @@
     <div class="card hidden" id="routesCard">
       <h2>Rutas guardadas</h2>
       <div style="color:var(--dim);font-size:12px;margin-bottom:8px">Se guardan solas cada vez que cargás un GPX (acá o en Carrera virtual).</div>
+      <div id="routesStorageInfo" style="color:var(--dim);font-size:12px;margin-bottom:10px"></div>
       <div id="routesList"></div>
       <button class="primary full" id="routesBack" style="margin-top:12px">Volver</button>
     </div>
@@ -646,7 +647,7 @@ $("file").onchange=e=>{const f=e.target.files[0];if(!f)return;fname=f.name;
 
 function parseGpx(text){
   gpxText=text;
-  saveRouteText(fname,text);
+  if(!saveRouteText(fname,text)) log("No pude guardar esta ruta en caché (¿sin espacio? revisá \"Rutas guardadas\")","#f0883e");
   const xml=new DOMParser().parseFromString(text,"application/xml");
   if(xml.querySelector("parsererror"))throw new Error("XML inválido");
   let n=[...xml.getElementsByTagName("trkpt")]; if(!n.length)n=[...xml.getElementsByTagName("rtept")];
@@ -1017,9 +1018,9 @@ const SCENES={
   mar:{ label:"Costa / Mar", sky:["#57b6e0","#cdeffb"], ground:"#cdb583", asphalt:"#565049", mtnCol:["#6fb0d6","#3f80ab"], mtnAmp:0.35, decor:"waves" },
 };
 function loadScenes(){ try{return JSON.parse(localStorage.getItem("bici_scenes")||"{}");}catch(_){ return {}; } }
-function saveScenes(o){ try{localStorage.setItem("bici_scenes",JSON.stringify(o));}catch(_){} }
+function saveScenes(o){ try{localStorage.setItem("bici_scenes",JSON.stringify(o)); return true;}catch(e){ return false; } }
 function getRouteScenes(routeName){ const all=loadScenes(); return (routeName&&all[routeName])||[{km:0,scene:"rural"}]; }
-function setRouteScenes(routeName,segs){ if(!routeName)return; const all=loadScenes(); all[routeName]=segs; saveScenes(all); }
+function setRouteScenes(routeName,segs){ if(!routeName)return false; const all=loadScenes(); all[routeName]=segs; return saveScenes(all); }
 
 // ---------- Editor de escenario ----------
 let sceneEditRows=[], sceneEditRoute=null, sceneEditTotal=0, sceneReturnTo="gpx";
@@ -1084,7 +1085,11 @@ $("sceneCancel").onclick=closeSceneEditor;
 $("sceneSave").onclick=()=>{
   const segs=sceneEditRows.map(s=>({km:+s.km.toFixed(2),scene:s.scene})).sort((a,b)=>a.km-b.km);
   if(!segs.length||segs[0].km!==0) segs.unshift({km:0,scene:"rural"});
-  setRouteScenes(sceneEditRoute,segs);
+  const ok=setRouteScenes(sceneEditRoute,segs);
+  if(!ok){
+    alert("No se pudo guardar: el navegador rechazó escribir en el almacenamiento (probablemente sin espacio libre — uso actual ≈"+storageUsageKB()+" KB).\n\nEntrá a \"Rutas guardadas\" y borrá alguna ruta vieja que no uses, y volvé a intentar.");
+    return;
+  }
   closeSceneEditor();
 };
 function sceneAt(routeName,d){
@@ -1983,8 +1988,10 @@ $("rep3dBtn").onclick=()=>{ rep3d=!rep3d; $("rep3dBtn").textContent="Vista 3D: "
 $("repLoadGpx").onclick=()=>$("repGpxFile").click();
 $("repGpxFile").onchange=e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader();
   r.onload=()=>{ const route=parseGpxStandalone(r.result); if(!route){ $("repGpxInfo").textContent="No se pudo leer el GPX."; return; }
-    repGpxOverride=route; repGpxOverrideName=f.name; saveRouteText(f.name,r.result);
-    $("repGpxInfo").innerHTML='<b style="color:var(--ok)">Ruta cargada:</b> '+f.name+" ("+(route.dist[route.dist.length-1]/1000).toFixed(1)+" km) — habilita mapa y 3D";
+    repGpxOverride=route; repGpxOverrideName=f.name;
+    const cached=saveRouteText(f.name,r.result);
+    $("repGpxInfo").innerHTML='<b style="color:var(--ok)">Ruta cargada:</b> '+f.name+" ("+(route.dist[route.dist.length-1]/1000).toFixed(1)+" km) — habilita mapa y 3D"
+      + (cached ? "" : '<br><b style="color:#f0883e">No se pudo guardar para la próxima vez (¿sin espacio? revisá "Rutas guardadas")</b>');
     updateRepSceneBtn(); };
   r.readAsText(f); e.target.value=""; };
 $("repSceneBtn").onclick=()=>{ const b=$("repSceneBtn"); openSceneEditor(b.dataset.route, parseFloat(b.dataset.total), "replay"); };
@@ -2096,11 +2103,15 @@ function importSesiones(text){
   renderHistorial();populateGhosts();
   alert("Importadas "+added+" sesiones nuevas"+(cfg?" y tu configuración":"")+(routes?" y tus rutas":"")+(scenes?" y tus escenarios":"")+".");
 }
-function saveRouteText(name,text){ if(!name)return; try{const r=JSON.parse(localStorage.getItem("bici_routes")||"{}"); r[name]=text; localStorage.setItem("bici_routes",JSON.stringify(r)); }catch(_){} }
+function saveRouteText(name,text){ if(!name)return false; try{const r=JSON.parse(localStorage.getItem("bici_routes")||"{}"); r[name]=text; localStorage.setItem("bici_routes",JSON.stringify(r)); return true; }catch(e){ return false; } }
+function storageUsageKB(){ let bytes=0; try{ for(const k in localStorage){ if(localStorage.hasOwnProperty(k)) bytes += (k.length+(localStorage.getItem(k)||"").length); } }catch(_){} return Math.round(bytes/1024); }
 function getRouteText(name){ try{const r=JSON.parse(localStorage.getItem("bici_routes")||"{}"); return r[name]||null; }catch(_){ return null; } }
 function loadRoutesMap(){ try{return JSON.parse(localStorage.getItem("bici_routes")||"{}");}catch(_){ return {}; } }
 function renderRoutesList(){
   const map=loadRoutesMap(), names=Object.keys(map).sort((a,b)=>a.localeCompare(b));
+  const kb=storageUsageKB();
+  const info=$("routesStorageInfo");
+  if(info) info.textContent="Espacio usado en este navegador: ≈"+kb+" KB"+(kb>4000?" (cerca del límite — si falla el guardado, borrá alguna ruta vieja)":"");
   const wrap=$("routesList");
   if(!names.length){ wrap.innerHTML='<div style="color:var(--dim);font-size:13px">No hay rutas guardadas todavía. Se guardan solas al cargar un GPX.</div>'; return; }
   wrap.innerHTML="";
