@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v69</title>
+<title>Bici Indoor · v71</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v69</h1>
+  <h1>Bici Indoor · v71</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1052,7 +1052,7 @@ function openSceneEditor(routeName,totalM,returnTo){
   routeName = routeName || fname; totalM = totalM || total; returnTo = returnTo || "gpx";
   if(!routeName || !totalM){ alert("Cargá primero un recorrido (GPX)."); return; }
   sceneEditRoute=routeName; sceneEditTotal=totalM; sceneReturnTo=returnTo;
-  sceneEditRows=getRouteScenes(routeName).map(s=>({km:s.km,scene:s.scene}));
+  sceneEditRows=getRouteScenes(routeName).map(s=>({km:s.km,scene:s.scene,water:s.water||null,wall:s.wall||null}));
   bridgeEditRows=getRouteBridges(routeName).map(b=>({fromKm:b.fromKm,toKm:b.toKm,peakPct:b.peakPct}));
   $("sceneRouteInfo").textContent=routeName+" · "+(totalM/1000).toFixed(2)+" km";
   renderSceneRows();
@@ -1074,8 +1074,10 @@ function renderSceneRows(){
   sceneEditRows.sort((a,b)=>a.km-b.km);
   const wrap=$("sceneRows"); wrap.innerHTML="";
   sceneEditRows.forEach((row,i)=>{
+    const block=document.createElement("div");
+    block.style.cssText="margin:8px 0;padding-bottom:8px;border-bottom:1px solid var(--line)";
     const div=document.createElement("div");
-    div.style.cssText="display:flex;align-items:center;gap:8px;margin:6px 0";
+    div.style.cssText="display:flex;align-items:center;gap:8px";
     const lbl=document.createElement("span"); lbl.style.cssText="font-size:13px;color:var(--dim)"; lbl.textContent="Desde";
     const km=document.createElement("input"); km.type="number"; km.min="0"; km.step="0.1"; km.value=row.km.toFixed(1);
     km.style.cssText="width:70px"; km.disabled=(i===0);
@@ -1088,7 +1090,24 @@ function renderSceneRows(){
     if(i>0){ const del=document.createElement("button"); del.className="del"; del.textContent="✕"; del.style.minHeight="36px";
       del.onclick=()=>{ sceneEditRows.splice(i,1); renderSceneRows(); drawSceneStrip(); };
       div.appendChild(del); }
-    wrap.appendChild(div);
+    block.appendChild(div);
+    const waterRow=document.createElement("div");
+    waterRow.style.cssText="display:flex;align-items:center;gap:8px;margin-top:6px";
+    const wLbl=document.createElement("span"); wLbl.style.cssText="font-size:12px;color:var(--dim)"; wLbl.textContent="💧 Agua";
+    const wSel=document.createElement("select"); wSel.style.flex="1";
+    [["","Sin agua"],["left","A la izquierda"],["right","A la derecha"]].forEach(([v,t])=>{ const o=document.createElement("option"); o.value=v; o.textContent=t; if((row.water||"")===v)o.selected=true; wSel.appendChild(o); });
+    wSel.onchange=()=>{ row.water=wSel.value||null; };
+    waterRow.appendChild(wLbl); waterRow.appendChild(wSel);
+    block.appendChild(waterRow);
+    const wallRow=document.createElement("div");
+    wallRow.style.cssText="display:flex;align-items:center;gap:8px;margin-top:6px";
+    const gLbl=document.createElement("span"); gLbl.style.cssText="font-size:12px;color:var(--dim)"; gLbl.textContent="🪨 Pared";
+    const gSel=document.createElement("select"); gSel.style.flex="1";
+    [["","Sin pared"],["left","A la izquierda"],["right","A la derecha"]].forEach(([v,t])=>{ const o=document.createElement("option"); o.value=v; o.textContent=t; if((row.wall||"")===v)o.selected=true; gSel.appendChild(o); });
+    gSel.onchange=()=>{ row.wall=gSel.value||null; };
+    wallRow.appendChild(gLbl); wallRow.appendChild(gSel);
+    block.appendChild(wallRow);
+    wrap.appendChild(block);
   });
   drawSceneStrip();
 }
@@ -1135,12 +1154,12 @@ $("sceneEditBtn").onclick=()=>openSceneEditor(fname,total,"gpx");
 $("sceneAddBtn").onclick=()=>{
   const lastKm=sceneEditRows.length?Math.max(...sceneEditRows.map(s=>s.km)):0;
   const nextKm=Math.min(sceneEditTotal/1000, +(lastKm+1).toFixed(1));
-  sceneEditRows.push({km:nextKm, scene:"rural"}); renderSceneRows();
+  sceneEditRows.push({km:nextKm, scene:"rural", water:null, wall:null}); renderSceneRows();
 };
 $("sceneCancel").onclick=closeSceneEditor;
 $("sceneSave").onclick=()=>{
-  const segs=sceneEditRows.map(s=>({km:+s.km.toFixed(2),scene:s.scene})).sort((a,b)=>a.km-b.km);
-  if(!segs.length||segs[0].km!==0) segs.unshift({km:0,scene:"rural"});
+  const segs=sceneEditRows.map(s=>({km:+s.km.toFixed(2),scene:s.scene,water:s.water||null,wall:s.wall||null})).sort((a,b)=>a.km-b.km);
+  if(!segs.length||segs[0].km!==0) segs.unshift({km:0,scene:"rural",water:null,wall:null});
   const bridges=bridgeEditRows.map(b=>({fromKm:+b.fromKm.toFixed(3),toKm:+b.toKm.toFixed(3),peakPct:+b.peakPct.toFixed(1)}))
     .filter(b=>b.toKm>b.fromKm).sort((a,b)=>a.fromKm-b.fromKm);
   const ok=setRouteScenes(sceneEditRoute,segs);
@@ -1154,9 +1173,10 @@ $("sceneSave").onclick=()=>{
 };
 function sceneAt(routeName,d){
   const segs=getRouteScenes(routeName), km=d/1000;
-  let cur=segs[0]?segs[0].scene:"rural";
-  for(const s of segs){ if(s.km<=km+1e-6) cur=s.scene; else break; }
-  return SCENES[cur]||SCENES.rural;
+  let cur=segs[0]||{scene:"rural",water:null,wall:null};
+  for(const s of segs){ if(s.km<=km+1e-6) cur=s; else break; }
+  const base=SCENES[cur.scene]||SCENES.rural;
+  return Object.assign({},base,{waterSide:cur.water||null, wallSide:cur.wall||null});
 }
 // ---------- Puentes / rampas manuales (para tramos que el DEM no capta, ej. puentes de autopista) ----------
 function loadBridges(){ try{return JSON.parse(localStorage.getItem("bici_bridges")||"{}");}catch(_){ return {}; } }
@@ -1231,7 +1251,28 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName){
   const fog=ctx.createLinearGradient(0,horizon-fogH*0.5,0,horizon+fogH);
   fog.addColorStop(0,hexRgba(sc.sky[1],0)); fog.addColorStop(0.5,hexRgba(sc.sky[1],.75)); fog.addColorStop(1,hexRgba(sc.sky[1],0));
   ctx.fillStyle=fog; ctx.fillRect(0,horizon-fogH*0.5,w,fogH*1.5);
-  ctx.fillStyle=sc.ground; ctx.fillRect(0,horizon,w,h-horizon);
+  const leftType = sc.wallSide==="left"?"wall":(sc.waterSide==="left"?"water":"normal");
+  const rightType = sc.wallSide==="right"?"wall":(sc.waterSide==="right"?"water":"normal");
+  const sideFill=(type)=>{
+    if(type==="water"){ const g=ctx.createLinearGradient(0,horizon,0,h);
+      g.addColorStop(0,"#4f8fb0"); g.addColorStop(0.4,"#2f6a8c"); g.addColorStop(1,"#173d54"); return g; }
+    if(type==="wall"){ const g=ctx.createLinearGradient(0,horizon,0,h);
+      g.addColorStop(0,"#8a7d6e"); g.addColorStop(0.35,"#6b5f52"); g.addColorStop(1,"#443c33"); return g; }
+    return sc.ground;
+  };
+  if(leftType!=="normal" || rightType!=="normal"){
+    ctx.fillStyle=sideFill(leftType); ctx.fillRect(0,horizon,w/2,h-horizon);
+    ctx.fillStyle=sideFill(rightType); ctx.fillRect(w/2,horizon,w/2,h-horizon);
+    // brillos horizontales sutiles sobre el agua (efecto espejo), del lado que corresponda
+    if(leftType==="water"||rightType==="water"){
+      const wx0=leftType==="water"?0:w/2, wx1=leftType==="water"?w/2:w;
+      ctx.strokeStyle="rgba(255,255,255,.22)"; ctx.lineWidth=1;
+      for(let k=0;k<5;k++){ const yy=horizon+8+k*k*4; if(yy>h)break;
+        ctx.beginPath();ctx.moveTo(wx0+(wx1-wx0)*0.15,yy);ctx.lineTo(wx0+(wx1-wx0)*0.85,yy);ctx.stroke(); }
+    }
+  } else {
+    ctx.fillStyle=sc.ground; ctx.fillRect(0,horizon,w,h-horizon);
+  }
   const gShade=Math.max(0.72,Math.min(1.15,1-gAhead*0.02)); // luz según pendiente (sube=oscuro)
   const asphaltL=shadeHex(sc.asphalt,gShade*1.1), asphaltD=shadeHex(sc.asphalt,gShade*0.96);
   const BANK_K=0.5;
@@ -1258,14 +1299,19 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName){
       ctx.fillStyle="#efe7c8";
       ctx.beginPath();ctx.moveTo(b.cx-cb,b.y);ctx.lineTo(b.cx+cb,b.y);ctx.lineTo(a.cx+ca,a.y);ctx.lineTo(a.cx-ca,a.y);ctx.closePath();ctx.fill(); }
     // decorado lateral según escenario en este tramo
-    const decorSpacing=30;
-    if(Math.floor(b.d/decorSpacing)!==Math.floor(a.d/decorSpacing) && b.hw>6){
+    const decorSpacing=30, wallSpacing=16;
+    const bsc0=sceneAt(routeName,b.d);
+    const wallSide0=bsc0.wallSide;
+    const spacing = wallSide0 ? wallSpacing : decorSpacing;
+    if(Math.floor(b.d/spacing)!==Math.floor(a.d/spacing) && b.hw>6){
       const bsc=sceneAt(routeName,b.d);
       for(const side of [-1,1]){
-        const seed=Math.sin(Math.floor(b.d/decorSpacing)*7.3 + side*2.1);
-        const off=b.hw*(0.45+0.5*Math.abs(seed));
-        const tx=b.cx+side*(b.hw+off), ty=b.y, th=b.hw*(0.45+0.3*Math.abs(seed));
-        drawSideDecor(ctx,bsc.decor,tx,ty,th,seed,side);
+        const seed=Math.sin(Math.floor(b.d/spacing)*7.3 + side*2.1);
+        const isWaterSide=(bsc.waterSide==="left"&&side===-1)||(bsc.waterSide==="right"&&side===1);
+        const isWallSide=(bsc.wallSide==="left"&&side===-1)||(bsc.wallSide==="right"&&side===1);
+        const off=b.hw*(isWallSide?0.15:(0.45+0.5*Math.abs(seed)));
+        const tx=b.cx+side*(b.hw+off), ty=b.y, th=b.hw*(isWallSide?(0.9+0.4*Math.abs(seed)):(0.45+0.3*Math.abs(seed)));
+        drawSideDecor(ctx,isWaterSide?"waves":(isWallSide?"rocks":bsc.decor),tx,ty,th,seed,side);
       }
     }
   }
