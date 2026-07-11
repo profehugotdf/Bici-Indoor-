@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v61</title>
+<title>Bici Indoor · v64</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v61</h1>
+  <h1>Bici Indoor · v64</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -139,7 +139,13 @@
     <div class="card hidden" id="routesCard">
       <h2>Rutas guardadas</h2>
       <div style="color:var(--dim);font-size:12px;margin-bottom:8px">Se guardan solas cada vez que cargás un GPX (acá o en Carrera virtual).</div>
-      <div id="routesStorageInfo" style="color:var(--dim);font-size:12px;margin-bottom:10px"></div>
+      <div id="routesStorageInfo" style="color:var(--dim);font-size:12px;margin-bottom:6px"></div>
+      <button class="full" id="routesCompressBtn" style="margin-bottom:10px">Comprimir rutas guardadas (liberar espacio)</button>
+      <div style="border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px">
+        <div style="font-weight:600;margin-bottom:6px">¿Altimetría con saltos que el suavizado no arregla?</div>
+        <div style="color:var(--dim);font-size:13px;margin-bottom:8px">GPS Visualizer reemplaza la altura de tu GPS por datos satelitales reales (gratis, sin registro). 1) Bajá el GPX de la ruta acá abajo (⬇ GPX). 2) Subilo ahí, elegí "Output: GPX file". 3) Volvé a cargar el archivo corregido en la app.</div>
+        <a href="https://www.gpsvisualizer.com/elevation" target="_blank" rel="noopener" style="display:block;text-align:center;padding:10px;border-radius:10px;background:var(--acc);color:#04121c;font-weight:700;text-decoration:none">Abrir GPS Visualizer ↗</a>
+      </div>
       <div id="routesList"></div>
       <button class="primary full" id="routesBack" style="margin-top:12px">Volver</button>
     </div>
@@ -2080,7 +2086,8 @@ function exportAll(){
   let cfg={}; try{cfg=JSON.parse(localStorage.getItem("bici_config")||"{}");}catch(_){}
   let routes={}; try{routes=JSON.parse(localStorage.getItem("bici_routes")||"{}");}catch(_){}
   let scenes={}; try{scenes=JSON.parse(localStorage.getItem("bici_scenes")||"{}");}catch(_){}
-  const bundle={kind:"bici-backup",sesiones:loadSesiones(),config:cfg,routes,scenes};
+  let entrenos=[]; try{entrenos=JSON.parse(localStorage.getItem("bici_entrenos")||"[]");}catch(_){}
+  const bundle={kind:"bici-backup",v:2,sesiones:loadSesiones(),config:cfg,routes,scenes,entrenos};
   const blob=new Blob([JSON.stringify(bundle)],{type:"application/json"});const d=new Date();
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
   a.download="bici-respaldo-"+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0")+".json";
@@ -2088,9 +2095,9 @@ function exportAll(){
 }
 function importSesiones(text){
   let inc; try{inc=JSON.parse(text);}catch{alert("Archivo inválido");return;}
-  let arr, cfg=null, routes=null, scenes=null;
+  let arr, cfg=null, routes=null, scenes=null, entrenos=null;
   if(Array.isArray(inc)) arr=inc;                       // formato viejo
-  else if(inc && Array.isArray(inc.sesiones)){ arr=inc.sesiones; cfg=inc.config; routes=inc.routes; scenes=inc.scenes; }
+  else if(inc && Array.isArray(inc.sesiones)){ arr=inc.sesiones; cfg=inc.config; routes=inc.routes; scenes=inc.scenes; entrenos=inc.entrenos; }
   else { alert("Formato inesperado"); return; }
   const cur=loadSesiones(), seen=new Set(cur.map(s=>s.date));
   let added=0;
@@ -2098,12 +2105,33 @@ function importSesiones(text){
   cur.sort((a,b)=>a.date-b.date);
   localStorage.setItem("bici_sesiones",JSON.stringify(cur));
   if(cfg){ try{localStorage.setItem("bici_config",JSON.stringify(cfg));}catch(_){} loadCfg(); }
-  if(routes){ try{const r=JSON.parse(localStorage.getItem("bici_routes")||"{}"); Object.assign(r,routes); localStorage.setItem("bici_routes",JSON.stringify(r)); }catch(_){} }
+  if(routes){ try{const r=loadRoutesMap(); for(const name in routes) r[name]=minifyGpxForStorage(routes[name]); localStorage.setItem("bici_routes",JSON.stringify(r)); }catch(_){} }
   if(scenes){ try{const s2=loadScenes(); Object.assign(s2,scenes); saveScenes(s2); }catch(_){} }
+  let addedWo=0;
+  if(entrenos && entrenos.length){ try{ const cw=loadWorkouts(), seenWo=new Set(cw.map(w=>w.name+"|"+w.text));
+    for(const w of entrenos){ if(w&&w.text&&!seenWo.has(w.name+"|"+w.text)){ cw.push(w); seenWo.add(w.name+"|"+w.text); addedWo++; } }
+    localStorage.setItem("bici_entrenos",JSON.stringify(cw)); }catch(_){} }
   renderHistorial();populateGhosts();
-  alert("Importadas "+added+" sesiones nuevas"+(cfg?" y tu configuración":"")+(routes?" y tus rutas":"")+(scenes?" y tus escenarios":"")+".");
+  alert("Importadas "+added+" sesiones nuevas"+(cfg?" y tu configuración":"")+(routes?" y tus rutas":"")+(scenes?" y tus escenarios":"")+(addedWo?" y "+addedWo+" entrenamientos":"")+".");
 }
-function saveRouteText(name,text){ if(!name)return false; try{const r=JSON.parse(localStorage.getItem("bici_routes")||"{}"); r[name]=text; localStorage.setItem("bici_routes",JSON.stringify(r)); return true; }catch(e){ return false; } }
+function minifyGpxForStorage(text){
+  try{
+    const xml=new DOMParser().parseFromString(text,"application/xml");
+    if(xml.querySelector("parsererror")) return text;
+    let nodes=[...xml.getElementsByTagName("trkpt")]; if(!nodes.length) nodes=[...xml.getElementsByTagName("rtept")];
+    if(!nodes.length) return text;
+    let out='<?xml version="1.0"?><gpx><trk><trkseg>';
+    for(const p of nodes){
+      const lat=parseFloat(p.getAttribute("lat")), lon=parseFloat(p.getAttribute("lon"));
+      if(!isFinite(lat)||!isFinite(lon)) continue;
+      const e=p.getElementsByTagName("ele")[0], ele=e?parseFloat(e.textContent):NaN;
+      out+='<trkpt lat="'+lat.toFixed(6)+'" lon="'+lon.toFixed(6)+'">'+(isFinite(ele)?'<ele>'+ele.toFixed(1)+'</ele>':'')+'</trkpt>';
+    }
+    out+='</trkseg></trk></gpx>';
+    return out.length<text.length ? out : text;
+  }catch(e){ return text; }
+}
+function saveRouteText(name,text){ if(!name)return false; try{const r=JSON.parse(localStorage.getItem("bici_routes")||"{}"); r[name]=minifyGpxForStorage(text); localStorage.setItem("bici_routes",JSON.stringify(r)); return true; }catch(e){ return false; } }
 function storageUsageKB(){ let bytes=0; try{ for(const k in localStorage){ if(localStorage.hasOwnProperty(k)) bytes += (k.length+(localStorage.getItem(k)||"").length); } }catch(_){} return Math.round(bytes/1024); }
 function getRouteText(name){ try{const r=JSON.parse(localStorage.getItem("bici_routes")||"{}"); return r[name]||null; }catch(_){ return null; } }
 function loadRoutesMap(){ try{return JSON.parse(localStorage.getItem("bici_routes")||"{}");}catch(_){ return {}; } }
@@ -2133,6 +2161,19 @@ function renderRoutesList(){
 }
 $("routesBtn").onclick=()=>{ renderRoutesList(); $("setup").classList.add("hidden"); $("routesCard").classList.remove("hidden"); };
 $("routesBack").onclick=()=>{ $("routesCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); };
+$("routesCompressBtn").onclick=()=>{
+  const before=storageUsageKB();
+  const map=loadRoutesMap(); let changed=0;
+  for(const name in map){ const mini=minifyGpxForStorage(map[name]); if(mini.length<map[name].length){ map[name]=mini; changed++; } }
+  try{
+    localStorage.setItem("bici_routes",JSON.stringify(map));
+    const after=storageUsageKB();
+    alert("Comprimidas "+changed+" rutas.\nEspacio: "+before+" KB → "+after+" KB.");
+  }catch(e){
+    alert("No se pudo guardar la compresión (¿sin espacio ni para reescribir?). Probá borrar alguna ruta primero.");
+  }
+  renderRoutesList();
+};
 
 // ---------- Exportar TCX (para TrainingPeaks) ----------
 function parseGpxStandalone(text){
