@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v74</title>
+<title>Bici Indoor · v75</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v74</h1>
+  <h1>Bici Indoor · v75</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -411,6 +411,15 @@
       <input type="file" id="repGpxFile" accept=".gpx,application/gpx+xml,text/xml" style="display:none">
       <div id="repGpxInfo" style="color:var(--dim);font-size:12px;margin-top:4px"></div>
       <button class="full hidden" id="repSceneBtn" style="margin-top:8px">Editar escenario de la ruta</button>
+      <div style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px">
+        <div style="font-weight:600;margin-bottom:4px">Vista Velódromo (opcional)</div>
+        <div style="color:var(--dim);font-size:12px;margin-bottom:8px">Corré a estos corredores en un óvalo sintético, sin importar la ruta original de cada uno.</div>
+        <div class="row">
+          <label for="repVeloLenInp">Largo de pista (m)</label>
+          <input type="number" id="repVeloLenInp" value="250" min="100" max="500" step="1" style="width:80px">
+        </div>
+        <button class="full" id="repVeloBtn">Vista Velódromo: OFF</button>
+      </div>
       <button class="primary full" id="repStart" style="margin-top:10px">Iniciar carrera</button>
     </div>
     <div id="replayView" class="hidden">
@@ -2298,7 +2307,36 @@ function renderReplay(){
     $("repWinner").style.color="var(--tx)";
   }
   drawRepLane(st);
-  if(replayRoute){ if(rep3d) drawRepRoad(st); else { drawRepMap(st,top); drawRepProf(st); } }
+  if(repVeloMode){ drawRepVelodrome(st); }
+  else if(replayRoute){ if(rep3d) drawRepRoad(st); else { drawRepMap(st,top); drawRepProf(st); } }
+}
+function drawRepVelodrome(st){
+  if(!repRoadCtx||repRoadCtx.w<10) fitRepRoad();
+  if(!repRoadCtx||repRoadCtx.w<10) return;
+  const {ctx,w,h}=repRoadCtx;
+  const camRacer=repRacers[repCam]||repRacers[0];
+  const cam=st.find(x=>x.r===camRacer)||st[0];
+  const L=repVeloTrackLen;
+  const camD0=((cam.d%L)+L)%L;
+  const bFn=(d)=>velodromeBearingAt(d,L);
+  const S=roadBands(ctx,w,h,camD0,bFn,velodromeEleAt,null,SCENES.velodromo,VELO_GEOM);
+  const youS=Math.max(20,h*0.135);
+  const others=st.filter(x=>x.r!==camRacer).map(x=>{
+    const xd0=((x.d%L)+L)%L, relAhead=((xd0-camD0)%L+L)%L;
+    return {x, posD:camD0+relAhead, relAhead};
+  }).sort((a,b)=>b.relAhead-a.relAhead);
+  for(const {x,posD} of others){
+    const p=roadPointAt(S,posD); if(!p)continue;
+    const s=Math.max(5, Math.min(youS*0.85, p.hw*0.14));
+    drawCyclistRear(ctx, p.cx, p.y, s, x.r.crank, x.r.color, 0.9);
+    const lapDiff=Math.floor(x.d/L)-Math.floor(cam.d/L), gap=Math.round(x.d-cam.d);
+    const label=(gap>=0?"+":"")+gap+" m"+(lapDiff!==0?" ("+(lapDiff>0?"+":"")+lapDiff+"v)":"");
+    ctx.font="700 12px system-ui"; ctx.textAlign="center";
+    const ly=p.y-s*3.5, tw=ctx.measureText(label).width;
+    ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(p.cx-tw/2-4,ly-12,tw+8,16);
+    ctx.fillStyle=x.r.color; ctx.fillText(label,p.cx,ly); ctx.textAlign="start";
+  }
+  drawCyclistRear(ctx, w/2, h-6, youS, camRacer.crank, camRacer.color, 1);
 }
 function drawRepLane(st){
   const cv=$("repLane"),r=fit(cv),ctx=r.ctx,w=r.w,h=r.h; if(w<10)return;
@@ -2361,16 +2399,26 @@ function drawRepProf(st){
   const eleD=d=>posAtDistance(replayRoute,d).ele;
   for(const s of st){ const xx=x(Math.min(s.d,total)); ctx.beginPath();ctx.arc(xx,y(eleD(s.d)),5,0,7);ctx.fillStyle=s.r.color;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#04121c";ctx.stroke(); }
 }
-$("replayBtn").onclick=()=>{ repGpxOverride=null; repGpxOverrideName=null; populateReplay(); $("repGpxInfo").textContent=""; $("replaySetup").classList.remove("hidden"); $("replayView").classList.add("hidden"); $("setup").classList.add("hidden"); $("replayCard").classList.remove("hidden"); scrollTop(); };
+$("replayBtn").onclick=()=>{ repGpxOverride=null; repGpxOverrideName=null; repVeloMode=false; $("repVeloBtn").textContent="Vista Velódromo: OFF"; populateReplay(); $("repGpxInfo").textContent=""; $("replaySetup").classList.remove("hidden"); $("replayView").classList.add("hidden"); $("setup").classList.add("hidden"); $("replayCard").classList.remove("hidden"); scrollTop(); };
+$("repVeloBtn").onclick=()=>{
+  repVeloMode=!repVeloMode;
+  repVeloTrackLen=Math.max(50,parseFloat($("repVeloLenInp").value)||250);
+  $("repVeloBtn").textContent="Vista Velódromo: "+(repVeloMode?"ON":"OFF");
+  applyRepView();
+  if($("replayView")&&!$("replayView").classList.contains("hidden")) renderReplay();
+};
 $("replayBack").onclick=()=>{ replayPlaying=false; $("replayCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); scrollTop(); };
 $("repStart").onclick=startReplay;
 $("repZoomBtn").onclick=()=>{ repZoom=!repZoom; $("repZoomBtn").textContent="Zoom disputa: "+(repZoom?"ON":"OFF"); if(replayRoute)renderReplay(); };
+let repVeloMode=false, repVeloTrackLen=250;
 function applyRepView(){
-  const on=rep3d && !!replayRoute;
+  const gpx3d = rep3d && !!replayRoute;
+  const on = gpx3d || repVeloMode;
+  const showMap = !!replayRoute && !on;
   $("repRoad").classList.toggle("hidden",!on);
-  $("repMap").classList.toggle("hidden",on);
-  $("repProf").classList.toggle("hidden",on);
-  $("repZoomBtn").style.display=on?"none":"";
+  $("repMap").classList.toggle("hidden", !showMap);
+  $("repProf").classList.toggle("hidden", !showMap);
+  $("repZoomBtn").style.display = showMap ? "" : "none";
   $("repCamRow").classList.toggle("hidden",!on);
 }
 function updateCamBtn(){ const r=repRacers[repCam];
