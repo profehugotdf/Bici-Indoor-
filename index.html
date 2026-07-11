@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v72</title>
+<title>Bici Indoor · v74</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v72</h1>
+  <h1>Bici Indoor · v74</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -109,6 +109,7 @@
       <select id="modeSel" style="flex:1">
         <option value="gpx">Recorrido (GPX)</option>
         <option value="libre">Libre (sin GPX)</option>
+        <option value="velodromo">Velódromo</option>
       </select>
     </div>
 
@@ -158,6 +159,31 @@
       <div class="row">
         <label for="ghostSel">Fantasma</label>
         <select id="ghostSel" style="flex:1"></select>
+      </div>
+    </div>
+
+    <div id="velodromoSetup" class="hidden">
+      <div class="row" style="margin-top:10px">
+        <label for="velLen">Largo de pista (m)</label>
+        <input type="number" id="velLen" value="250" min="100" max="500" step="1" style="width:80px">
+      </div>
+      <div style="color:var(--dim);font-size:12px;margin:-4px 0 8px">250 m = Velódromo Luis Puig (Valencia). Ajustalo si entrenás pensando en otra pista.</div>
+      <div class="row">
+        <label for="velRaceSel">Competir por</label>
+        <select id="velRaceSel" style="flex:1">
+          <option value="tiempo">Tiempo</option>
+          <option value="vueltas">Vueltas</option>
+          <option value="distancia">Distancia</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="velObjVal">Objetivo</label>
+        <input type="number" id="velObjVal" value="20" min="1" step="1" style="width:80px">
+        <span id="velObjUnit" style="color:var(--dim);width:44px">min</span>
+      </div>
+      <div class="row">
+        <label for="velGhostSel">Fantasma</label>
+        <select id="velGhostSel" style="flex:1"></select>
       </div>
     </div>
 
@@ -825,7 +851,7 @@ function tick(){
     if(Math.abs(tgrade-lastSentGrade)>0.2||now-lastSentAt>1000){sendGrade(tgrade);lastSentGrade=tgrade;lastSentAt=now;}
   }
   // fantasma
-  if(mode==="libre" && ghost) updateGhost();
+  if((mode==="libre"||mode==="velodromo") && ghost) updateGhost();
   else if(mode==="gpx" && ghost){
     ghostDistNow=ghostDistAt(elapsed);
     showGap(distanceM-ghostDistNow,"m");
@@ -872,7 +898,9 @@ function ghostTimeAt(d){const s=ghost.samples;if(!s.length)return 0;
   if(d<=s[0].d)return s[0].t;if(d>=s[s.length-1].d)return s[s.length-1].t;
   let i=0;while(i<s.length-1&&s[i+1].d<d)i++;const a=s[i],b=s[i+1];
   return a.t+(b.t-a.t)*((d-a.d)/((b.d-a.d)||1));}
+let lastGapVal=0, lastGapUnit="";
 function showGap(val,unit){const g=$("gapTx"),ahead=val>=0;
+  lastGapVal=val; lastGapUnit=unit;
   g.textContent=(ahead?"+":"−")+Math.abs(Math.round(val))+" "+unit+(ahead?" adelante":" atrás");
   g.className="gap "+(ahead?"ahead":"behind");}
 function raceBar(you,gpos,maxD){ raceYou=you; raceGhost=gpos; raceMax=(isFinite(maxD)&&maxD>0)?maxD:Math.max(you,gpos,100); }
@@ -1000,6 +1028,10 @@ function hud(grade){
   $("pbar").style.width=Math.min(100,prog*100)+"%";
   if(mode==="gpx"){ const ng=nextGradeInfo();
     $("nextGrade").textContent = ng ? `Próximo: ${ng.g>=0?"+":""}${ng.g.toFixed(1)}% en ${Math.round(ng.m)} m${ng.secs!=null?" · "+fmtTime(ng.secs):""}` : "Sin más cambios de pendiente";
+  } else if(mode==="velodromo"){
+    const lap=Math.floor(distanceM/velTrackLen)+1;
+    const targetLaps = raceBy==="vueltas" ? Math.round(targetDist/velTrackLen) : null;
+    $("nextGrade").textContent = "Vuelta "+lap+(targetLaps?(" / "+targetLaps):"")+" · pista "+velTrackLen+" m";
   } else $("nextGrade").textContent="";
 }
 function bandOf(g){ if(g<=-1)return 0; if(g<1)return 1; if(g<3)return 2; if(g<6)return 3; return 4; }
@@ -1023,7 +1055,7 @@ function gradeColor(g){if(g<=-2)return"#4cc2ff";if(g<0)return"#7fd1e8";if(g<2)re
   if(g<4)return"#9fd23f";if(g<6)return"#e3c53f";if(g<8)return"#f0883e";if(g<10)return"#f85149";return"#c0392b";}
 function drawRide(){ if(mode==="gpx" && !road3d){drawProf();drawMap();} }
 let road3d=false, roadCtx=null, roadRAF=null, roadCrank=0, roadLast=0, ghostRoadCrank=0;
-function roadActive(){ return road3d && mode==="gpx" && (state==="riding"||state==="paused") && !$("road").classList.contains("hidden"); }
+function roadActive(){ return (mode==="velodromo" || (mode==="gpx" && road3d)) && (state==="riding"||state==="paused") && !$("road").classList.contains("hidden"); }
 function fitRoad(){ roadCtx=fit($("road")); }
 function startRoad(){ fitRoad(); roadLast=0; if(!roadRAF) roadRAF=requestAnimationFrame(roadLoop); }
 function stopRoad(){ if(roadRAF){cancelAnimationFrame(roadRAF);roadRAF=null;} }
@@ -1040,6 +1072,21 @@ function bearingAt(d){
   return Math.atan2(y,x);
 }
 function eleAt(d){ return pe[Math.max(0,Math.min(pe.length-1,Math.round(d/STEP)))]; }
+// ---------- Velódromo: óvalo cerrado sintético (forma estadio: 2 rectas + 2 curvas semicirculares) ----------
+function velodromeGeom(trackLen){
+  const R=Math.max(8,trackLen*0.0845); // radio de curva ~proporcional (250m -> R≈21m, como una pista real)
+  const curveLen=Math.PI*R, straight=Math.max(5,(trackLen-2*curveLen)/2);
+  return {R, curveLen, straight, total:2*straight+2*curveLen};
+}
+function velodromeBearingAt(d,trackLen){
+  const g=velodromeGeom(trackLen); d=((d%g.total)+g.total)%g.total;
+  const {R,curveLen,straight}=g;
+  if(d<straight) return 0;
+  if(d<straight+curveLen) return (d-straight)/R;
+  if(d<2*straight+curveLen) return Math.PI;
+  return Math.PI + (d-(2*straight+curveLen))/R;
+}
+function velodromeEleAt(d){ return 0; }
 function shadeHex(hex,f){ const n=parseInt(hex.slice(1),16); let r=(n>>16)&255,g=(n>>8)&255,b=n&255;
   r=Math.min(255,r*f)|0; g=Math.min(255,g*f)|0; b=Math.min(255,b*f)|0; return "rgb("+r+","+g+","+b+")"; }
 function hexRgba(hex,a){ const n=parseInt(hex.slice(1),16); return "rgba("+((n>>16)&255)+","+((n>>8)&255)+","+(n&255)+","+a+")"; }
@@ -1049,6 +1096,7 @@ const SCENES={
   urbana:{ label:"Urbana", sky:["#8fb3cf","#d8e6ec"], ground:"#3a3d42", asphalt:"#54595f", mtnCol:["#93a0ad","#717d89"], mtnAmp:1.5, decor:"buildings" },
   cornisa:{ label:"Cornisa", sky:["#4f8fc0","#a9d3e8"], ground:"#4a4034", asphalt:"#4c4640", mtnCol:["#8f7f6e","#6e6156"], mtnAmp:1.9, decor:"rocks" },
   mar:{ label:"Costa / Mar", sky:["#57b6e0","#cdeffb"], ground:"#cdb583", asphalt:"#565049", mtnCol:["#6fb0d6","#3f80ab"], mtnAmp:0.35, decor:"waves" },
+  velodromo:{ label:"Velódromo", sky:["#171b22","#2a323d"], ground:"#2e4a2f", asphalt:"#c9a768", mtnCol:["#333a44","#242931"], mtnAmp:0.6, decor:"stands" },
 };
 function loadScenes(){ try{return JSON.parse(localStorage.getItem("bici_scenes")||"{}");}catch(_){ return {}; } }
 function saveScenes(o){ try{localStorage.setItem("bici_scenes",JSON.stringify(o)); return true;}catch(e){ return false; } }
@@ -1396,19 +1444,31 @@ function drawSideDecor(ctx,decor,tx,ty,th,seed,side){
   } else if(decor==="waves"){
     ctx.strokeStyle="rgba(255,255,255,.75)"; ctx.lineWidth=Math.max(1,th*0.08);
     ctx.beginPath(); ctx.arc(tx, ty-th*0.06, th*0.32, Math.PI*0.15, Math.PI*0.85); ctx.stroke();
+  } else if(decor==="stands"){
+    const sw=th*0.7, sh=th*(1.0+0.3*Math.abs(seed)), tiers=4;
+    ctx.fillStyle="#3a4048";
+    ctx.fillRect(tx-sw/2, ty-sh, sw, sh);
+    for(let tI=0;tI<tiers;tI++){
+      const yy=ty-sh+ (tI/tiers)*sh;
+      ctx.fillStyle= (Math.sin(seed*17+tI*4)>0) ? "#c94b4b" : "#e6edf3";
+      ctx.globalAlpha=0.75;
+      for(let c=0;c<3;c++){ if(Math.sin(seed*23+tI*5+c*9)>-0.2) ctx.fillRect(tx-sw/2+c*(sw/3)+sw*0.05, yy+sh*0.03, sw/3*0.7, sh/tiers*0.5); }
+      ctx.globalAlpha=1;
+    }
   } else { // trees
     ctx.fillStyle="#5a4634"; ctx.fillRect(tx-th*0.05, ty-th*0.32, th*0.1, th*0.32);
     ctx.fillStyle=(seed>0)?"#2f6b39":"#367a3f";
     ctx.beginPath();ctx.ellipse(tx, ty-th*0.5, th*0.28, th*0.5, 0, 0, 7);ctx.fill();
   }
 }
-function roadBands(ctx,w,h,d0,bFn,eFn,routeName){
-  const N=130, NEAR=2.0, GROW=0.045, f=w*0.95, wRoad=5.2, camEyeH=1.4, latK=0.9, bandLen=6, horizonK=5;
+function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
+  const N=(geom&&geom.N)||130, NEAR=(geom&&geom.NEAR)!=null?geom.NEAR:2.0, GROW=(geom&&geom.GROW)!=null?geom.GROW:0.045,
+    f=w*0.95, wRoad=(geom&&geom.wRoad)||5.2, camEyeH=1.4, latK=0.9, bandLen=6, horizonK=5;
   const camB=bFn(d0), camE=eFn(d0);
   const gAhead=(eFn(d0+50)-camE)/50*100;
   let horizon=Math.round(h*0.44 - gAhead*horizonK);
   horizon=Math.max(Math.round(h*0.18),Math.min(Math.round(h*0.74),horizon));
-  const sc=sceneAt(routeName,d0);
+  const sc=sceneOverride||sceneAt(routeName,d0);
   const sky=ctx.createLinearGradient(0,0,0,horizon);
   sky.addColorStop(0,sc.sky[0]); sky.addColorStop(1,sc.sky[1]);
   ctx.fillStyle=sky; ctx.fillRect(0,0,w,horizon);
@@ -1467,11 +1527,11 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName){
       ctx.beginPath();ctx.moveTo(b.cx-cb,b.y);ctx.lineTo(b.cx+cb,b.y);ctx.lineTo(a.cx+ca,a.y);ctx.lineTo(a.cx-ca,a.y);ctx.closePath();ctx.fill(); }
     // decorado lateral según escenario en este tramo
     const decorSpacing=30, wallSpacing=16;
-    const bsc0=sceneAt(routeName,b.d);
+    const bsc0=sceneOverride||sceneAt(routeName,b.d);
     const wallSide0=bsc0.wallSide;
     const spacing = wallSide0 ? wallSpacing : decorSpacing;
     if(Math.floor(b.d/spacing)!==Math.floor(a.d/spacing) && b.hw>6){
-      const bsc=sceneAt(routeName,b.d);
+      const bsc=sceneOverride||sceneAt(routeName,b.d);
       for(const side of [-1,1]){
         const seed=Math.sin(Math.floor(b.d/spacing)*7.3 + side*2.1);
         const isWaterSide=(bsc.waterSide==="left"&&side===-1)||(bsc.waterSide==="right"&&side===1);
@@ -1491,10 +1551,12 @@ function roadPointAt(S,d){
   return {cx:S[i].cx+(S[i+1].cx-S[i].cx)*t, y:S[i].y+(S[i+1].y-S[i].y)*t, hw:S[i].hw+(S[i+1].hw-S[i].hw)*t};
 }
 function roadInterpDt(){ if(state!=="riding"||linkLost)return 0; const e=(performance.now()-lastTs)/1000; return (e>0&&e<0.5)?e:0; }
+let velTrackLen=250;
 function drawRoad(){
   if(!roadCtx||roadCtx.w<10) fitRoad();
   if(!roadCtx||roadCtx.w<10) return;
   const {ctx,w,h}=roadCtx;
+  if(mode==="velodromo"){ drawVelodromeRoad(ctx,w,h); return; }
   const idt=roadInterpDt();
   let dNow=distanceM + v*idt; if(mode==="gpx") dNow=Math.min(total,dNow);
   const gNow=ghost?ghostDistAt(elapsed+idt):0;
@@ -1520,6 +1582,33 @@ function drawRoad(){
     ctx.fillStyle=ahead?"#3fb950":"#ff6b6b"; ctx.fillText(lbl,w/2,25);
     ctx.textAlign="start";
   }
+}
+const VELO_GEOM={N:100, NEAR:0.8, GROW:0.012, wRoad:4.2};
+function drawVelodromeRoad(ctx,w,h){
+  const idt=roadInterpDt();
+  const dNow=distanceM + v*idt;
+  const d0=((dNow%velTrackLen)+velTrackLen)%velTrackLen;
+  const bFn=(d)=>velodromeBearingAt(d,velTrackLen);
+  const S=roadBands(ctx,w,h,d0,bFn,velodromeEleAt,null,SCENES.velodromo,VELO_GEOM);
+  const youS=Math.max(20,h*0.135);
+  if(ghost){
+    const gNow=ghostDistAt(elapsed+idt);
+    const gd0=((gNow%velTrackLen)+velTrackLen)%velTrackLen;
+    const relAhead=((gd0-d0)%velTrackLen+velTrackLen)%velTrackLen;
+    const p=roadPointAt(S,d0+relAhead);
+    if(p){ const gs=Math.max(5, Math.min(youS*0.8, p.hw*0.14));
+      drawCyclistRear(ctx, p.cx, p.y, gs, ghostRoadCrank, "#9fb0c0", 0.45); }
+    const gapNow=Math.round(dNow-gNow), ahead=gapNow>=0;
+    const yourLaps=Math.floor(dNow/velTrackLen), ghostLaps=Math.floor(gNow/velTrackLen);
+    const lapDiff=yourLaps-ghostLaps;
+    const lbl=(ahead?"+":"−")+Math.abs(gapNow)+" m "+(ahead?"adelante":"atrás")+(lapDiff!==0?"  ("+(lapDiff>0?"+":"")+lapDiff+" vta)":"");
+    ctx.font="700 15px system-ui"; ctx.textAlign="center";
+    const tw=ctx.measureText(lbl).width;
+    ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(w/2-tw/2-7,8,tw+14,24);
+    ctx.fillStyle=ahead?"#3fb950":"#ff6b6b"; ctx.fillText(lbl,w/2,25);
+    ctx.textAlign="start";
+  }
+  drawCyclistRear(ctx, w/2, h-6, youS, roadCrank, "#2f6f9c", 1);
 }
 function bearingRoute(route,d){ const {pts,dist}=route; let i=0; while(i<dist.length-2&&dist[i+1]<d)i++;
   const a=pts[i],b=pts[i+1],toR=Math.PI/180;
@@ -1585,7 +1674,7 @@ function drawCyclistRear(ctx,cx,gy,s,crank,jersey,alpha){
   ctx.restore();
 }
 function applyGpxView(){
-  const gpx=mode==="gpx", on=road3d && gpx;
+  const gpx=mode==="gpx", velo=mode==="velodromo", on = velo ? true : (road3d && gpx);
   $("road").classList.toggle("hidden",!on);
   $("prof").classList.toggle("hidden", gpx?on:true);
   $("map").classList.toggle("hidden", gpx?on:true);
@@ -1677,15 +1766,27 @@ function refreshStart(){
 }
 function loadSesiones(){try{return JSON.parse(localStorage.getItem("bici_sesiones")||"[]");}catch{return[];}}
 function populateGhosts(){
-  ghostList=loadSesiones().filter(s=>s.mode==="libre"||s.mode==="tcx");
+  ghostList=loadSesiones().filter(s=>s.mode==="libre"||s.mode==="tcx"||s.mode==="velodromo");
   const sel=$("ghostSel"); if(!sel)return;
   sel.innerHTML='<option value="-1">Ninguno (marca base)</option>';
   ghostList.forEach((s,i)=>{const d=new Date(s.date);
-    const pre=s.mode==="tcx"?"TCX · ":"";
+    const pre=s.mode==="tcx"?"TCX · ":(s.mode==="velodromo"?"Velódromo · ":"");
     const o=document.createElement("option");o.value=i;
     o.textContent=pre+fmtTime(s.dur||0)+" · "+((s.dist||0)/1000).toFixed(2)+" km · "+d.getDate()+"/"+(d.getMonth()+1);
     sel.appendChild(o);});
   if(ghostList.length) sel.value=ghostList.length-1;
+}
+let velGhostList=[];
+function populateVelGhosts(){
+  velGhostList=loadSesiones().filter(s=>s.mode==="libre"||s.mode==="tcx"||s.mode==="velodromo");
+  const sel=$("velGhostSel"); if(!sel)return;
+  sel.innerHTML='<option value="-1">Ninguno (marca base)</option>';
+  velGhostList.forEach((s,i)=>{const d=new Date(s.date);
+    const pre=s.mode==="tcx"?"TCX · ":(s.mode==="velodromo"?"Velódromo · ":"Libre · ");
+    const o=document.createElement("option");o.value=i;
+    o.textContent=pre+fmtTime(s.dur||0)+" · "+((s.dist||0)/1000).toFixed(2)+" km · "+d.getDate()+"/"+(d.getMonth()+1);
+    sel.appendChild(o);});
+  if(velGhostList.length) sel.value=velGhostList.length-1;
 }
 function populateGpxGhosts(){
   const sel=$("gpxGhostSel"); if(!sel)return;
@@ -1704,7 +1805,9 @@ function toggleMode(){
   pendingWorkout=null; const wp=$("woPending"); if(wp)wp.style.display="none";
   $("gpxSetup").classList.toggle("hidden",m!=="gpx");
   $("libreSetup").classList.toggle("hidden",m!=="libre");
+  $("velodromoSetup").classList.toggle("hidden",m!=="velodromo");
   if(m==="libre") populateGhosts();
+  if(m==="velodromo") populateVelGhosts();
   refreshStart();
 }
 
@@ -1726,7 +1829,7 @@ function startRide(){
   mode = pendingWorkout ? "entreno" : $("modeSel").value;
   distanceM=0;v=0;elapsed=0;lastRec=0;sumP=0;nP=0;hrSum=0;hrN=0;hrMax=0;lastSentGrade=999;lastSentAt=0;
   pwBuf=[]; pw30=[]; npSum=0; npCount=0; npVal=0; ifVal=0; tssVal=0;
-  verdictDone=false; ghost=null; woSentKey="";
+  verdictDone=false; ghost=null; woSentKey=""; lastGapVal=0; lastGapUnit="";
   if(mode==="entreno"){
     woSteps=pendingWorkout.steps; woIdx=0; woStepT=0; woName=pendingWorkout.name; pendingWorkout=null;
     ergCur=0; ergTarget=-1; ergFrom=0; ergRampStart=0;
@@ -1750,6 +1853,21 @@ function startRide(){
     $("raceWrap").classList.toggle("hidden",!ghost);
     $("verdict").classList.add("hidden");
     session={mode:"libre",raceBy,date:Date.now(),samples:[],diff:parseInt($("diff").value,10)||100};
+  }else if(mode==="velodromo"){
+    velTrackLen=Math.max(50,parseFloat($("velLen").value)||250);
+    raceBy=$("velRaceSel").value;
+    const val=parseFloat($("velObjVal").value)||0;
+    targetTime = raceBy==="tiempo" ? val*60 : Infinity;
+    targetDist = raceBy==="vueltas" ? val*velTrackLen : (raceBy==="distancia" ? val*1000 : Infinity);
+    fixedGrade=0;
+    const gi=parseInt($("velGhostSel").value,10);
+    if(gi>=0 && velGhostList[gi]){ ghost=velGhostList[gi];
+      ghostDur=ghost.dur||(ghost.samples.length?ghost.samples[ghost.samples.length-1].t:0);
+      ghostTotalDist=ghost.samples.length?ghost.samples[ghost.samples.length-1].d:0; }
+    $("prof").classList.add("hidden");$("map").classList.add("hidden");
+    $("raceWrap").classList.add("hidden"); // el velódromo usa su propio cartel de vuelta/ventaja dentro del 3D
+    $("verdict").classList.add("hidden");
+    session={mode:"velodromo",raceBy,trackLen:velTrackLen,date:Date.now(),samples:[],diff:100};
   }else{
     const gi=parseInt(($("gpxGhostSel").value)||"-1",10);
     if(gi>=0 && gpxGhostList[gi]){ ghost=gpxGhostList[gi];
@@ -1808,6 +1926,7 @@ function finishRide(){
   $("sHr").textContent=avgHr||"—";
   $("sHrMax").textContent=hrMax||"—";
   if(ghost){
+    if(mode!=="gpx" && !verdictDone && lastGapUnit){ verdictMargin=lastGapVal; verdictUnit=lastGapUnit; }
     const margin = mode==="gpx" ? (ghostDur-elapsed) : verdictMargin;
     const unit = mode==="gpx" ? "s" : verdictUnit;
     const good=margin>0, sv=$("sVerdict");
@@ -1890,6 +2009,7 @@ $("pvProf").addEventListener("pointermove",e=>{ if(e.pressure>0||e.buttons)pvOnS
 $("pvMap").addEventListener("pointerdown",pvOnMapScrub);
 $("pvMap").addEventListener("pointermove",e=>{ if(e.pressure>0||e.buttons)pvOnMapScrub(e); });
 $("raceSel").onchange=()=>{ $("objUnit").textContent=$("raceSel").value==="tiempo"?"min":"km"; };
+$("velRaceSel").onchange=()=>{ const v=$("velRaceSel").value; $("velObjUnit").textContent = v==="tiempo"?"min":(v==="vueltas"?"vueltas":"km"); };
 $("reconnBtn").onclick=()=>{ conn==="ble"?reconnectBle():connect(); };
 $("connType").onchange=()=>{ conn=$("connType").value; $("hrBleBtn").classList.toggle("hidden",conn!=="ble"); saveCfg(); };
 $("hrBleBtn").onclick=connectHrBle;
