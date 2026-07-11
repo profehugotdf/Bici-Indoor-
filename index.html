@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v71</title>
+<title>Bici Indoor · v72</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v71</h1>
+  <h1>Bici Indoor · v72</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -210,7 +210,18 @@
       <h2>Escenario de la ruta</h2>
       <div id="sceneRouteInfo" style="color:var(--dim);font-size:13px;margin-bottom:8px"></div>
       <canvas id="sceneStrip" height="26" style="width:100%;display:block;border-radius:6px;margin-bottom:10px"></canvas>
-      <div id="sceneRows"></div>
+
+      <canvas id="sceneProf" height="130" style="width:100%;display:block;border-radius:8px;background:#0a0d12"></canvas>
+      <canvas id="sceneMapCv" height="150" style="width:100%;display:block;border-radius:8px;background:#0a0d12;margin-top:6px"></canvas>
+      <div id="sceneReadout" style="color:var(--dim);font-size:12px;margin-top:4px">Deslizá el dedo por el perfil o el mapa para ubicar un punto.</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--dim)">Zoom</span>
+        <input type="number" id="sceneZoomFrom" step="0.1" style="width:64px"> <span style="font-size:12px;color:var(--dim)">a</span>
+        <input type="number" id="sceneZoomTo" step="0.1" style="width:64px"> <span style="font-size:12px;color:var(--dim)">km</span>
+        <button id="sceneZoomAll" style="min-height:36px;padding:6px 12px;font-size:13px">Ver todo</button>
+      </div>
+
+      <div id="sceneRows" style="margin-top:12px"></div>
       <button class="full" id="sceneAddBtn" style="margin-top:8px">+ Agregar tramo</button>
 
       <div style="border-top:1px solid var(--line);margin-top:16px;padding-top:12px">
@@ -1048,6 +1059,32 @@ function setRouteScenes(routeName,segs){ if(!routeName)return false; const all=l
 let sceneEditRows=[], sceneEditRoute=null, sceneEditTotal=0, sceneReturnTo="gpx";
 let bridgeEditRows=[];
 function scrollTop(){ try{ window.scrollTo(0,0); }catch(_){} }
+let sceneRouteGeo=null, sceneProfData=null, sceneZoomFromKm=0, sceneZoomToKm=0, sceneMapProj=null, sceneScrubKm=null;
+function buildSceneProfile(route){
+  const STEP2=10, totalM=route.dist[route.dist.length-1], n=Math.max(1,Math.floor(totalM/STEP2)+1);
+  const raw=[]; for(let i=0;i<n;i++) raw.push(posAtDistance(route,i*STEP2).ele);
+  const k=Math.round((150/STEP2)/2);
+  const sm = k<=0 ? raw.slice() : raw.map((_,i)=>{ let s=0,c=0; for(let j=Math.max(0,i-k);j<=Math.min(raw.length-1,i+k);j++){s+=raw[j];c++;} return s/c; });
+  const grade=[];
+  for(let i=0;i<sm.length;i++){ const a=Math.max(0,i-1), b=Math.min(sm.length-1,i+1), run=(b-a)*STEP2;
+    grade.push(run>0 ? Math.max(-30,Math.min(30,(sm[b]-sm[a])/run*100)) : 0); }
+  return {ele:sm, grade, step:STEP2, total:totalM};
+}
+function sceneMapProject(route){
+  const P=route.pts.map(p=>({x:p.lon*Math.PI/180,y:Math.log(Math.tan(Math.PI/4+(p.lat*Math.PI/180)/2))}));
+  let mnx=Infinity,mxx=-Infinity,mny=Infinity,mxy=-Infinity;
+  for(const p of P){ if(p.x<mnx)mnx=p.x;if(p.x>mxx)mxx=p.x;if(p.y<mny)mny=p.y;if(p.y>mxy)mxy=p.y; }
+  return {P,mnx,mxx,mny,mxy};
+}
+function loadSceneRouteGeo(routeName){
+  sceneRouteGeo=null; sceneProfData=null; sceneMapProj=null;
+  const text=getRouteText(routeName);
+  if(!text) return false;
+  const route=parseGpxStandalone(text);
+  if(!route) return false;
+  sceneRouteGeo=route; sceneProfData=buildSceneProfile(route); sceneMapProj=sceneMapProject(route);
+  return true;
+}
 function openSceneEditor(routeName,totalM,returnTo){
   routeName = routeName || fname; totalM = totalM || total; returnTo = returnTo || "gpx";
   if(!routeName || !totalM){ alert("Cargá primero un recorrido (GPX)."); return; }
@@ -1055,6 +1092,12 @@ function openSceneEditor(routeName,totalM,returnTo){
   sceneEditRows=getRouteScenes(routeName).map(s=>({km:s.km,scene:s.scene,water:s.water||null,wall:s.wall||null}));
   bridgeEditRows=getRouteBridges(routeName).map(b=>({fromKm:b.fromKm,toKm:b.toKm,peakPct:b.peakPct}));
   $("sceneRouteInfo").textContent=routeName+" · "+(totalM/1000).toFixed(2)+" km";
+  const gotGeo=loadSceneRouteGeo(routeName);
+  $("sceneProf").classList.toggle("hidden",!gotGeo);
+  $("sceneMapCv").classList.toggle("hidden",!gotGeo);
+  if(!gotGeo) $("sceneReadout").textContent="No tengo el trazado guardado de esta ruta (solo el nombre/distancia), así que no puedo mostrar el perfil ni el mapa acá.";
+  sceneZoomFromKm=0; sceneZoomToKm=totalM/1000; sceneScrubKm=null;
+  $("sceneZoomFrom").value=sceneZoomFromKm.toFixed(1); $("sceneZoomTo").value=sceneZoomToKm.toFixed(1);
   renderSceneRows();
   renderBridgeRows();
   if(returnTo==="gpx"){ $("gpxSetup").classList.add("hidden"); $("preview").classList.add("hidden"); }
@@ -1122,6 +1165,123 @@ function drawSceneStrip(){
     ctx.fillRect(x0,0,Math.max(1,x1-x0),h);
   }
 }
+function drawSceneStrip(){
+  const cv=$("sceneStrip"); if(!cv||!sceneEditTotal)return;
+  const r=fit(cv), ctx=r.ctx, w=r.w, h=r.h; if(w<10)return;
+  ctx.clearRect(0,0,w,h);
+  const segs=[...sceneEditRows].sort((a,b)=>a.km-b.km), totKm=sceneEditTotal/1000;
+  for(let i=0;i<segs.length;i++){
+    const x0=w*(segs[i].km/totKm), x1= i+1<segs.length? w*(segs[i+1].km/totKm) : w;
+    ctx.fillStyle=(SCENES[segs[i].scene]||SCENES.rural).sky[0];
+    ctx.fillRect(x0,0,Math.max(1,x1-x0),h);
+  }
+  if(totKm>0 && (sceneZoomFromKm>0.001 || sceneZoomToKm<totKm-0.001)){
+    const zx0=w*(sceneZoomFromKm/totKm), zx1=w*(sceneZoomToKm/totKm);
+    ctx.strokeStyle="#e6edf3"; ctx.lineWidth=2; ctx.strokeRect(zx0+1,1,Math.max(1,zx1-zx0-2),h-2);
+  }
+  drawSceneProfile(); drawSceneMap();
+}
+function sceneEleAt(d){ if(!sceneProfData)return 0; const i=Math.max(0,Math.min(sceneProfData.ele.length-1,Math.round(d/sceneProfData.step))); return sceneProfData.ele[i]; }
+function sceneGradeAt(d){ if(!sceneProfData)return 0; const i=Math.max(0,Math.min(sceneProfData.grade.length-1,Math.round(d/sceneProfData.step))); return sceneProfData.grade[i]; }
+function drawSceneProfile(){
+  const cv=$("sceneProf"); if(!cv||!sceneProfData)return;
+  const r=fit(cv), ctx=r.ctx, w=r.w, h=r.h; if(w<10)return;
+  ctx.clearRect(0,0,w,h);
+  const fromM=sceneZoomFromKm*1000, toM=sceneZoomToKm*1000, span=Math.max(1,toM-fromM);
+  const pad={l:8,r:8,t:8,b:16}, cw=w-pad.l-pad.r, ch=h-pad.t-pad.b;
+  const idxFrom=Math.floor(fromM/sceneProfData.step), idxTo=Math.ceil(toM/sceneProfData.step);
+  let emin=Infinity,emax=-Infinity;
+  for(let i=Math.max(0,idxFrom);i<=Math.min(sceneProfData.ele.length-1,idxTo);i++){ const e=sceneProfData.ele[i]; if(e<emin)emin=e; if(e>emax)emax=e; }
+  if(!isFinite(emin)){emin=0;emax=1;} if(emax-emin<1){emax+=1;emin-=1;}
+  const x=d=>pad.l+((d-fromM)/span)*cw, y=e=>pad.t+(1-(e-emin)/(emax-emin))*ch;
+  ctx.beginPath(); ctx.moveTo(x(fromM),y(sceneEleAt(fromM)));
+  const stride=Math.max(1,Math.floor(span/sceneProfData.step/cw));
+  for(let d=fromM;d<=toM;d+=sceneProfData.step*stride) ctx.lineTo(x(d),y(sceneEleAt(d)));
+  ctx.lineTo(x(toM),pad.t+ch); ctx.lineTo(x(fromM),pad.t+ch); ctx.closePath();
+  ctx.fillStyle="rgba(76,194,255,.14)"; ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x(fromM),y(sceneEleAt(fromM)));
+  for(let d=fromM;d<=toM;d+=sceneProfData.step*stride) ctx.lineTo(x(d),y(sceneEleAt(d)));
+  ctx.strokeStyle="#4cc2ff"; ctx.lineWidth=1.6; ctx.stroke();
+  for(let px=0;px<cw;px++){ const d=fromM+(px/cw)*span; ctx.fillStyle=gradeColor(sceneGradeAt(d)); ctx.fillRect(pad.l+px,pad.t+ch+2,1,6); }
+  // marcadores de inicio de tramo
+  for(const s of sceneEditRows){ const d=s.km*1000; if(d<fromM||d>toM) continue;
+    const xx=x(d); ctx.strokeStyle=(SCENES[s.scene]||SCENES.rural).sky[0]; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(xx,pad.t); ctx.lineTo(xx,pad.t+ch); ctx.stroke(); }
+  // marcadores de puentes (tramo rosado semitransparente)
+  for(const b of bridgeEditRows){ const f=b.fromKm*1000, t2=b.toKm*1000; if(t2<fromM||f>toM) continue;
+    const xx0=x(Math.max(f,fromM)), xx1=x(Math.min(t2,toM));
+    ctx.fillStyle="rgba(240,136,62,.35)"; ctx.fillRect(xx0,pad.t,Math.max(1,xx1-xx0),ch); }
+  if(sceneScrubKm!=null){ const d=sceneScrubKm*1000; if(d>=fromM&&d<=toM){
+    const xx=x(d), yy=y(sceneEleAt(d));
+    ctx.strokeStyle="#e6edf3"; ctx.lineWidth=1.5; ctx.beginPath();ctx.moveTo(xx,pad.t);ctx.lineTo(xx,pad.t+ch);ctx.stroke();
+    ctx.beginPath();ctx.arc(xx,yy,5,0,7);ctx.fillStyle="#e6edf3";ctx.strokeStyle="#04121c";ctx.lineWidth=2;ctx.fill();ctx.stroke();
+  }}
+}
+function drawSceneMap(){
+  const cv=$("sceneMapCv"); if(!cv||!sceneRouteGeo||!sceneMapProj)return;
+  const r=fit(cv), ctx=r.ctx, w=r.w, h=r.h; if(w<10)return;
+  ctx.clearRect(0,0,w,h);
+  const {pts,dist}=sceneRouteGeo, fromM=sceneZoomFromKm*1000, toM=sceneZoomToKm*1000;
+  let i0=0; while(i0<dist.length-1 && dist[i0+1]<fromM) i0++;
+  let i1=dist.length-1; while(i1>0 && dist[i1-1]>toM) i1--;
+  if(i1<=i0){ i1=Math.min(dist.length-1,i0+1); }
+  const {P}=sceneMapProj;
+  let mnx=Infinity,mxx=-Infinity,mny=Infinity,mxy=-Infinity;
+  for(let i=i0;i<=i1;i++){ const p=P[i]; if(p.x<mnx)mnx=p.x;if(p.x>mxx)mxx=p.x;if(p.y<mny)mny=p.y;if(p.y>mxy)mxy=p.y; }
+  const pad=12, cw=w-2*pad, ch=h-2*pad, bw=(mxx-mnx)||1e-9, bh=(mxy-mny)||1e-9;
+  const scale=Math.min(cw/bw,ch/bh), ox=pad+(cw-bw*scale)/2, oy=pad+(ch-bh*scale)/2;
+  const X=p=>ox+(p.x-mnx)*scale, Y=p=>oy+(mxy-p.y)*scale;
+  ctx.lineWidth=3; ctx.lineJoin="round"; ctx.lineCap="round";
+  for(let i=i0;i<i1;i++){ ctx.strokeStyle=gradeColor(sceneGradeAt(dist[i])); ctx.beginPath();ctx.moveTo(X(P[i]),Y(P[i]));ctx.lineTo(X(P[i+1]),Y(P[i+1]));ctx.stroke(); }
+  const dot=(px,py,f,rr)=>{ctx.beginPath();ctx.arc(px,py,rr||4,0,7);ctx.fillStyle=f;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#04121c";ctx.stroke();};
+  if(sceneZoomFromKm<0.001) dot(X(P[0]),Y(P[0]),"#3fb950");
+  if(sceneZoomToKm>=sceneEditTotal/1000-0.001) dot(X(P[P.length-1]),Y(P[P.length-1]),"#f85149");
+  if(sceneScrubKm!=null){ const d=sceneScrubKm*1000; if(d>=fromM&&d<=toM){ const p=posAtDistance(sceneRouteGeo,d);
+    const proj={x:p.lon*Math.PI/180,y:Math.log(Math.tan(Math.PI/4+(p.lat*Math.PI/180)/2))};
+    dot(X(proj),Y(proj),"#e6edf3",6); } }
+}
+function updateSceneReadout(){
+  if(sceneScrubKm==null){ $("sceneReadout").textContent="Deslizá el dedo por el perfil o el mapa para ubicar un punto."; return; }
+  const d=sceneScrubKm*1000;
+  $("sceneReadout").innerHTML=`Km <b>${sceneScrubKm.toFixed(2)}</b> · Alt <b>${sceneEleAt(d).toFixed(0)} m</b> · Pend <b>${sceneGradeAt(d).toFixed(1)}%</b>`;
+}
+function sceneProfScrub(ev){
+  if(!sceneProfData)return;
+  const cv=$("sceneProf"), rect=cv.getBoundingClientRect();
+  const px=(ev.touches?ev.touches[0].clientX:ev.clientX)-rect.left;
+  const frac=Math.max(0,Math.min(1,(px-8)/(rect.width-16)));
+  sceneScrubKm=sceneZoomFromKm+frac*(sceneZoomToKm-sceneZoomFromKm);
+  drawSceneProfile(); drawSceneMap(); updateSceneReadout();
+}
+function sceneMapScrub(ev){
+  if(!sceneRouteGeo)return;
+  const cv=$("sceneMapCv"), rect=cv.getBoundingClientRect();
+  const sx=(ev.touches?ev.touches[0].clientX:ev.clientX)-rect.left;
+  const sy=(ev.touches?ev.touches[0].clientY:ev.clientY)-rect.top;
+  const {pts,dist}=sceneRouteGeo, fromM=sceneZoomFromKm*1000, toM=sceneZoomToKm*1000;
+  let i0=0; while(i0<dist.length-1 && dist[i0+1]<fromM) i0++;
+  let i1=dist.length-1; while(i1>0 && dist[i1-1]>toM) i1--;
+  const {P}=sceneMapProj;
+  let mnx=Infinity,mxx=-Infinity,mny=Infinity,mxy=-Infinity;
+  for(let i=i0;i<=i1;i++){ const p=P[i]; if(p.x<mnx)mnx=p.x;if(p.x>mxx)mxx=p.x;if(p.y<mny)mny=p.y;if(p.y>mxy)mxy=p.y; }
+  const w=$("sceneMapCv").width||1, h=$("sceneMapCv").height||1;
+  const pad=12, cw=w-2*pad, ch=h-2*pad, bw=(mxx-mnx)||1e-9, bh=(mxy-mny)||1e-9;
+  const scale=Math.min(cw/bw,ch/bh), ox=pad+(cw-bw*scale)/2, oy=pad+(ch-bh*scale)/2;
+  const X=p=>ox+(p.x-mnx)*scale, Y=p=>oy+(mxy-p.y)*scale;
+  let best=i0,bd=Infinity;
+  for(let i=i0;i<=i1;i++){ const dx=X(P[i])-sx, dy=Y(P[i])-sy, dd=dx*dx+dy*dy; if(dd<bd){bd=dd;best=i;} }
+  sceneScrubKm=dist[best]/1000;
+  drawSceneProfile(); drawSceneMap(); updateSceneReadout();
+}
+function sceneZoomApply(){
+  const totKm=sceneEditTotal/1000;
+  let f=parseFloat($("sceneZoomFrom").value)||0, t2=parseFloat($("sceneZoomTo").value);
+  if(!isFinite(t2)) t2=totKm;
+  f=Math.max(0,Math.min(totKm-0.01,f)); t2=Math.max(f+0.01,Math.min(totKm,t2));
+  sceneZoomFromKm=f; sceneZoomToKm=t2;
+  $("sceneZoomFrom").value=f.toFixed(1); $("sceneZoomTo").value=t2.toFixed(1);
+  drawSceneStrip();
+}
 function renderBridgeRows(){
   const wrap=$("bridgeRows"); if(!wrap)return;
   bridgeEditRows.sort((a,b)=>a.fromKm-b.fromKm);
@@ -1148,8 +1308,15 @@ function renderBridgeRows(){
 $("bridgeAddBtn").onclick=()=>{
   const totKm=sceneEditTotal/1000, lastTo=bridgeEditRows.length?Math.max(...bridgeEditRows.map(b=>b.toKm)):0;
   const f=Math.min(totKm-0.3,lastTo+1), t=Math.min(totKm,f+0.3);
-  bridgeEditRows.push({fromKm:Math.max(0,f),toKm:Math.max(0.1,t),peakPct:4}); renderBridgeRows();
+  bridgeEditRows.push({fromKm:Math.max(0,f),toKm:Math.max(0.1,t),peakPct:4}); renderBridgeRows(); drawSceneProfile();
 };
+$("sceneZoomFrom").addEventListener("change",sceneZoomApply);
+$("sceneZoomTo").addEventListener("change",sceneZoomApply);
+$("sceneZoomAll").onclick=()=>{ $("sceneZoomFrom").value="0"; $("sceneZoomTo").value=(sceneEditTotal/1000).toFixed(1); sceneZoomApply(); };
+$("sceneProf").addEventListener("pointerdown",sceneProfScrub);
+$("sceneProf").addEventListener("pointermove",e=>{ if(e.pressure>0||e.buttons)sceneProfScrub(e); });
+$("sceneMapCv").addEventListener("pointerdown",sceneMapScrub);
+$("sceneMapCv").addEventListener("pointermove",e=>{ if(e.pressure>0||e.buttons)sceneMapScrub(e); });
 $("sceneEditBtn").onclick=()=>openSceneEditor(fname,total,"gpx");
 $("sceneAddBtn").onclick=()=>{
   const lastKm=sceneEditRows.length?Math.max(...sceneEditRows.map(s=>s.km)):0;
