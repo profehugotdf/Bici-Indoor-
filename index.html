@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v65</title>
+<title>Bici Indoor · v66</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v65</h1>
+  <h1>Bici Indoor · v66</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1031,6 +1031,7 @@ function setRouteScenes(routeName,segs){ if(!routeName)return false; const all=l
 
 // ---------- Editor de escenario ----------
 let sceneEditRows=[], sceneEditRoute=null, sceneEditTotal=0, sceneReturnTo="gpx";
+function scrollTop(){ try{ window.scrollTo(0,0); }catch(_){} }
 function openSceneEditor(routeName,totalM,returnTo){
   routeName = routeName || fname; totalM = totalM || total; returnTo = returnTo || "gpx";
   if(!routeName || !totalM){ alert("Cargá primero un recorrido (GPX)."); return; }
@@ -1042,12 +1043,14 @@ function openSceneEditor(routeName,totalM,returnTo){
   else if(returnTo==="replay"){ $("replayCard").classList.add("hidden"); }
   else { $("routesCard").classList.add("hidden"); }
   $("sceneCard").classList.remove("hidden");
+  scrollTop();
 }
 function closeSceneEditor(){
   $("sceneCard").classList.add("hidden");
   if(sceneReturnTo==="gpx"){ $("gpxSetup").classList.remove("hidden"); $("preview").classList.remove("hidden"); }
   else if(sceneReturnTo==="replay"){ $("replayCard").classList.remove("hidden"); }
   else { $("routesCard").classList.remove("hidden"); renderRoutesList(); }
+  scrollTop();
 }
 function renderSceneRows(){
   sceneEditRows.sort((a,b)=>a.km-b.km);
@@ -1641,8 +1644,8 @@ function estimateFtp(){
   if(confirm("Mejor 20 min: "+Math.round(best)+" W\nFTP estimado: "+ftp+" W\n¿Usarlo?")){ $("ftp").value=ftp; $("ftp2").value=ftp; saveCfg(); renderZones(); }
 }
 let pendingFtpTest=false;
-$("zonesBtn").onclick=()=>{ renderZones(); $("setup").classList.add("hidden"); $("zonesCard").classList.remove("hidden"); };
-$("zonesBack").onclick=()=>{ $("zonesCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); };
+$("zonesBtn").onclick=()=>{ renderZones(); $("setup").classList.add("hidden"); $("zonesCard").classList.remove("hidden"); scrollTop(); };
+$("zonesBack").onclick=()=>{ $("zonesCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); scrollTop(); };
 $("ftp2").addEventListener("change",()=>{ $("ftp").value=$("ftp2").value; saveCfg(); renderZones(); });
 $("estFtpBtn").onclick=estimateFtp;
 
@@ -1728,8 +1731,8 @@ function renderWoList(){
 let woEditIdx=-1;
 function openEditor(){ $("woEditor").classList.remove("hidden"); renderWoPreview(); }
 function editWorkout(i){ const w=loadWorkouts()[i]; woEditIdx=i; $("woName").value=w.name||""; $("woText").value=w.text||""; openEditor(); }
-$("entrenoBtn").onclick=()=>{ renderWoList(); $("woEditor").classList.add("hidden"); $("setup").classList.add("hidden"); $("entrenoCard").classList.remove("hidden"); };
-$("entrenoBack").onclick=()=>{ $("entrenoCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); };
+$("entrenoBtn").onclick=()=>{ renderWoList(); $("woEditor").classList.add("hidden"); $("setup").classList.add("hidden"); $("entrenoCard").classList.remove("hidden"); scrollTop(); };
+$("entrenoBack").onclick=()=>{ $("entrenoCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); scrollTop(); };
 $("woNew").onclick=()=>{ woEditIdx=-1; $("woName").value=""; $("woText").value=WO_EXAMPLE; openEditor(); };
 $("woCancel").onclick=()=>{ $("woEditor").classList.add("hidden"); };
 $("woText").addEventListener("input",renderWoPreview);
@@ -1952,8 +1955,8 @@ function drawRepProf(st){
   const eleD=d=>posAtDistance(replayRoute,d).ele;
   for(const s of st){ const xx=x(Math.min(s.d,total)); ctx.beginPath();ctx.arc(xx,y(eleD(s.d)),5,0,7);ctx.fillStyle=s.r.color;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#04121c";ctx.stroke(); }
 }
-$("replayBtn").onclick=()=>{ repGpxOverride=null; repGpxOverrideName=null; populateReplay(); $("repGpxInfo").textContent=""; $("replaySetup").classList.remove("hidden"); $("replayView").classList.add("hidden"); $("setup").classList.add("hidden"); $("replayCard").classList.remove("hidden"); };
-$("replayBack").onclick=()=>{ replayPlaying=false; $("replayCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); };
+$("replayBtn").onclick=()=>{ repGpxOverride=null; repGpxOverrideName=null; populateReplay(); $("repGpxInfo").textContent=""; $("replaySetup").classList.remove("hidden"); $("replayView").classList.add("hidden"); $("setup").classList.add("hidden"); $("replayCard").classList.remove("hidden"); scrollTop(); };
+$("replayBack").onclick=()=>{ replayPlaying=false; $("replayCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); scrollTop(); };
 $("repStart").onclick=startReplay;
 $("repZoomBtn").onclick=()=>{ repZoom=!repZoom; $("repZoomBtn").textContent="Zoom disputa: "+(repZoom?"ON":"OFF"); if(replayRoute)renderReplay(); };
 function applyRepView(){
@@ -2174,9 +2177,9 @@ function renderRoutesList(){
     wrap.appendChild(row);
   });
 }
-$("routesBtn").onclick=()=>{ renderRoutesList(); $("setup").classList.add("hidden"); $("routesCard").classList.remove("hidden"); };
-$("routesBack").onclick=()=>{ $("routesCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); };
-$("routesToHistBtn").onclick=()=>{ $("routesCard").classList.add("hidden"); $("historial").classList.remove("hidden"); setSelMode(false); renderHistorial(); };
+$("routesBtn").onclick=()=>{ renderRoutesList(); $("setup").classList.add("hidden"); $("routesCard").classList.remove("hidden"); scrollTop(); };
+$("routesBack").onclick=()=>{ $("routesCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); scrollTop(); };
+$("routesToHistBtn").onclick=()=>{ $("routesCard").classList.add("hidden"); $("historial").classList.remove("hidden"); setSelMode(false); renderHistorial(); scrollTop(); };
 $("routesCompressBtn").onclick=()=>{
   const before=storageUsageKB();
   const map=loadRoutesMap(); let changed=0;
@@ -2290,8 +2293,8 @@ function importReto(text){
   }
   renderHistorial();
 }
-$("histBtn").onclick=()=>{ $("setup").classList.add("hidden");$("historial").classList.remove("hidden"); setSelMode(false); };
-$("histBack").onclick=()=>{ $("historial").classList.add("hidden");$("setup").classList.remove("hidden");refreshStart(); };
+$("histBtn").onclick=()=>{ $("setup").classList.add("hidden");$("historial").classList.remove("hidden"); setSelMode(false); scrollTop(); };
+$("histBack").onclick=()=>{ $("historial").classList.add("hidden");$("setup").classList.remove("hidden");refreshStart(); scrollTop(); };
 $("exportAll").onclick=exportAll;
 $("importBtn").onclick=()=>$("importFile").click();
 $("importFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>importSesiones(r.result);r.readAsText(f);e.target.value="";};
