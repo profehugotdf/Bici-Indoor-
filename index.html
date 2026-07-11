@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v67</title>
+<title>Bici Indoor · v69</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v67</h1>
+  <h1>Bici Indoor · v69</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -212,6 +212,14 @@
       <canvas id="sceneStrip" height="26" style="width:100%;display:block;border-radius:6px;margin-bottom:10px"></canvas>
       <div id="sceneRows"></div>
       <button class="full" id="sceneAddBtn" style="margin-top:8px">+ Agregar tramo</button>
+
+      <div style="border-top:1px solid var(--line);margin-top:16px;padding-top:12px">
+        <div style="font-weight:600;margin-bottom:4px">Puentes / rampas manuales (opcional)</div>
+        <div style="color:var(--dim);font-size:12px;margin-bottom:8px">Para tramos como puentes de autopista, donde la altimetría satelital no capta la subida/bajada real. Se aplica una pendiente fija ahí, sin depender del GPX.</div>
+        <div id="bridgeRows"></div>
+        <button class="full" id="bridgeAddBtn" style="margin-top:6px">+ Agregar puente/rampa</button>
+      </div>
+
       <div class="controls" style="margin-top:12px">
         <button id="sceneCancel">Cancelar</button>
         <button class="primary" id="sceneSave">Guardar</button>
@@ -657,6 +665,7 @@ $("file").onchange=e=>{const f=e.target.files[0];if(!f)return;fname=f.name;
 function parseGpx(text){
   gpxText=text;
   if(!saveRouteText(fname,text)) log("No pude guardar esta ruta en caché (¿sin espacio? revisá \"Rutas guardadas\")","#f0883e");
+  refreshRouteBridges(fname);
   const xml=new DOMParser().parseFromString(text,"application/xml");
   if(xml.querySelector("parsererror"))throw new Error("XML inválido");
   let n=[...xml.getElementsByTagName("trkpt")]; if(!n.length)n=[...xml.getElementsByTagName("rtept")];
@@ -748,7 +757,11 @@ function haversine(a,b){const R=6371000,tr=Math.PI/180;
 function smooth(arr,winM){const k=Math.round((winM/STEP)/2);if(k<=0)return arr.slice();
   const o=new Array(arr.length);for(let i=0;i<arr.length;i++){let s=0,c=0;
     for(let j=i-k;j<=i+k;j++)if(j>=0&&j<arr.length){s+=arr[j];c++;}o[i]=s/c;}return o;}
-function gradeAt(d){return pg[Math.max(0,Math.min(pg.length-1,Math.round(d/STEP)))];}
+function gradeAt(d){
+  const bg=bridgeGradeAt(fname,d);
+  if(bg!=null) return bg;
+  return pg[Math.max(0,Math.min(pg.length-1,Math.round(d/STEP)))];
+}
 
 function mercator(lat,lon){return{x:lon*Math.PI/180,y:Math.log(Math.tan(Math.PI/4+(lat*Math.PI/180)/2))};}
 function computeMap(){projPts=points.map(p=>mercator(p.lat,p.lon));
@@ -981,10 +994,10 @@ function hud(grade){
 function bandOf(g){ if(g<=-1)return 0; if(g<1)return 1; if(g<3)return 2; if(g<6)return 3; return 4; }
 function nextGradeInfo(){
   if(mode!=="gpx"||!pg.length) return null;
-  const i0=Math.max(0,Math.min(pg.length-1,Math.round(distanceM/STEP))), b0=bandOf(pg[i0]);
-  for(let i=i0+1;i<pg.length;i++){ if(bandOf(pg[i])!==b0){
+  const i0=Math.max(0,Math.min(pg.length-1,Math.round(distanceM/STEP))), b0=bandOf(gradeAt(pd[i0]));
+  for(let i=i0+1;i<pg.length;i++){ const gi=gradeAt(pd[i]); if(bandOf(gi)!==b0){
     const m=Math.max(0,pd[i]-distanceM), secs=v>0.3?m/v:null;
-    return {m,secs,g:pg[i]};
+    return {m,secs,g:gi};
   }}
   return null;
 }
@@ -1033,14 +1046,17 @@ function setRouteScenes(routeName,segs){ if(!routeName)return false; const all=l
 
 // ---------- Editor de escenario ----------
 let sceneEditRows=[], sceneEditRoute=null, sceneEditTotal=0, sceneReturnTo="gpx";
+let bridgeEditRows=[];
 function scrollTop(){ try{ window.scrollTo(0,0); }catch(_){} }
 function openSceneEditor(routeName,totalM,returnTo){
   routeName = routeName || fname; totalM = totalM || total; returnTo = returnTo || "gpx";
   if(!routeName || !totalM){ alert("Cargá primero un recorrido (GPX)."); return; }
   sceneEditRoute=routeName; sceneEditTotal=totalM; sceneReturnTo=returnTo;
   sceneEditRows=getRouteScenes(routeName).map(s=>({km:s.km,scene:s.scene}));
+  bridgeEditRows=getRouteBridges(routeName).map(b=>({fromKm:b.fromKm,toKm:b.toKm,peakPct:b.peakPct}));
   $("sceneRouteInfo").textContent=routeName+" · "+(totalM/1000).toFixed(2)+" km";
   renderSceneRows();
+  renderBridgeRows();
   if(returnTo==="gpx"){ $("gpxSetup").classList.add("hidden"); $("preview").classList.add("hidden"); }
   else if(returnTo==="replay"){ $("replayCard").classList.add("hidden"); }
   else { $("routesCard").classList.add("hidden"); }
@@ -1087,6 +1103,34 @@ function drawSceneStrip(){
     ctx.fillRect(x0,0,Math.max(1,x1-x0),h);
   }
 }
+function renderBridgeRows(){
+  const wrap=$("bridgeRows"); if(!wrap)return;
+  bridgeEditRows.sort((a,b)=>a.fromKm-b.fromKm);
+  wrap.innerHTML="";
+  bridgeEditRows.forEach((row,i)=>{
+    const div=document.createElement("div");
+    div.style.cssText="display:flex;align-items:center;gap:6px;margin:6px 0;flex-wrap:wrap";
+    const mk=(lbl,val,step,onch)=>{ const s=document.createElement("span"); s.style.cssText="font-size:12px;color:var(--dim)"; s.textContent=lbl;
+      const inp=document.createElement("input"); inp.type="number"; inp.step=step; inp.value=val; inp.style.cssText="width:64px";
+      inp.onchange=()=>onch(parseFloat(inp.value)); return [s,inp]; };
+    const [l1,i1]=mk("Desde",row.fromKm.toFixed(2),"0.01",v=>{ row.fromKm=Math.max(0,Math.min(sceneEditTotal/1000,v||0)); });
+    const [l2,i2]=mk("hasta",row.toKm.toFixed(2),"0.01",v=>{ row.toKm=Math.max(row.fromKm+0.01,Math.min(sceneEditTotal/1000,v||0)); });
+    const [l3,i3]=mk("pico",row.peakPct,"0.5",v=>{ row.peakPct=Math.max(0.5,Math.min(20,v||4)); });
+    const kmLbl=document.createElement("span"); kmLbl.style.cssText="font-size:12px;color:var(--dim)"; kmLbl.textContent="km";
+    const pctLbl=document.createElement("span"); pctLbl.style.cssText="font-size:12px;color:var(--dim)"; pctLbl.textContent="%";
+    const del=document.createElement("button"); del.className="del"; del.textContent="✕"; del.style.minHeight="36px";
+    del.onclick=()=>{ bridgeEditRows.splice(i,1); renderBridgeRows(); };
+    div.appendChild(l1);div.appendChild(i1);div.appendChild(l2);div.appendChild(i2);div.appendChild(kmLbl);
+    div.appendChild(l3);div.appendChild(i3);div.appendChild(pctLbl);div.appendChild(del);
+    wrap.appendChild(div);
+  });
+  if(!bridgeEditRows.length) wrap.innerHTML='<div style="color:var(--dim);font-size:12px">Ninguno agregado.</div>';
+}
+$("bridgeAddBtn").onclick=()=>{
+  const totKm=sceneEditTotal/1000, lastTo=bridgeEditRows.length?Math.max(...bridgeEditRows.map(b=>b.toKm)):0;
+  const f=Math.min(totKm-0.3,lastTo+1), t=Math.min(totKm,f+0.3);
+  bridgeEditRows.push({fromKm:Math.max(0,f),toKm:Math.max(0.1,t),peakPct:4}); renderBridgeRows();
+};
 $("sceneEditBtn").onclick=()=>openSceneEditor(fname,total,"gpx");
 $("sceneAddBtn").onclick=()=>{
   const lastKm=sceneEditRows.length?Math.max(...sceneEditRows.map(s=>s.km)):0;
@@ -1097,11 +1141,15 @@ $("sceneCancel").onclick=closeSceneEditor;
 $("sceneSave").onclick=()=>{
   const segs=sceneEditRows.map(s=>({km:+s.km.toFixed(2),scene:s.scene})).sort((a,b)=>a.km-b.km);
   if(!segs.length||segs[0].km!==0) segs.unshift({km:0,scene:"rural"});
+  const bridges=bridgeEditRows.map(b=>({fromKm:+b.fromKm.toFixed(3),toKm:+b.toKm.toFixed(3),peakPct:+b.peakPct.toFixed(1)}))
+    .filter(b=>b.toKm>b.fromKm).sort((a,b)=>a.fromKm-b.fromKm);
   const ok=setRouteScenes(sceneEditRoute,segs);
-  if(!ok){
+  const ok2=setRouteBridges(sceneEditRoute,bridges);
+  if(!ok||!ok2){
     alert("No se pudo guardar: el navegador rechazó escribir en el almacenamiento (probablemente sin espacio libre — uso actual ≈"+storageUsageKB()+" KB).\n\nEntrá a \"Rutas guardadas\" y borrá alguna ruta vieja que no uses, y volvé a intentar.");
     return;
   }
+  if(sceneEditRoute===fname) refreshRouteBridges(fname);
   closeSceneEditor();
 };
 function sceneAt(routeName,d){
@@ -1109,6 +1157,29 @@ function sceneAt(routeName,d){
   let cur=segs[0]?segs[0].scene:"rural";
   for(const s of segs){ if(s.km<=km+1e-6) cur=s.scene; else break; }
   return SCENES[cur]||SCENES.rural;
+}
+// ---------- Puentes / rampas manuales (para tramos que el DEM no capta, ej. puentes de autopista) ----------
+function loadBridges(){ try{return JSON.parse(localStorage.getItem("bici_bridges")||"{}");}catch(_){ return {}; } }
+function saveBridges(o){ try{localStorage.setItem("bici_bridges",JSON.stringify(o)); return true;}catch(e){ return false; } }
+function getRouteBridges(routeName){ const all=loadBridges(); return (routeName&&all[routeName])||[]; }
+function setRouteBridges(routeName,arr){ if(!routeName)return false; const all=loadBridges(); all[routeName]=arr; return saveBridges(all); }
+let curRouteBridges=[];
+function refreshRouteBridges(routeName){ curRouteBridges=getRouteBridges(routeName); }
+function bridgeGradeAt(routeName,d){
+  if(!routeName || !curRouteBridges.length) return null;
+  const CURVE_FRAC=0.25; // fracción del puente dedicada a la transición suave, centrada en la cresta
+  for(const b of curRouteBridges){
+    const fromM=b.fromKm*1000, toM=b.toKm*1000;
+    if(d>=fromM && d<=toM){
+      const mid=(fromM+toM)/2, L=toM-fromM, half=Math.min(CURVE_FRAC*0.5*L, L*0.49);
+      const curveStart=mid-half, curveEnd=mid+half, peak=b.peakPct;
+      if(d<curveStart) return peak;
+      if(d>curveEnd) return -peak;
+      const t=(d-curveStart)/((curveEnd-curveStart)||1); // 0→1 a través de la curva
+      return peak*(1-2*t); // rampa lineal: +peak → 0 (en la cresta) → -peak
+    }
+  }
+  return null;
 }
 function drawMountains(ctx,w,horizon,camB,sc){
   const layers=[{amp:0.10,freq:0.9,pan:55,col:sc.mtnCol[0]},{amp:0.17,freq:1.5,pan:100,col:sc.mtnCol[1]}];
@@ -2093,7 +2164,8 @@ function exportAll(){
   let routes={}; try{routes=JSON.parse(localStorage.getItem("bici_routes")||"{}");}catch(_){}
   let scenes={}; try{scenes=JSON.parse(localStorage.getItem("bici_scenes")||"{}");}catch(_){}
   let entrenos=[]; try{entrenos=JSON.parse(localStorage.getItem("bici_entrenos")||"[]");}catch(_){}
-  const bundle={kind:"bici-backup",v:2,sesiones:loadSesiones(),config:cfg,routes,scenes,entrenos};
+  let bridges={}; try{bridges=JSON.parse(localStorage.getItem("bici_bridges")||"{}");}catch(_){}
+  const bundle={kind:"bici-backup",v:3,sesiones:loadSesiones(),config:cfg,routes,scenes,entrenos,bridges};
   const blob=new Blob([JSON.stringify(bundle)],{type:"application/json"});const d=new Date();
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
   a.download="bici-respaldo-"+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0")+".json";
@@ -2101,9 +2173,9 @@ function exportAll(){
 }
 function importSesiones(text){
   let inc; try{inc=JSON.parse(text);}catch{alert("Archivo inválido");return;}
-  let arr, cfg=null, routes=null, scenes=null, entrenos=null;
+  let arr, cfg=null, routes=null, scenes=null, entrenos=null, bridges=null;
   if(Array.isArray(inc)) arr=inc;                       // formato viejo
-  else if(inc && Array.isArray(inc.sesiones)){ arr=inc.sesiones; cfg=inc.config; routes=inc.routes; scenes=inc.scenes; entrenos=inc.entrenos; }
+  else if(inc && Array.isArray(inc.sesiones)){ arr=inc.sesiones; cfg=inc.config; routes=inc.routes; scenes=inc.scenes; entrenos=inc.entrenos; bridges=inc.bridges; }
   else { alert("Formato inesperado"); return; }
   const cur=loadSesiones(), seen=new Set(cur.map(s=>s.date));
   let added=0;
@@ -2113,12 +2185,13 @@ function importSesiones(text){
   if(cfg){ try{localStorage.setItem("bici_config",JSON.stringify(cfg));}catch(_){} loadCfg(); }
   if(routes){ try{const r=loadRoutesMap(); for(const name in routes) r[name]=minifyGpxForStorage(routes[name]); localStorage.setItem("bici_routes",JSON.stringify(r)); }catch(_){} }
   if(scenes){ try{const s2=loadScenes(); Object.assign(s2,scenes); saveScenes(s2); }catch(_){} }
+  if(bridges){ try{const b2=loadBridges(); Object.assign(b2,bridges); saveBridges(b2); }catch(_){} }
   let addedWo=0;
   if(entrenos && entrenos.length){ try{ const cw=loadWorkouts(), seenWo=new Set(cw.map(w=>w.name+"|"+w.text));
     for(const w of entrenos){ if(w&&w.text&&!seenWo.has(w.name+"|"+w.text)){ cw.push(w); seenWo.add(w.name+"|"+w.text); addedWo++; } }
     localStorage.setItem("bici_entrenos",JSON.stringify(cw)); }catch(_){} }
   renderHistorial();populateGhosts();
-  alert("Importadas "+added+" sesiones nuevas"+(cfg?" y tu configuración":"")+(routes?" y tus rutas":"")+(scenes?" y tus escenarios":"")+(addedWo?" y "+addedWo+" entrenamientos":"")+".");
+  alert("Importadas "+added+" sesiones nuevas"+(cfg?" y tu configuración":"")+(routes?" y tus rutas":"")+(scenes?" y tus escenarios":"")+(bridges?" y tus puentes/rampas":"")+(addedWo?" y "+addedWo+" entrenamientos":"")+".");
 }
 function minifyGpxForStorage(text){
   try{
