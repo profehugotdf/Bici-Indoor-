@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v59</title>
+<title>Bici Indoor · v60</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v59</h1>
+  <h1>Bici Indoor · v60</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -134,6 +134,13 @@
         <div id="pvReadout" style="color:var(--dim);font-size:12px;margin-top:6px">Deslizá el dedo por la altimetría para ubicar el punto</div>
         <button class="full" id="sceneEditBtn" style="margin-top:10px">Editar escenario de la ruta</button>
       </div>
+    </div>
+
+    <div class="card hidden" id="routesCard">
+      <h2>Rutas guardadas</h2>
+      <div style="color:var(--dim);font-size:12px;margin-bottom:8px">Se guardan solas cada vez que cargás un GPX (acá o en Carrera virtual).</div>
+      <div id="routesList"></div>
+      <button class="primary full" id="routesBack" style="margin-top:12px">Volver</button>
     </div>
 
     <div class="card hidden" id="sceneCard">
@@ -197,6 +204,7 @@
     <button class="full" id="histBtn" style="margin-top:10px">Historial de sesiones</button>
     <button class="full" id="zonesBtn" style="margin-top:10px">Zonas de potencia y FTP</button>
     <button class="full" id="entrenoBtn" style="margin-top:10px">Entrenamientos estructurados</button>
+    <button class="full" id="routesBtn" style="margin-top:10px">Rutas guardadas</button>
     <button class="full" id="replayBtn" style="margin-top:10px">Carrera virtual (replay)</button>
   </div>
 
@@ -1023,13 +1031,15 @@ function openSceneEditor(routeName,totalM,returnTo){
   $("sceneRouteInfo").textContent=routeName+" · "+(totalM/1000).toFixed(2)+" km";
   renderSceneRows();
   if(returnTo==="gpx"){ $("gpxSetup").classList.add("hidden"); $("preview").classList.add("hidden"); }
-  else { $("replayCard").classList.add("hidden"); }
+  else if(returnTo==="replay"){ $("replayCard").classList.add("hidden"); }
+  else { $("routesCard").classList.add("hidden"); }
   $("sceneCard").classList.remove("hidden");
 }
 function closeSceneEditor(){
   $("sceneCard").classList.add("hidden");
   if(sceneReturnTo==="gpx"){ $("gpxSetup").classList.remove("hidden"); $("preview").classList.remove("hidden"); }
-  else { $("replayCard").classList.remove("hidden"); }
+  else if(sceneReturnTo==="replay"){ $("replayCard").classList.remove("hidden"); }
+  else { $("routesCard").classList.remove("hidden"); renderRoutesList(); }
 }
 function renderSceneRows(){
   sceneEditRows.sort((a,b)=>a.km-b.km);
@@ -2088,6 +2098,30 @@ function importSesiones(text){
 }
 function saveRouteText(name,text){ if(!name)return; try{const r=JSON.parse(localStorage.getItem("bici_routes")||"{}"); r[name]=text; localStorage.setItem("bici_routes",JSON.stringify(r)); }catch(_){} }
 function getRouteText(name){ try{const r=JSON.parse(localStorage.getItem("bici_routes")||"{}"); return r[name]||null; }catch(_){ return null; } }
+function loadRoutesMap(){ try{return JSON.parse(localStorage.getItem("bici_routes")||"{}");}catch(_){ return {}; } }
+function renderRoutesList(){
+  const map=loadRoutesMap(), names=Object.keys(map).sort((a,b)=>a.localeCompare(b));
+  const wrap=$("routesList");
+  if(!names.length){ wrap.innerHTML='<div style="color:var(--dim);font-size:13px">No hay rutas guardadas todavía. Se guardan solas al cargar un GPX.</div>'; return; }
+  wrap.innerHTML="";
+  names.forEach(name=>{
+    const text=map[name];
+    let totalM=0, kmTx="—";
+    try{ const r=parseGpxStandalone(text); if(r){ totalM=r.dist[r.dist.length-1]; kmTx=(totalM/1000).toFixed(2); } }catch(_){}
+    const row=document.createElement("div"); row.className="srow";
+    row.innerHTML=`<div class="info">${name}<div class="tag">${kmTx} km</div></div>`;
+    const editBtn=document.createElement("button"); editBtn.textContent="Escenario"; editBtn.style.minHeight="40px"; editBtn.style.padding="8px 12px";
+    editBtn.onclick=()=>{ if(!totalM){alert("No pude leer la distancia de esta ruta.");return;} openSceneEditor(name,totalM,"routes"); };
+    const dlBtn=document.createElement("button"); dlBtn.textContent="⬇ GPX"; dlBtn.style.minHeight="40px"; dlBtn.style.padding="8px 12px";
+    dlBtn.onclick=()=>{ const blob=new Blob([text],{type:"application/gpx+xml"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name.endsWith(".gpx")?name:name+".gpx"; a.click(); };
+    const delBtn=document.createElement("button"); delBtn.className="del"; delBtn.textContent="✕";
+    delBtn.onclick=()=>{ if(confirm('¿Borrar la ruta guardada "'+name+'"? (no borra las sesiones que la usaron)')){ const m=loadRoutesMap(); delete m[name]; localStorage.setItem("bici_routes",JSON.stringify(m)); renderRoutesList(); } };
+    row.appendChild(editBtn); row.appendChild(dlBtn); row.appendChild(delBtn);
+    wrap.appendChild(row);
+  });
+}
+$("routesBtn").onclick=()=>{ renderRoutesList(); $("setup").classList.add("hidden"); $("routesCard").classList.remove("hidden"); };
+$("routesBack").onclick=()=>{ $("routesCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); };
 
 // ---------- Exportar TCX (para TrainingPeaks) ----------
 function parseGpxStandalone(text){
