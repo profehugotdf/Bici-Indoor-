@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v64</title>
+<title>Bici Indoor · v65</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v64</h1>
+  <h1>Bici Indoor · v65</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -147,6 +147,7 @@
         <a href="https://www.gpsvisualizer.com/elevation" target="_blank" rel="noopener" style="display:block;text-align:center;padding:10px;border-radius:10px;background:var(--acc);color:#04121c;font-weight:700;text-decoration:none">Abrir GPS Visualizer ↗</a>
       </div>
       <div id="routesList"></div>
+      <button class="full" id="routesToHistBtn" style="margin-top:6px">Ver/borrar sesiones (Historial)</button>
       <button class="primary full" id="routesBack" style="margin-top:12px">Volver</button>
     </div>
 
@@ -2135,11 +2136,25 @@ function saveRouteText(name,text){ if(!name)return false; try{const r=JSON.parse
 function storageUsageKB(){ let bytes=0; try{ for(const k in localStorage){ if(localStorage.hasOwnProperty(k)) bytes += (k.length+(localStorage.getItem(k)||"").length); } }catch(_){} return Math.round(bytes/1024); }
 function getRouteText(name){ try{const r=JSON.parse(localStorage.getItem("bici_routes")||"{}"); return r[name]||null; }catch(_){ return null; } }
 function loadRoutesMap(){ try{return JSON.parse(localStorage.getItem("bici_routes")||"{}");}catch(_){ return {}; } }
+function storageBreakdown(){
+  const keys=["bici_sesiones","bici_config","bici_routes","bici_scenes","bici_entrenos"];
+  const labels={bici_sesiones:"Sesiones",bici_config:"Configuración",bici_routes:"Rutas",bici_scenes:"Escenarios",bici_entrenos:"Entrenamientos"};
+  const out=[];
+  for(const k of keys){ const v=localStorage.getItem(k)||""; out.push({key:k,label:labels[k],kb:Math.round((k.length+v.length)/1024)}); }
+  let otherBytes=0; try{ for(const k in localStorage){ if(localStorage.hasOwnProperty(k) && !keys.includes(k)) otherBytes+=(k.length+(localStorage.getItem(k)||"").length); } }catch(_){}
+  if(otherBytes>0) out.push({key:"_other",label:"Otros",kb:Math.round(otherBytes/1024)});
+  return out.sort((a,b)=>b.kb-a.kb);
+}
 function renderRoutesList(){
   const map=loadRoutesMap(), names=Object.keys(map).sort((a,b)=>a.localeCompare(b));
   const kb=storageUsageKB();
   const info=$("routesStorageInfo");
-  if(info) info.textContent="Espacio usado en este navegador: ≈"+kb+" KB"+(kb>4000?" (cerca del límite — si falla el guardado, borrá alguna ruta vieja)":"");
+  if(info){
+    const bd=storageBreakdown();
+    let html="Espacio usado en este navegador: ≈"+kb+" KB"+(kb>4000?" (cerca del límite)":"")+"<br>";
+    html+=bd.map(b=>b.label+" "+b.kb+" KB").join(" · ");
+    info.innerHTML=html;
+  }
   const wrap=$("routesList");
   if(!names.length){ wrap.innerHTML='<div style="color:var(--dim);font-size:13px">No hay rutas guardadas todavía. Se guardan solas al cargar un GPX.</div>'; return; }
   wrap.innerHTML="";
@@ -2161,6 +2176,7 @@ function renderRoutesList(){
 }
 $("routesBtn").onclick=()=>{ renderRoutesList(); $("setup").classList.add("hidden"); $("routesCard").classList.remove("hidden"); };
 $("routesBack").onclick=()=>{ $("routesCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); };
+$("routesToHistBtn").onclick=()=>{ $("routesCard").classList.add("hidden"); $("historial").classList.remove("hidden"); setSelMode(false); renderHistorial(); };
 $("routesCompressBtn").onclick=()=>{
   const before=storageUsageKB();
   const map=loadRoutesMap(); let changed=0;
