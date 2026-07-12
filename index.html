@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v76</title>
+<title>Bici Indoor · v77</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v76</h1>
+  <h1>Bici Indoor · v77</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1900,11 +1900,11 @@ function startRide(){
   $("zoomRow").style.display="none";
   $("road3dBtn").style.display=(mode==="gpx")?"":"none";
   $("road3dBtn").textContent="Vista 3D: "+(road3d?"ON":"OFF");
-  applyGpxView();
   $("zoomBtn").textContent="Zoom disputa: "+(battleZoom?"ON":"OFF");
   sendUserConfig();
   state="riding";lastTs=performance.now();
   $("setup").classList.add("hidden");$("summary").classList.add("hidden");$("ride").classList.remove("hidden");
+  applyGpxView();
   if(!physTimer)physTimer=setInterval(tick,100);
   requestWake();
   log("Sesión iniciada ("+mode+")");
@@ -2253,9 +2253,9 @@ function startReplay(){
   $("repViewBtns").classList.toggle("hidden",!replayRoute);
   $("rep3dBtn").textContent="Vista 3D: "+(rep3d?"ON":"OFF");
   repCam=0; updateCamBtn();
-  applyRepView();
   $("repZoomBtn").textContent="Zoom disputa: "+(repZoom?"ON":"OFF");
   $("replaySetup").classList.add("hidden"); $("replayView").classList.remove("hidden");
+  applyRepView();
   renderReplay();
 }
 function setRepSpeed(sp){ replaySpeed=sp; document.querySelectorAll(".repSpeed").forEach(b=>b.classList.toggle("on",parseInt(b.dataset.sp,10)===sp)); }
