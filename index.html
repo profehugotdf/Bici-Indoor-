@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v75</title>
+<title>Bici Indoor · v76</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v75</h1>
+  <h1>Bici Indoor · v76</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1090,10 +1090,11 @@ function velodromeGeom(trackLen){
 function velodromeBearingAt(d,trackLen){
   const g=velodromeGeom(trackLen); d=((d%g.total)+g.total)%g.total;
   const {R,curveLen,straight}=g;
+  // se gira a la izquierda (antihorario), como en un velódromo real (norma UCI)
   if(d<straight) return 0;
-  if(d<straight+curveLen) return (d-straight)/R;
-  if(d<2*straight+curveLen) return Math.PI;
-  return Math.PI + (d-(2*straight+curveLen))/R;
+  if(d<straight+curveLen) return -(d-straight)/R;
+  if(d<2*straight+curveLen) return -Math.PI;
+  return -Math.PI - (d-(2*straight+curveLen))/R;
 }
 function velodromeEleAt(d){ return 0; }
 function shadeHex(hex,f){ const n=parseInt(hex.slice(1),16); let r=(n>>16)&255,g=(n>>8)&255,b=n&255;
@@ -1545,6 +1546,7 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
         const seed=Math.sin(Math.floor(b.d/spacing)*7.3 + side*2.1);
         const isWaterSide=(bsc.waterSide==="left"&&side===-1)||(bsc.waterSide==="right"&&side===1);
         const isWallSide=(bsc.wallSide==="left"&&side===-1)||(bsc.wallSide==="right"&&side===1);
+        if(bsc.decor==="stands" && side===-1 && !isWaterSide && !isWallSide) continue; // sin tribunas en el interior (infield) del velódromo
         const off=b.hw*(isWallSide?0.15:(0.45+0.5*Math.abs(seed)));
         const tx=b.cx+side*(b.hw+off), ty=b.y, th=b.hw*(isWallSide?(0.9+0.4*Math.abs(seed)):(0.45+0.3*Math.abs(seed)));
         drawSideDecor(ctx,isWaterSide?"waves":(isWallSide?"rocks":bsc.decor),tx,ty,th,seed,side);
