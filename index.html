@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v79</title>
+<title>Bici Indoor · v80</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v79</h1>
+  <h1>Bici Indoor · v80</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -2225,7 +2225,7 @@ function interpAt(samples,t,key){
 }
 function repDur(s){ return s.dur||(s.samples&&s.samples.length?s.samples[s.samples.length-1].t:0); }
 function repFinalDist(s){ return s.dist||(s.samples&&s.samples.length?s.samples[s.samples.length-1].d:0); }
-function repLabel(s){ const d=new Date(s.date); const modo=s.mode==="libre"?"Libre":s.mode==="tcx"?"TCX":s.mode==="entreno"?"Entreno":"Recorrido";
+function repLabel(s){ const d=new Date(s.date); const modo=s.mode==="libre"?"Libre":s.mode==="tcx"?"TCX":s.mode==="entreno"?"Entreno":s.mode==="velodromo"?"Velódromo":"Recorrido";
   return modo+" "+d.getDate()+"/"+(d.getMonth()+1)+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }
 function populateReplay(){
   repList=loadSesiones().filter(s=>s.samples&&s.samples.length>1).sort((a,b)=>b.date-a.date);
@@ -2552,7 +2552,7 @@ function renderHistorial(){
   if(!list.length){wrap.innerHTML='<div style="color:var(--dim);font-size:13px">Todavía no hay sesiones guardadas.</div>';return;}
   wrap.innerHTML="";
   list.map((s,i)=>({s,i})).reverse().forEach(({s})=>{
-    const modo=s.mode==="libre"?("Libre · "+(s.raceBy||"")):s.mode==="tcx"?"TCX Garmin":s.mode==="entreno"?"Entreno":"Recorrido";
+    const modo=s.mode==="libre"?("Libre · "+(s.raceBy||"")):s.mode==="tcx"?"TCX Garmin":s.mode==="entreno"?"Entreno":s.mode==="velodromo"?("Velódromo · "+(s.trackLen||250)+"m"):"Recorrido";
     const dist=((s.dist||s.total||0)/1000).toFixed(2);
     const hr=s.hrAvg?(" · ♥ "+s.hrAvg+(s.hrMax?"/"+s.hrMax:"")):"";
     const row=document.createElement("div");row.className="srow";
@@ -2567,7 +2567,7 @@ function renderHistorial(){
     row.appendChild(info);
     if(selMode){ row.style.cursor="pointer"; info.onclick=()=>{ cb.checked=!cb.checked; cb.onchange(); }; }
     else{
-      if(s.mode==="gpx"||s.mode==="libre"){
+      if(s.mode==="gpx"||s.mode==="libre"||s.mode==="velodromo"){
         const sh=document.createElement("button");sh.textContent="↗";sh.title="Compartir como reto";
         sh.style.minHeight="40px";sh.style.padding="8px 12px";
         sh.onclick=()=>shareRetoFor(s,null);
