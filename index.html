@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v77</title>
+<title>Bici Indoor · v79</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -11,7 +11,8 @@
   }
   *{box-sizing:border-box}
   html,body{margin:0;background:var(--bg);color:var(--tx);
-    font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-text-size-adjust:100%}
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-text-size-adjust:100%;
+    overscroll-behavior-y:none}
   .wrap{max-width:680px;margin:0 auto;padding:14px 14px 44px}
   h1{font-size:18px;margin:6px 0 2px}
   .sub{color:var(--dim);font-size:13px;margin:0 0 14px}
@@ -88,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v77</h1>
+  <h1>Bici Indoor · v79</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -214,7 +215,34 @@
     <button class="full" id="zonesBtn" style="margin-top:10px">Zonas de potencia y FTP</button>
     <button class="full" id="entrenoBtn" style="margin-top:10px">Entrenamientos estructurados</button>
     <button class="full" id="routesBtn" style="margin-top:10px">Rutas guardadas</button>
+    <button class="full" id="fitBtn" style="margin-top:10px">Fitting de la bici</button>
     <button class="full" id="replayBtn" style="margin-top:10px">Carrera virtual (replay)</button>
+  </div>
+
+  <div class="card hidden" id="fitCard">
+    <h2>Fitting de la bici</h2>
+    <div id="fitStep0">
+      <div style="color:var(--dim);font-size:13px;margin-bottom:10px">
+        Sacate (o pedile a alguien) una foto de costado, sentado en la bici, con la biela a las 6 (punto muerto inferior), en zapatillas de ciclismo si las usás.
+      </div>
+      <button class="full" id="fitPhotoBtn">Elegir foto</button>
+      <input type="file" id="fitPhotoFile" accept="image/*" style="display:none">
+      <div class="row" style="margin-top:12px">
+        <label for="fitSaddleH">Altura de asiento actual (cm)</label>
+        <input type="number" id="fitSaddleH" step="0.1" value="72" style="width:80px">
+      </div>
+      <div style="color:var(--dim);font-size:12px;margin-top:-4px">Centro del pedal al borde superior del asiento, por el tubo. La necesito para pasar de píxeles a centímetros reales.</div>
+    </div>
+    <div id="fitStep1" class="hidden">
+      <div id="fitPrompt" style="font-weight:600;margin-bottom:8px;text-align:center"></div>
+      <canvas id="fitCanvas" style="width:100%;display:block;border-radius:8px;touch-action:none"></canvas>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button id="fitUndo" style="flex:1">← Deshacer punto</button>
+        <button id="fitRestart" style="flex:1">Reiniciar</button>
+      </div>
+    </div>
+    <div id="fitResult" class="hidden"></div>
+    <button class="primary full" id="fitBack" style="margin-top:12px">Volver</button>
   </div>
 
     <div class="card hidden" id="routesCard">
@@ -476,7 +504,7 @@ let projPts=[], mxmin=0,mxmax=0,mymin=0,mymax=0;
 
 // simulación
 let v=0, distanceM=0, elapsed=0, lastTs=0, physTimer=null;
-let lastSentGrade=999, lastSentAt=0, lastRec=0, sumP=0, nP=0, hrSum=0, hrN=0, hrMax=0;
+let lastSentGrade=999, lastSentAt=0, lastRec=0, lastAutosaveT=0, sumP=0, nP=0, hrSum=0, hrN=0, hrMax=0;
 let session=null;
 let mode="gpx", raceBy="tiempo", targetTime=Infinity, targetDist=Infinity, fixedGrade=0;
 let ghost=null, ghostList=[], ghostDur=0, ghostTotalDist=0, verdictDone=false;
@@ -868,6 +896,7 @@ function tick(){
   }
   // grabación 1 Hz
   if(elapsed-lastRec>=1){lastRec=elapsed;session.samples.push({t:+elapsed.toFixed(1),d:+distanceM.toFixed(1),hr:curHR||0,c:curCad||0,p:curPower||0});
+    if(elapsed-lastAutosaveT>=15){ lastAutosaveT=elapsed; try{localStorage.setItem("bici_inprogress",JSON.stringify(session));}catch(_){} }
     pw30.push(curPower||0); if(pw30.length>30)pw30.shift();
     const avg30=pw30.reduce((a,b)=>a+b,0)/pw30.length;
     npSum+=Math.pow(avg30,4); npCount++;
@@ -1838,7 +1867,7 @@ function updateWoHud(){
 }
 function startRide(){
   mode = pendingWorkout ? "entreno" : $("modeSel").value;
-  distanceM=0;v=0;elapsed=0;lastRec=0;sumP=0;nP=0;hrSum=0;hrN=0;hrMax=0;lastSentGrade=999;lastSentAt=0;
+  distanceM=0;v=0;elapsed=0;lastRec=0;lastAutosaveT=0;sumP=0;nP=0;hrSum=0;hrN=0;hrMax=0;lastSentGrade=999;lastSentAt=0;
   pwBuf=[]; pw30=[]; npSum=0; npCount=0; npVal=0; ifVal=0; tssVal=0;
   verdictDone=false; ghost=null; woSentKey=""; lastGapVal=0; lastGapUnit="";
   if(mode==="entreno"){
@@ -1925,6 +1954,7 @@ function pauseRide(){
 function finishRide(){
   state="finished";
   stopRoad();
+  try{localStorage.removeItem("bici_inprogress");}catch(_){}
   linkLost=false; if(linkTimer){clearTimeout(linkTimer);linkTimer=null;} releaseWake();
   const avgP=nP?sumP/nP:0, avgV=elapsed>0?(distanceM/elapsed)*3.6:0, avgHr=hrN?Math.round(hrSum/hrN):0;
   session.dur=+elapsed.toFixed(1); session.dist=+distanceM.toFixed(1); session.hrAvg=avgHr; session.hrMax=hrMax;
@@ -2473,8 +2503,27 @@ $("ftpTestBtn").onclick=()=>{
   alert("Test de 20 min configurado (modo Libre, 20 min). Conectá el rodillo si falta, entrá en calor, y tocá Empezar. Pedaleá fuerte y parejo; al terminar te calculo el FTP.");
 };
 toggleMode();
+(function checkRecovery(){
+  try{
+    const raw=localStorage.getItem("bici_inprogress");
+    if(!raw) return;
+    const s=JSON.parse(raw);
+    if(!s||!s.samples||s.samples.length<3){ localStorage.removeItem("bici_inprogress"); return; }
+    const last=s.samples[s.samples.length-1];
+    const mins=Math.floor((last.t||0)/60), secs=Math.round((last.t||0)%60);
+    const km=((last.d||0)/1000).toFixed(2);
+    const ok=confirm("Encontré una sesión sin terminar (cortada por recarga o cierre): "+mins+":"+String(secs).padStart(2,"0")+" · "+km+" km.\n\n¿La guardo en el historial?");
+    if(ok){
+      s.dur=last.t||0; s.dist=last.d||0;
+      const cur=loadSesiones();
+      if(!cur.some(x=>x.date===s.date)){ cur.push(s); cur.sort((a,b)=>a.date-b.date); localStorage.setItem("bici_sesiones",JSON.stringify(cur)); }
+    }
+    localStorage.removeItem("bici_inprogress");
+  }catch(_){ try{localStorage.removeItem("bici_inprogress");}catch(_2){} }
+})();
 
 document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible" && state==="riding") requestWake(); });
+window.addEventListener("beforeunload",(e)=>{ if(state==="riding"||state==="paused"){ e.preventDefault(); e.returnValue=""; } });
 setInterval(()=>{ if(cadSensorActive && curCad>0 && performance.now()-cadLastRealUpdate>3000) curCad=0; }, 1000);
 if("usb" in navigator){
   navigator.usb.addEventListener("disconnect",e=>{
@@ -2636,6 +2685,107 @@ function renderRoutesList(){
   });
 }
 $("routesBtn").onclick=()=>{ renderRoutesList(); $("setup").classList.add("hidden"); $("routesCard").classList.remove("hidden"); scrollTop(); };
+// ---------- Fitting de la bici ----------
+let fitImg=null, fitPoints=[], fitScale=1;
+const FIT_POINT_NAMES=["Pedal (centro, punto muerto inferior)","Borde superior del asiento","Tobillo","Rodilla","Cadera","Hombro","Codo"];
+function fitDist(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
+function fitAngleAt(vertex,a,b){
+  const v1={x:a.x-vertex.x,y:a.y-vertex.y}, v2={x:b.x-vertex.x,y:b.y-vertex.y};
+  const m1=Math.hypot(v1.x,v1.y), m2=Math.hypot(v2.x,v2.y);
+  if(m1<1e-6||m2<1e-6) return 0;
+  const dot=v1.x*v2.x+v1.y*v2.y;
+  return Math.acos(Math.max(-1,Math.min(1,dot/(m1*m2))))*180/Math.PI;
+}
+function fitDrawCanvas(){
+  const cv=$("fitCanvas"); if(!cv||!fitImg) return;
+  const cssW=cv.clientWidth||320, scale=cssW/fitImg.naturalWidth, cssH=fitImg.naturalHeight*scale;
+  const dpr=window.devicePixelRatio||1;
+  cv.width=Math.round(cssW*dpr); cv.height=Math.round(cssH*dpr); cv.style.height=cssH+"px";
+  const ctx=cv.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,cssW,cssH); ctx.drawImage(fitImg,0,0,cssW,cssH);
+  fitScale=scale;
+  const pts=fitPoints.map(p=>({x:p.x*scale,y:p.y*scale}));
+  if(pts.length>=2){ ctx.strokeStyle="#3fb950"; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y); ctx.lineTo(pts[1].x,pts[1].y); ctx.stroke(); }
+  const chain=[2,3,4,5,6];
+  ctx.strokeStyle="#4cc2ff"; ctx.lineWidth=2.5; ctx.beginPath(); let started=false;
+  for(const idx of chain){ if(idx>=pts.length) break; const p=pts[idx]; if(!started){ctx.moveTo(p.x,p.y);started=true;} else ctx.lineTo(p.x,p.y); }
+  if(started) ctx.stroke();
+  pts.forEach((p,i)=>{
+    ctx.beginPath(); ctx.arc(p.x,p.y,7,0,7); ctx.fillStyle="#f0883e"; ctx.fill();
+    ctx.lineWidth=2; ctx.strokeStyle="#04121c"; ctx.stroke();
+    ctx.fillStyle="#e6edf3"; ctx.font="700 13px system-ui"; ctx.fillText(String(i+1),p.x+9,p.y-9);
+  });
+}
+function updateFitPrompt(){
+  $("fitPrompt").textContent = fitPoints.length<7 ? "Tocá: "+FIT_POINT_NAMES[fitPoints.length] : "Listo — calculando…";
+}
+function computeFit(){
+  const [pedal,saddle,ankle,knee,hip,shoulder,elbow]=fitPoints;
+  const saddleHeightReal=parseFloat($("fitSaddleH").value)||72;
+  const pxPedalSaddle=fitDist(pedal,saddle);
+  const box=$("fitResult"); box.classList.remove("hidden");
+  if(pxPedalSaddle<5){ box.innerHTML='<div style="color:var(--err)">Los puntos de pedal y asiento quedaron muy juntos — no puedo calibrar la escala. Reiniciá y marcá con más cuidado.</div>'; return; }
+  const cmPerPx=saddleHeightReal/pxPedalSaddle;
+  const femur=fitDist(hip,knee)*cmPerPx, tibia=fitDist(knee,ankle)*cmPerPx, hipAnkle=fitDist(hip,ankle)*cmPerPx;
+  const kneeAngleDeg=fitAngleAt(knee,hip,ankle);
+  const flexion=180-kneeAngleDeg;
+  const inRange = flexion>=25 && flexion<=35;
+  const targetRad=150*Math.PI/180;
+  const hipAnkleTarget=Math.sqrt(Math.max(0, femur*femur+tibia*tibia-2*femur*tibia*Math.cos(targetRad)));
+  const deltaSaddle=hipAnkleTarget-hipAnkle;
+  const torsoAngleDeg=Math.atan2(Math.abs(hip.y-shoulder.y),Math.max(1,Math.abs(shoulder.x-hip.x)))*180/Math.PI;
+  const shoulderAngleDeg=fitAngleAt(shoulder,hip,elbow);
+  const torsoOk = torsoAngleDeg>=40 && torsoAngleDeg<=50;
+  const shoulderOk = shoulderAngleDeg>=85 && shoulderAngleDeg<=90;
+  let html = '<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px">';
+  html += '<div style="font-weight:700;margin-bottom:8px">Altura del asiento</div>';
+  html += `<div>Ángulo de rodilla: <b>${kneeAngleDeg.toFixed(1)}°</b> interno (≈${flexion.toFixed(0)}° de flexión). Rango de referencia (método Holmes): 25-35° de flexión.</div>`;
+  if(inRange){ html += '<div style="color:var(--ok);margin-top:4px">✓ Estás dentro del rango típico.</div>'; }
+  else { const dir=deltaSaddle>0?"subir":"bajar"; html += `<div style="color:var(--warn);margin-top:4px">Sugerencia: ${dir} el asiento ≈ <b>${Math.abs(deltaSaddle).toFixed(1)} cm</b> para acercarte al centro del rango (30° de flexión).</div>`; }
+  html += '<div style="color:var(--dim);font-size:12px;margin-top:6px">Hacé cambios de a 3-5mm por vez y probá unos días antes de seguir ajustando.</div>';
+  html += '<div style="font-weight:700;margin-top:14px;margin-bottom:8px">Postura / alcance (orientativo, no una medida de stem)</div>';
+  html += `<div>Ángulo de torso (a la horizontal): <b>${torsoAngleDeg.toFixed(1)}°</b> — rango típico 40-50° (más bajo = más aerodinámico/agresivo).</div>`;
+  html += torsoOk ? '<div style="color:var(--ok);margin-top:2px">✓ Dentro del rango típico.</div>' : (torsoAngleDeg>50 ? '<div style="color:var(--warn);margin-top:2px">Torso bastante erguido — postura relajada, o el manubrio puede estar alto/cerca.</div>' : '<div style="color:var(--warn);margin-top:2px">Torso muy plano — postura agresiva; confirmá que sea cómoda para tu flexibilidad.</div>');
+  html += `<div style="margin-top:8px">Ángulo hombro-brazo: <b>${shoulderAngleDeg.toFixed(1)}°</b> — rango típico 85-90°.</div>`;
+  html += shoulderOk ? '<div style="color:var(--ok);margin-top:2px">✓ Dentro del rango típico.</div>' : (shoulderAngleDeg>90 ? '<div style="color:var(--warn);margin-top:2px">Brazo casi estirado — puede indicar alcance largo (manubrio lejos).</div>' : '<div style="color:var(--warn);margin-top:2px">Codo muy flexionado — puede indicar alcance corto (manubrio cerca).</div>');
+  html += '<div style="color:var(--dim);font-size:12px;margin-top:8px">Esto es orientativo: el alcance ideal depende de varias cosas a la vez (flexibilidad, postura buscada, cómo quede el asiento). No te dé un "cambiá el stem X mm" — usalo para detectar si algo está claramente fuera de rango.</div>';
+  html += '</div>';
+  box.innerHTML = html;
+}
+$("fitBtn").onclick=()=>{
+  $("setup").classList.add("hidden"); $("fitCard").classList.remove("hidden");
+  $("fitStep0").classList.remove("hidden"); $("fitStep1").classList.add("hidden");
+  $("fitResult").classList.add("hidden"); $("fitResult").innerHTML="";
+  fitImg=null; fitPoints=[];
+  scrollTop();
+};
+$("fitBack").onclick=()=>{ $("fitCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); scrollTop(); };
+$("fitPhotoBtn").onclick=()=>$("fitPhotoFile").click();
+$("fitPhotoFile").onchange=(e)=>{
+  const f=e.target.files[0]; if(!f) return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    const img=new Image();
+    img.onload=()=>{
+      fitImg=img; fitPoints=[];
+      $("fitStep0").classList.add("hidden"); $("fitStep1").classList.remove("hidden");
+      $("fitResult").classList.add("hidden"); $("fitResult").innerHTML="";
+      fitDrawCanvas(); updateFitPrompt();
+    };
+    img.src=reader.result;
+  };
+  reader.readAsDataURL(f); e.target.value="";
+};
+$("fitCanvas").addEventListener("pointerdown",(e)=>{
+  if(!fitImg || fitPoints.length>=7) return;
+  const cv=$("fitCanvas"), rect=cv.getBoundingClientRect();
+  const dispX=e.clientX-rect.left, dispY=e.clientY-rect.top;
+  fitPoints.push({x:dispX/fitScale, y:dispY/fitScale});
+  fitDrawCanvas(); updateFitPrompt();
+  if(fitPoints.length===7) computeFit();
+});
+$("fitUndo").onclick=()=>{ if(fitPoints.length) fitPoints.pop(); fitDrawCanvas(); updateFitPrompt(); $("fitResult").classList.add("hidden"); };
+$("fitRestart").onclick=()=>{ fitPoints=[]; fitDrawCanvas(); updateFitPrompt(); $("fitResult").classList.add("hidden"); };
 $("routesBack").onclick=()=>{ $("routesCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); scrollTop(); };
 $("routesToHistBtn").onclick=()=>{ $("routesCard").classList.add("hidden"); $("historial").classList.remove("hidden"); setSelMode(false); renderHistorial(); scrollTop(); };
 $("routesCompressBtn").onclick=()=>{
