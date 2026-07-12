@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v80</title>
+<title>Bici Indoor · v81</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v80</h1>
+  <h1>Bici Indoor · v81</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -103,7 +103,7 @@
       </select>
     </div>
     <button class="primary full" id="connect" style="margin-top:8px">Conectar rodillo</button>
-    <button class="full hidden" id="hrBleBtn" style="margin-top:8px">Conectar banda cardíaca (BT)</button>
+    <button class="full" id="hrBleBtn" style="margin-top:8px">Conectar banda cardíaca (BT)</button>
 
     <div class="row" style="margin-top:14px">
       <label for="modeSel">Modo</label>
@@ -2052,7 +2052,7 @@ $("pvMap").addEventListener("pointermove",e=>{ if(e.pressure>0||e.buttons)pvOnMa
 $("raceSel").onchange=()=>{ $("objUnit").textContent=$("raceSel").value==="tiempo"?"min":"km"; };
 $("velRaceSel").onchange=()=>{ const v=$("velRaceSel").value; $("velObjUnit").textContent = v==="tiempo"?"min":(v==="vueltas"?"vueltas":"km"); };
 $("reconnBtn").onclick=()=>{ conn==="ble"?reconnectBle():connect(); };
-$("connType").onchange=()=>{ conn=$("connType").value; $("hrBleBtn").classList.toggle("hidden",conn!=="ble"); saveCfg(); };
+$("connType").onchange=()=>{ conn=$("connType").value; saveCfg(); };
 $("hrBleBtn").onclick=connectHrBle;
 
 const CFG_KEY="bici_config", CFG_IDS=["weight","bike","crr","cda","smoothM","diff","connType","ftp","age","hrMax","hrRest","cadPref","crankLen","zoneModel"];
@@ -2062,7 +2062,7 @@ function updateHrMaxHint(){ const el=$("hrMaxHint"); if(!el)return; const own=pa
 function saveCfg(){ const o={}; CFG_IDS.forEach(id=>{const el=$(id);if(el)o[id]=el.value;}); try{localStorage.setItem(CFG_KEY,JSON.stringify(o));}catch(_){} }
 function loadCfg(){ let o; try{o=JSON.parse(localStorage.getItem(CFG_KEY)||"{}");}catch(_){o={};}
   CFG_IDS.forEach(id=>{const el=$(id);if(el&&o[id]!=null)el.value=o[id];});
-  conn=$("connType").value; $("hrBleBtn").classList.toggle("hidden",conn!=="ble");
+  conn=$("connType").value;
 }
 CFG_IDS.forEach(id=>{const el=$(id);if(el)el.addEventListener("change",saveCfg);});
 ["age","hrMax"].forEach(id=>{const el=$(id);if(el)el.addEventListener("input",updateHrMaxHint);});
