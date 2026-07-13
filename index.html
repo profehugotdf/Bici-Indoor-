@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v81</title>
+<title>Bici Indoor · v87</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v81</h1>
+  <h1>Bici Indoor · v87</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -170,6 +170,13 @@
       </div>
       <div style="color:var(--dim);font-size:12px;margin:-4px 0 8px">250 m = Velódromo Luis Puig (Valencia). Ajustalo si entrenás pensando en otra pista.</div>
       <div class="row">
+        <label for="velEnvSel">Ambiente</label>
+        <select id="velEnvSel" style="flex:1">
+          <option value="velodromo">Cubierto (interior)</option>
+          <option value="velodromo_open">Al aire libre</option>
+        </select>
+      </div>
+      <div class="row">
         <label for="velRaceSel">Competir por</label>
         <select id="velRaceSel" style="flex:1">
           <option value="tiempo">Tiempo</option>
@@ -222,19 +229,38 @@
   <div class="card hidden" id="fitCard">
     <h2>Fitting de la bici</h2>
     <div id="fitStep0">
+      <button class="full" id="fitHistBtn" style="margin-bottom:10px">Ver historial de mediciones</button>
+      <div id="fitHistList" class="hidden" style="margin-bottom:10px"></div>
       <div style="color:var(--dim);font-size:13px;margin-bottom:10px">
         Sacate (o pedile a alguien) una foto de costado, sentado en la bici, con la biela a las 6 (punto muerto inferior), en zapatillas de ciclismo si las usás.
       </div>
+      <div id="fitStep0Diagram" style="background:#0a0d12;border-radius:8px;padding:6px;margin-bottom:10px"></div>
       <button class="full" id="fitPhotoBtn">Elegir foto</button>
       <input type="file" id="fitPhotoFile" accept="image/*" style="display:none">
       <div class="row" style="margin-top:12px">
+        <label for="fitCalibSel">Referencia de escala</label>
+        <select id="fitCalibSel" style="flex:1">
+          <option value="saddle">Altura de asiento (necesito verlo en la foto)</option>
+          <option value="wheel">Diámetro de rueda (si el asiento no se ve)</option>
+        </select>
+      </div>
+      <div class="row" id="fitSaddleRow" style="margin-top:8px">
         <label for="fitSaddleH">Altura de asiento actual (cm)</label>
         <input type="number" id="fitSaddleH" step="0.1" value="72" style="width:80px">
       </div>
-      <div style="color:var(--dim);font-size:12px;margin-top:-4px">Centro del pedal al borde superior del asiento, por el tubo. La necesito para pasar de píxeles a centímetros reales.</div>
+      <div id="fitSaddleHint" style="color:var(--dim);font-size:12px;margin-top:-4px">Centro del pedal al borde superior del asiento, por el tubo. La necesito para pasar de píxeles a centímetros reales.</div>
+      <div class="row hidden" id="fitWheelRow" style="margin-top:8px">
+        <label for="fitWheelD">Diámetro de rueda (cm)</label>
+        <input type="number" id="fitWheelD" step="0.1" value="67" style="width:80px">
+      </div>
+      <div id="fitWheelHint" class="hidden" style="color:var(--dim);font-size:12px;margin-top:-4px">De punta a punta de la cubierta, incluido el aire. 67 cm es un valor típico para rueda 700c con cubierta de ruta (23-28mm) — cambialo si conocés la tuya con precisión.</div>
     </div>
     <div id="fitStep1" class="hidden">
-      <div id="fitPrompt" style="font-weight:600;margin-bottom:8px;text-align:center"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div id="fitPrompt" style="font-weight:600"></div>
+        <button id="fitGuideBtn" style="min-height:32px;padding:4px 10px;font-size:12px">❓ Ver guía</button>
+      </div>
+      <div id="fitGuideWrap" class="hidden" style="background:#0a0d12;border-radius:8px;padding:6px;margin-bottom:8px"></div>
       <canvas id="fitCanvas" style="width:100%;display:block;border-radius:8px;touch-action:none"></canvas>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button id="fitUndo" style="flex:1">← Deshacer punto</button>
@@ -242,6 +268,28 @@
       </div>
     </div>
     <div id="fitResult" class="hidden"></div>
+    <div id="fitKopsOffer" class="hidden" style="margin-top:10px">
+      <button class="full" id="fitKopsBtn">+ Revisar posición horizontal del asiento (KOPS)</button>
+    </div>
+    <div id="fitLegOffer" class="hidden" style="margin-top:8px">
+      <button class="full" id="fitLegBtn">+ Comparar con la otra pierna (opcional)</button>
+    </div>
+    <div id="fitStep0b" class="hidden">
+      <div style="color:var(--dim);font-size:13px;margin-bottom:10px">
+        Segunda foto: mismo costado, sentado, pero con la biela <b>horizontal hacia adelante</b> (3 en punto), pie en el pedal.
+      </div>
+      <div id="fitStep0bDiagram" style="background:#0a0d12;border-radius:8px;padding:6px;margin-bottom:10px"></div>
+      <div class="row" style="margin-bottom:10px">
+        <label for="fitBikeFacing">La bici mira hacia</label>
+        <select id="fitBikeFacing" style="flex:1">
+          <option value="right">La derecha de la foto</option>
+          <option value="left">La izquierda de la foto</option>
+        </select>
+      </div>
+      <button class="full" id="fitPhotoBtn2">Elegir foto</button>
+      <input type="file" id="fitPhotoFile2" accept="image/*" style="display:none">
+    </div>
+    <div id="fitResult2" class="hidden"></div>
     <button class="primary full" id="fitBack" style="margin-top:12px">Volver</button>
   </div>
 
@@ -370,6 +418,17 @@
   <div class="card hidden" id="historial">
     <h2>Historial de sesiones</h2>
     <div class="row" style="margin-bottom:10px">
+      <label for="histFilterSel" style="color:var(--dim);font-size:13px">Filtrar</label>
+      <select id="histFilterSel" style="flex:1">
+        <option value="all">Todos los modos</option>
+        <option value="gpx">Recorrido</option>
+        <option value="libre">Libre</option>
+        <option value="velodromo">Velódromo</option>
+        <option value="entreno">Entreno</option>
+        <option value="tcx">TCX Garmin</option>
+      </select>
+    </div>
+    <div class="row" style="margin-bottom:10px">
       <button id="selToggle" style="flex:1">Seleccionar varias</button>
     </div>
     <div id="selBar" class="hidden" style="display:flex;gap:8px;margin-bottom:10px">
@@ -445,6 +504,13 @@
         <div class="row">
           <label for="repVeloLenInp">Largo de pista (m)</label>
           <input type="number" id="repVeloLenInp" value="250" min="100" max="500" step="1" style="width:80px">
+        </div>
+        <div class="row">
+          <label for="repVeloEnvSel">Ambiente</label>
+          <select id="repVeloEnvSel" style="flex:1">
+            <option value="velodromo">Cubierto (interior)</option>
+            <option value="velodromo_open">Al aire libre</option>
+          </select>
         </div>
         <button class="full" id="repVeloBtn">Vista Velódromo: OFF</button>
       </div>
@@ -1135,7 +1201,8 @@ const SCENES={
   urbana:{ label:"Urbana", sky:["#8fb3cf","#d8e6ec"], ground:"#3a3d42", asphalt:"#54595f", mtnCol:["#93a0ad","#717d89"], mtnAmp:1.5, decor:"buildings" },
   cornisa:{ label:"Cornisa", sky:["#4f8fc0","#a9d3e8"], ground:"#4a4034", asphalt:"#4c4640", mtnCol:["#8f7f6e","#6e6156"], mtnAmp:1.9, decor:"rocks" },
   mar:{ label:"Costa / Mar", sky:["#57b6e0","#cdeffb"], ground:"#cdb583", asphalt:"#565049", mtnCol:["#6fb0d6","#3f80ab"], mtnAmp:0.35, decor:"waves" },
-  velodromo:{ label:"Velódromo", sky:["#171b22","#2a323d"], ground:"#2e4a2f", asphalt:"#c9a768", mtnCol:["#333a44","#242931"], mtnAmp:0.6, decor:"stands" },
+  velodromo:{ label:"Velódromo cubierto", sky:["#171b22","#2a323d"], ground:"#2e4a2f", asphalt:"#c9a768", mtnCol:["#333a44","#242931"], mtnAmp:0.6, decor:"stands" },
+  velodromo_open:{ label:"Velódromo al aire libre", sky:["#5bb0e6","#bfe6f5"], ground:"#3a6b3d", asphalt:"#b8956a", mtnCol:["#7492ad","#54718d"], mtnAmp:0.5, decor:"stands" },
 };
 function loadScenes(){ try{return JSON.parse(localStorage.getItem("bici_scenes")||"{}");}catch(_){ return {}; } }
 function saveScenes(o){ try{localStorage.setItem("bici_scenes",JSON.stringify(o)); return true;}catch(e){ return false; } }
@@ -1591,7 +1658,7 @@ function roadPointAt(S,d){
   return {cx:S[i].cx+(S[i+1].cx-S[i].cx)*t, y:S[i].y+(S[i+1].y-S[i].y)*t, hw:S[i].hw+(S[i+1].hw-S[i].hw)*t};
 }
 function roadInterpDt(){ if(state!=="riding"||linkLost)return 0; const e=(performance.now()-lastTs)/1000; return (e>0&&e<0.5)?e:0; }
-let velTrackLen=250;
+let velTrackLen=250, velEnv="velodromo";
 function drawRoad(){
   if(!roadCtx||roadCtx.w<10) fitRoad();
   if(!roadCtx||roadCtx.w<10) return;
@@ -1629,7 +1696,7 @@ function drawVelodromeRoad(ctx,w,h){
   const dNow=distanceM + v*idt;
   const d0=((dNow%velTrackLen)+velTrackLen)%velTrackLen;
   const bFn=(d)=>velodromeBearingAt(d,velTrackLen);
-  const S=roadBands(ctx,w,h,d0,bFn,velodromeEleAt,null,SCENES.velodromo,VELO_GEOM);
+  const S=roadBands(ctx,w,h,d0,bFn,velodromeEleAt,null,SCENES[velEnv]||SCENES.velodromo,VELO_GEOM);
   const youS=Math.max(20,h*0.135);
   if(ghost){
     const gNow=ghostDistAt(elapsed+idt);
@@ -1895,6 +1962,7 @@ function startRide(){
     session={mode:"libre",raceBy,date:Date.now(),samples:[],diff:parseInt($("diff").value,10)||100};
   }else if(mode==="velodromo"){
     velTrackLen=Math.max(50,parseFloat($("velLen").value)||250);
+    velEnv=$("velEnvSel").value||"velodromo";
     raceBy=$("velRaceSel").value;
     const val=parseFloat($("velObjVal").value)||0;
     targetTime = raceBy==="tiempo" ? val*60 : Infinity;
@@ -1907,7 +1975,7 @@ function startRide(){
     $("prof").classList.add("hidden");$("map").classList.add("hidden");
     $("raceWrap").classList.add("hidden"); // el velódromo usa su propio cartel de vuelta/ventaja dentro del 3D
     $("verdict").classList.add("hidden");
-    session={mode:"velodromo",raceBy,trackLen:velTrackLen,date:Date.now(),samples:[],diff:100};
+    session={mode:"velodromo",raceBy,trackLen:velTrackLen,velEnv,date:Date.now(),samples:[],diff:100};
   }else{
     const gi=parseInt(($("gpxGhostSel").value)||"-1",10);
     if(gi>=0 && gpxGhostList[gi]){ ghost=gpxGhostList[gi];
@@ -1925,7 +1993,6 @@ function startRide(){
   if(session) session.isFtpTest=pendingFtpTest; pendingFtpTest=false;
   raceYou=0; raceGhost=0; raceMax=1; youCrank=0; ghostCrank=0;
   $("gPw").textContent="—"; $("gHr").textContent="—"; $("gCad").textContent="—";
-  if(ghost) startLane(); else stopLane();
   $("zoomRow").style.display="none";
   $("road3dBtn").style.display=(mode==="gpx")?"":"none";
   $("road3dBtn").textContent="Vista 3D: "+(road3d?"ON":"OFF");
@@ -1933,6 +2000,7 @@ function startRide(){
   sendUserConfig();
   state="riding";lastTs=performance.now();
   $("setup").classList.add("hidden");$("summary").classList.add("hidden");$("ride").classList.remove("hidden");
+  if(ghost) startLane(); else stopLane();
   applyGpxView();
   if(!physTimer)physTimer=setInterval(tick,100);
   requestWake();
@@ -2055,7 +2123,7 @@ $("reconnBtn").onclick=()=>{ conn==="ble"?reconnectBle():connect(); };
 $("connType").onchange=()=>{ conn=$("connType").value; saveCfg(); };
 $("hrBleBtn").onclick=connectHrBle;
 
-const CFG_KEY="bici_config", CFG_IDS=["weight","bike","crr","cda","smoothM","diff","connType","ftp","age","hrMax","hrRest","cadPref","crankLen","zoneModel"];
+const CFG_KEY="bici_config", CFG_IDS=["weight","bike","crr","cda","smoothM","diff","connType","ftp","age","hrMax","hrRest","cadPref","crankLen","zoneModel","fitSaddleH"];
 function hrMaxVal(){ const m=parseInt($("hrMax").value,10); if(m>0)return m; const a=parseInt($("age").value,10)||40; return Math.round(207-0.7*a); }
 function updateHrMaxHint(){ const el=$("hrMaxHint"); if(!el)return; const own=parseInt($("hrMax").value,10)>0;
   el.textContent="FC máx en uso: "+hrMaxVal()+" bpm"+(own?" (propia)":" (estimada por edad)"); }
@@ -2351,7 +2419,7 @@ function drawRepVelodrome(st){
   const L=repVeloTrackLen;
   const camD0=((cam.d%L)+L)%L;
   const bFn=(d)=>velodromeBearingAt(d,L);
-  const S=roadBands(ctx,w,h,camD0,bFn,velodromeEleAt,null,SCENES.velodromo,VELO_GEOM);
+  const S=roadBands(ctx,w,h,camD0,bFn,velodromeEleAt,null,SCENES[repVeloEnv]||SCENES.velodromo,VELO_GEOM);
   const youS=Math.max(20,h*0.135);
   const others=st.filter(x=>x.r!==camRacer).map(x=>{
     const xd0=((x.d%L)+L)%L, relAhead=((xd0-camD0)%L+L)%L;
@@ -2435,6 +2503,7 @@ $("replayBtn").onclick=()=>{ repGpxOverride=null; repGpxOverrideName=null; repVe
 $("repVeloBtn").onclick=()=>{
   repVeloMode=!repVeloMode;
   repVeloTrackLen=Math.max(50,parseFloat($("repVeloLenInp").value)||250);
+  repVeloEnv=$("repVeloEnvSel").value||"velodromo";
   $("repVeloBtn").textContent="Vista Velódromo: "+(repVeloMode?"ON":"OFF");
   applyRepView();
   if($("replayView")&&!$("replayView").classList.contains("hidden")) renderReplay();
@@ -2442,7 +2511,7 @@ $("repVeloBtn").onclick=()=>{
 $("replayBack").onclick=()=>{ replayPlaying=false; $("replayCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); scrollTop(); };
 $("repStart").onclick=startReplay;
 $("repZoomBtn").onclick=()=>{ repZoom=!repZoom; $("repZoomBtn").textContent="Zoom disputa: "+(repZoom?"ON":"OFF"); if(replayRoute)renderReplay(); };
-let repVeloMode=false, repVeloTrackLen=250;
+let repVeloMode=false, repVeloTrackLen=250, repVeloEnv="velodromo";
 function applyRepView(){
   const gpx3d = rep3d && !!replayRoute;
   const on = gpx3d || repVeloMode;
@@ -2503,6 +2572,12 @@ $("ftpTestBtn").onclick=()=>{
   alert("Test de 20 min configurado (modo Libre, 20 min). Conectá el rodillo si falta, entrá en calor, y tocá Empezar. Pedaleá fuerte y parejo; al terminar te calculo el FTP.");
 };
 toggleMode();
+(function checkStorageOnLoad(){
+  try{
+    const kb=storageUsageKB();
+    if(kb>4000) log("Espacio usado en el navegador: ≈"+kb+" KB (bastante alto) — revisá \"Rutas guardadas\" o el Historial si notás fallos al guardar.","#f0883e");
+  }catch(_){}
+})();
 (function checkRecovery(){
   try{
     const raw=localStorage.getItem("bici_inprogress");
@@ -2547,9 +2622,20 @@ function fmtDate(ms){const d=new Date(ms);
 let selMode=false, selected=new Set();
 function deleteByDate(date){const a=loadSesiones().filter(s=>s.date!==date);localStorage.setItem("bici_sesiones",JSON.stringify(a));}
 function updateDelCount(){ const b=$("delSel"); if(b)b.textContent="Borrar ("+selected.size+")"; }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+let histFilterMode="all";
+function saveSessionNotes(date,text){
+  const all=loadSesiones(); const s=all.find(x=>x.date===date);
+  if(!s) return false;
+  s.notes=text;
+  try{ localStorage.setItem("bici_sesiones",JSON.stringify(all)); return true; }catch(e){ return false; }
+}
 function renderHistorial(){
-  const list=loadSesiones(), wrap=$("sessList");
-  if(!list.length){wrap.innerHTML='<div style="color:var(--dim);font-size:13px">Todavía no hay sesiones guardadas.</div>';return;}
+  const listAll=loadSesiones();
+  const list = histFilterMode==="all" ? listAll : listAll.filter(s=>s.mode===histFilterMode);
+  const wrap=$("sessList");
+  if(!listAll.length){wrap.innerHTML='<div style="color:var(--dim);font-size:13px">Todavía no hay sesiones guardadas.</div>';return;}
+  if(!list.length){wrap.innerHTML='<div style="color:var(--dim);font-size:13px">Ninguna sesión con ese filtro.</div>';return;}
   wrap.innerHTML="";
   list.map((s,i)=>({s,i})).reverse().forEach(({s})=>{
     const modo=s.mode==="libre"?("Libre · "+(s.raceBy||"")):s.mode==="tcx"?"TCX Garmin":s.mode==="entreno"?"Entreno":s.mode==="velodromo"?("Velódromo · "+(s.trackLen||250)+"m"):"Recorrido";
@@ -2563,7 +2649,8 @@ function renderHistorial(){
       row.appendChild(cb);
     }
     const info=document.createElement("div");info.className="info";
-    info.innerHTML=`<span class="badge">${modo}</span>${fmtDate(s.date)}<div class="tag">${fmtTime(s.dur||0)} · ${dist} km${hr}</div>`;
+    const notePreview = s.notes ? `<div style="color:var(--acc);font-size:12px;margin-top:2px">📝 ${escapeHtml(s.notes.length>60?s.notes.slice(0,60)+"…":s.notes)}</div>` : "";
+    info.innerHTML=`<span class="badge">${modo}</span>${fmtDate(s.date)}<div class="tag">${fmtTime(s.dur||0)} · ${dist} km${hr}</div>${notePreview}`;
     row.appendChild(info);
     if(selMode){ row.style.cursor="pointer"; info.onclick=()=>{ cb.checked=!cb.checked; cb.onchange(); }; }
     else{
@@ -2582,6 +2669,13 @@ function renderHistorial(){
         tx.onclick=()=>exportTcxFor(s);
         row.appendChild(tx);
       }
+      const note=document.createElement("button");note.textContent="📝";note.title="Notas de la sesión";
+      note.style.minHeight="40px";note.style.padding="8px 10px";
+      note.onclick=()=>{
+        const txt=prompt("Notas para esta sesión ("+fmtDate(s.date)+"):", s.notes||"");
+        if(txt!==null){ if(!saveSessionNotes(s.date,txt)) alert("No se pudo guardar la nota (¿sin espacio?)."); renderHistorial(); }
+      };
+      row.appendChild(note);
       const del=document.createElement("button");del.className="del";del.textContent="✕";
       del.onclick=()=>{ if(confirm("¿Borrar esta sesión?")){deleteByDate(s.date);renderHistorial();populateGhosts();} };
       row.appendChild(del);
@@ -2686,8 +2780,17 @@ function renderRoutesList(){
 }
 $("routesBtn").onclick=()=>{ renderRoutesList(); $("setup").classList.add("hidden"); $("routesCard").classList.remove("hidden"); scrollTop(); };
 // ---------- Fitting de la bici ----------
-let fitImg=null, fitPoints=[], fitScale=1;
-const FIT_POINT_NAMES=["Pedal (centro, punto muerto inferior)","Borde superior del asiento","Tobillo","Rodilla","Cadera","Hombro","Codo"];
+let fitImg=null, fitPoints=[], fitScale=1, fitPhase=1, fitSide="A", fitCalibMode="saddle";
+let fitSideAResult=null, fitSideBResult=null, fitKopsResult=null, fitSessionId=null;
+const FIT_POINT_NAMES_1_SADDLE=["Pedal (centro, punto muerto inferior)","Borde superior del asiento","Tobillo","Rodilla","Cadera","Hombro","Codo"];
+const FIT_POINT_NAMES_1_WHEEL=["Borde superior de la rueda trasera","Borde inferior de la misma rueda","Tobillo","Rodilla","Cadera","Hombro","Codo"];
+const FIT_POINT_NAMES_2_SADDLE=["Pedal (centro del eje, biela horizontal adelante)","Borde superior del asiento","Tuberosidad tibial (huesito debajo de la rótula, adelante de la rodilla)"];
+const FIT_POINT_NAMES_2_WHEEL=["Pedal (centro del eje, biela horizontal adelante)","Borde superior de la rueda trasera","Borde inferior de la misma rueda","Tuberosidad tibial (huesito debajo de la rótula)"];
+function fitPointNames(){
+  if(fitPhase===1) return fitCalibMode==="wheel"?FIT_POINT_NAMES_1_WHEEL:FIT_POINT_NAMES_1_SADDLE;
+  return fitCalibMode==="wheel"?FIT_POINT_NAMES_2_WHEEL:FIT_POINT_NAMES_2_SADDLE;
+}
+function fitNeeded(){ if(fitPhase===1) return 7; return fitCalibMode==="wheel"?4:3; }
 function fitDist(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
 function fitAngleAt(vertex,a,b){
   const v1={x:a.x-vertex.x,y:a.y-vertex.y}, v2={x:b.x-vertex.x,y:b.y-vertex.y};
@@ -2706,10 +2809,20 @@ function fitDrawCanvas(){
   fitScale=scale;
   const pts=fitPoints.map(p=>({x:p.x*scale,y:p.y*scale}));
   if(pts.length>=2){ ctx.strokeStyle="#3fb950"; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y); ctx.lineTo(pts[1].x,pts[1].y); ctx.stroke(); }
-  const chain=[2,3,4,5,6];
-  ctx.strokeStyle="#4cc2ff"; ctx.lineWidth=2.5; ctx.beginPath(); let started=false;
-  for(const idx of chain){ if(idx>=pts.length) break; const p=pts[idx]; if(!started){ctx.moveTo(p.x,p.y);started=true;} else ctx.lineTo(p.x,p.y); }
-  if(started) ctx.stroke();
+  if(fitPhase===1){
+    const chain=[2,3,4,5,6];
+    ctx.strokeStyle="#4cc2ff"; ctx.lineWidth=2.5; ctx.beginPath(); let started=false;
+    for(const idx of chain){ if(idx>=pts.length) break; const p=pts[idx]; if(!started){ctx.moveTo(p.x,p.y);started=true;} else ctx.lineTo(p.x,p.y); }
+    if(started) ctx.stroke();
+  } else if(fitPhase===2){
+    const pedalIdx=0, tubIdx=fitCalibMode==="wheel"?3:2;
+    if(pts.length>tubIdx){
+      ctx.strokeStyle="#f0883e"; ctx.lineWidth=2; ctx.setLineDash([5,4]);
+      ctx.beginPath(); ctx.moveTo(pts[tubIdx].x, pts[tubIdx].y); ctx.lineTo(pts[tubIdx].x, cssH); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(pts[pedalIdx].x, 0); ctx.lineTo(pts[pedalIdx].x, cssH); ctx.strokeStyle="#4cc2ff"; ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
   pts.forEach((p,i)=>{
     ctx.beginPath(); ctx.arc(p.x,p.y,7,0,7); ctx.fillStyle="#f0883e"; ctx.fill();
     ctx.lineWidth=2; ctx.strokeStyle="#04121c"; ctx.stroke();
@@ -2717,31 +2830,56 @@ function fitDrawCanvas(){
   });
 }
 function updateFitPrompt(){
-  $("fitPrompt").textContent = fitPoints.length<7 ? "Tocá: "+FIT_POINT_NAMES[fitPoints.length] : "Listo — calculando…";
+  const names=fitPointNames(), need=fitNeeded();
+  $("fitPrompt").textContent = fitPoints.length<need ? "Tocá: "+names[fitPoints.length] : "Listo — calculando…";
 }
-function computeFit(){
-  const [pedal,saddle,ankle,knee,hip,shoulder,elbow]=fitPoints;
-  const saddleHeightReal=parseFloat($("fitSaddleH").value)||72;
-  const pxPedalSaddle=fitDist(pedal,saddle);
-  const box=$("fitResult"); box.classList.remove("hidden");
-  if(pxPedalSaddle<5){ box.innerHTML='<div style="color:var(--err)">Los puntos de pedal y asiento quedaron muy juntos — no puedo calibrar la escala. Reiniciá y marcá con más cuidado.</div>'; return; }
-  const cmPerPx=saddleHeightReal/pxPedalSaddle;
+function computeFit(){ if(fitPhase===1){ fitSide==="A" ? computeFitPhase1() : computeFitPhase1B(); } else computeFitPhase2(); }
+function fitComputeLegAngles(pts,refCm){
+  const [pedal,saddle,ankle,knee,hip,shoulder,elbow]=pts;
+  const pxCalib=fitDist(pedal,saddle);
+  if(pxCalib<5) return null;
+  const cmPerPx=refCm/pxCalib;
   const femur=fitDist(hip,knee)*cmPerPx, tibia=fitDist(knee,ankle)*cmPerPx, hipAnkle=fitDist(hip,ankle)*cmPerPx;
   const kneeAngleDeg=fitAngleAt(knee,hip,ankle);
   const flexion=180-kneeAngleDeg;
-  const inRange = flexion>=25 && flexion<=35;
   const targetRad=150*Math.PI/180;
   const hipAnkleTarget=Math.sqrt(Math.max(0, femur*femur+tibia*tibia-2*femur*tibia*Math.cos(targetRad)));
   const deltaSaddle=hipAnkleTarget-hipAnkle;
   const torsoAngleDeg=Math.atan2(Math.abs(hip.y-shoulder.y),Math.max(1,Math.abs(shoulder.x-hip.x)))*180/Math.PI;
   const shoulderAngleDeg=fitAngleAt(shoulder,hip,elbow);
+  return {kneeAngleDeg,flexion,deltaSaddle,torsoAngleDeg,shoulderAngleDeg};
+}
+function fitRefCm(){ return fitCalibMode==="wheel" ? (parseFloat($("fitWheelD").value)||67) : (parseFloat($("fitSaddleH").value)||72); }
+function saveFittingRecord(){
+  try{
+    const all=loadFittingHistory();
+    let rec=fitSessionId!=null?all.find(r=>r.date===fitSessionId):null;
+    if(!rec){ fitSessionId=Date.now(); rec={date:fitSessionId}; all.push(rec); }
+    rec.saddleHeightInput=parseFloat($("fitSaddleH").value)||null;
+    if(fitSideAResult) rec.sideA=fitSideAResult;
+    if(fitSideBResult) rec.sideB=fitSideBResult;
+    if(fitKopsResult) rec.kops=fitKopsResult;
+    localStorage.setItem("bici_fitting",JSON.stringify(all));
+  }catch(_){}
+}
+function loadFittingHistory(){ try{return JSON.parse(localStorage.getItem("bici_fitting")||"[]");}catch(_){ return []; } }
+function computeFitPhase1(){
+  const refCm=fitRefCm();
+  const r=fitComputeLegAngles(fitPoints,refCm);
+  const box=$("fitResult"); box.classList.remove("hidden");
+  if(!r){ box.innerHTML='<div style="color:var(--err)">Los dos primeros puntos de calibración quedaron muy juntos — no puedo calcular la escala. Reiniciá y marcá con más cuidado.</div>'; return; }
+  const {kneeAngleDeg,flexion,deltaSaddle,torsoAngleDeg,shoulderAngleDeg}=r;
+  const inRange = flexion>=25 && flexion<=35;
   const torsoOk = torsoAngleDeg>=40 && torsoAngleDeg<=50;
   const shoulderOk = shoulderAngleDeg>=85 && shoulderAngleDeg<=90;
   let html = '<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px">';
   html += '<div style="font-weight:700;margin-bottom:8px">Altura del asiento</div>';
-  html += `<div>Ángulo de rodilla: <b>${kneeAngleDeg.toFixed(1)}°</b> interno (≈${flexion.toFixed(0)}° de flexión). Rango de referencia (método Holmes): 25-35° de flexión.</div>`;
+  html += `<div>Ángulo de rodilla (estático): <b>${kneeAngleDeg.toFixed(1)}°</b> interno (≈${flexion.toFixed(0)}° de flexión). Rango de referencia (método Holmes): 25-35° de flexión.</div>`;
+  const dynAngle=Math.min(179,kneeAngleDeg+8), dynFlex=Math.max(0,flexion-8);
+  html += `<div style="color:var(--dim);font-size:12px;margin-top:2px">Equivalente pedaleando (dinámico): ≈${dynAngle.toFixed(1)}° interno (≈${dynFlex.toFixed(0)}° de flexión) — la investigación muestra que al pedalear la pierna queda ~8° más extendida que en la foto estática.</div>`;
   if(inRange){ html += '<div style="color:var(--ok);margin-top:4px">✓ Estás dentro del rango típico.</div>'; }
-  else { const dir=deltaSaddle>0?"subir":"bajar"; html += `<div style="color:var(--warn);margin-top:4px">Sugerencia: ${dir} el asiento ≈ <b>${Math.abs(deltaSaddle).toFixed(1)} cm</b> para acercarte al centro del rango (30° de flexión).</div>`; }
+  else { const dir=deltaSaddle>0?"subir":"bajar"; html += `<div style="color:var(--warn);margin-top:4px">Sugerencia: ${dir} el asiento ≈ <b>${Math.abs(deltaSaddle).toFixed(1)} cm</b> para acercarte al centro del rango (30° de flexión).</div>`;
+    html += `<button id="fitApplySaddle" style="margin-top:8px;min-height:36px;padding:6px 12px;font-size:13px">Ya ajusté el asiento ${dir === "subir"?"+":"-"}${Math.abs(deltaSaddle).toFixed(1)} cm</button>`; }
   html += '<div style="color:var(--dim);font-size:12px;margin-top:6px">Hacé cambios de a 3-5mm por vez y probá unos días antes de seguir ajustando.</div>';
   html += '<div style="font-weight:700;margin-top:14px;margin-bottom:8px">Postura / alcance (orientativo, no una medida de stem)</div>';
   html += `<div>Ángulo de torso (a la horizontal): <b>${torsoAngleDeg.toFixed(1)}°</b> — rango típico 40-50° (más bajo = más aerodinámico/agresivo).</div>`;
@@ -2751,13 +2889,79 @@ function computeFit(){
   html += '<div style="color:var(--dim);font-size:12px;margin-top:8px">Esto es orientativo: el alcance ideal depende de varias cosas a la vez (flexibilidad, postura buscada, cómo quede el asiento). No te dé un "cambiá el stem X mm" — usalo para detectar si algo está claramente fuera de rango.</div>';
   html += '</div>';
   box.innerHTML = html;
+  const applyBtn=$("fitApplySaddle");
+  if(applyBtn) applyBtn.onclick=()=>{ const cur=parseFloat($("fitSaddleH").value)||0; $("fitSaddleH").value=(cur+deltaSaddle).toFixed(1); saveCfg(); applyBtn.textContent="✓ Actualizado — "+$("fitSaddleH").value+" cm"; applyBtn.disabled=true; };
+  fitSideAResult={kneeAngleDeg,flexion,deltaSaddle,torsoAngleDeg,shoulderAngleDeg};
+  saveFittingRecord();
+  $("fitKopsOffer").classList.remove("hidden");
+  $("fitLegOffer").classList.remove("hidden");
+}
+function computeFitPhase1B(){
+  const refCm=fitRefCm();
+  const r=fitComputeLegAngles(fitPoints,refCm);
+  const box=$("fitResult"); box.classList.remove("hidden");
+  if(!r){ box.innerHTML='<div style="color:var(--err)">Los dos primeros puntos de calibración quedaron muy juntos — no puedo calcular la escala. Reiniciá y marcá con más cuidado.</div>'; return; }
+  fitSideBResult=r; saveFittingRecord();
+  const a=fitSideAResult, b=fitSideBResult;
+  const diffFlex=Math.abs(a.flexion-b.flexion);
+  let html='<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px">';
+  html+='<div style="font-weight:700;margin-bottom:8px">Comparación entre piernas</div>';
+  html+=`<div>Pierna 1: <b>${a.kneeAngleDeg.toFixed(1)}°</b> interno (≈${a.flexion.toFixed(0)}° de flexión)</div>`;
+  html+=`<div>Pierna 2: <b>${b.kneeAngleDeg.toFixed(1)}°</b> interno (≈${b.flexion.toFixed(0)}° de flexión)</div>`;
+  html+=`<div style="margin-top:6px">Diferencia: <b>${diffFlex.toFixed(1)}°</b> de flexión</div>`;
+  if(diffFlex<=3){ html+='<div style="color:var(--ok);margin-top:4px">✓ Diferencia chica, dentro de lo esperable entre dos fotos.</div>'; }
+  else if(diffFlex<=5){ html+='<div style="color:var(--warn);margin-top:4px">Diferencia moderada — puede ser variación de cómo quedó la foto, o una asimetría real leve. Repetir la medición ayuda a confirmar.</div>'; }
+  else { html+='<div style="color:var(--warn);margin-top:4px">Diferencia notable — vale la pena prestarle atención (largo de pierna, movilidad de cadera, o calzado/plantillas distintas de cada lado). No es un diagnóstico, es una señal para mirar más de cerca.</div>'; }
+  html+='<div style="color:var(--dim);font-size:12px;margin-top:8px">Comparación orientativa: pequeñas diferencias en cómo se sacó cada foto (ángulo de cámara, posición exacta) también pueden generar unos grados de diferencia sin que sea una asimetría real.</div>';
+  html+='</div>';
+  box.innerHTML=html;
+}
+function computeFitPhase2(){
+  const wheelMode=fitCalibMode==="wheel";
+  const pedal=fitPoints[0];
+  const calibA=fitPoints[1], calibB=wheelMode?fitPoints[2]:null;
+  const tub=wheelMode?fitPoints[3]:fitPoints[2];
+  const pxCalib = wheelMode ? fitDist(calibA,calibB) : fitDist(pedal,calibA);
+  const box=$("fitResult2"); box.classList.remove("hidden");
+  if(pxCalib<5){ box.innerHTML='<div style="color:var(--err)">Los puntos de calibración quedaron muy juntos — no puedo calcular la escala. Reiniciá y marcá con más cuidado.</div>'; return; }
+  const cmPerPx=fitRefCm()/pxCalib;
+  const facing=$("fitBikeFacing").value; // "right" = adelante es +x, "left" = adelante es -x
+  const dxPx = facing==="right" ? (tub.x-pedal.x) : (pedal.x-tub.x);
+  const offsetCm = dxPx*cmPerPx;
+  const ahead = offsetCm>0;
+  let html='<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px">';
+  html+='<div style="font-weight:700;margin-bottom:8px">Posición horizontal del asiento (KOPS)</div>';
+  html+=`<div>La tuberosidad tibial cae <b>${Math.abs(offsetCm).toFixed(1)} cm ${ahead?"por delante":"por detrás"}</b> del eje del pedal.</div>`;
+  if(Math.abs(offsetCm)<1){ html+='<div style="color:var(--ok);margin-top:4px">✓ Prácticamente alineado (KOPS clásico).</div>'; }
+  else { const dir=ahead?"hacia atrás":"hacia adelante"; html+=`<div style="color:var(--warn);margin-top:4px">Para alinear exacto (KOPS clásico), el asiento se movería ${dir} ≈ <b>${Math.abs(offsetCm).toFixed(1)} cm</b>.</div>`; }
+  html+='<div style="color:var(--dim);font-size:12px;margin-top:8px">Aviso importante: KOPS es una referencia histórica sin base biomecánica comprobada (así lo documentó el propio creador del método, y lo confirma la literatura de fitting actual) — no es una regla a seguir al pie de la letra. Muchos ciclistas de fondo terminan cómodos con el asiento algo detrás de esta posición. Usalo como dato, junto con cómo se siente realmente pedaleando, no como objetivo único.</div>';
+  html+='<div style="color:var(--dim);font-size:12px;margin-top:6px">Ojo: esta medida asume que la foto está más o menos derecha (sin inclinar el celular). Si la sacaste con el teléfono torcido, el número puede tener algo de error.</div>';
+  html+='</div>';
+  box.innerHTML=html;
+  fitKopsResult={offsetCm,ahead};
+  saveFittingRecord();
 }
 $("fitBtn").onclick=()=>{
   $("setup").classList.add("hidden"); $("fitCard").classList.remove("hidden");
+  fitPhase=1; fitSide="A"; fitSideAResult=null; fitSideBResult=null; fitKopsResult=null; fitSessionId=null;
+  fitCalibMode="saddle"; $("fitCalibSel").value="saddle";
+  $("fitSaddleRow").classList.remove("hidden"); $("fitSaddleHint").classList.remove("hidden");
+  $("fitWheelRow").classList.add("hidden"); $("fitWheelHint").classList.add("hidden");
   $("fitStep0").classList.remove("hidden"); $("fitStep1").classList.add("hidden");
+  $("fitStep0b").classList.add("hidden"); $("fitKopsOffer").classList.add("hidden"); $("fitLegOffer").classList.add("hidden");
   $("fitResult").classList.add("hidden"); $("fitResult").innerHTML="";
+  $("fitResult2").classList.add("hidden"); $("fitResult2").innerHTML="";
+  $("fitHistList").classList.add("hidden");
   fitImg=null; fitPoints=[];
+  $("fitStep0Diagram").innerHTML=fitCurrentGuideSvg();
   scrollTop();
+};
+$("fitCalibSel").onchange=()=>{
+  fitCalibMode=$("fitCalibSel").value;
+  const wheel=fitCalibMode==="wheel";
+  $("fitSaddleRow").classList.toggle("hidden",wheel); $("fitSaddleHint").classList.toggle("hidden",wheel);
+  $("fitWheelRow").classList.toggle("hidden",!wheel); $("fitWheelHint").classList.toggle("hidden",!wheel);
+  $("fitStep0Diagram").innerHTML=fitCurrentGuideSvg();
 };
 $("fitBack").onclick=()=>{ $("fitCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); scrollTop(); };
 $("fitPhotoBtn").onclick=()=>$("fitPhotoFile").click();
@@ -2767,9 +2971,59 @@ $("fitPhotoFile").onchange=(e)=>{
   reader.onload=()=>{
     const img=new Image();
     img.onload=()=>{
-      fitImg=img; fitPoints=[];
-      $("fitStep0").classList.add("hidden"); $("fitStep1").classList.remove("hidden");
+      fitPhase=1; fitImg=img; fitPoints=[];
+      $("fitStep0").classList.add("hidden"); $("fitStep1").classList.remove("hidden"); $("fitGuideWrap").classList.add("hidden");
       $("fitResult").classList.add("hidden"); $("fitResult").innerHTML="";
+      $("fitKopsOffer").classList.add("hidden"); $("fitLegOffer").classList.add("hidden");
+      fitDrawCanvas(); updateFitPrompt();
+    };
+    img.src=reader.result;
+  };
+  reader.readAsDataURL(f); e.target.value="";
+};
+$("fitLegBtn").onclick=()=>{
+  fitSide="B"; fitPoints=[]; fitImg=null;
+  $("fitLegOffer").classList.add("hidden");
+  $("fitStep0Diagram").innerHTML=fitCurrentGuideSvg();
+  $("fitStep0").classList.remove("hidden");
+  scrollTop();
+};
+$("fitHistBtn").onclick=()=>{
+  const w=$("fitHistList"); const show=w.classList.contains("hidden");
+  if(show){
+    const hist=loadFittingHistory().slice().reverse();
+    if(!hist.length){ w.innerHTML='<div style="color:var(--dim);font-size:13px">Todavía no guardaste ninguna medición.</div>'; }
+    else{
+      let html="";
+      hist.forEach(r=>{
+        const d=new Date(r.date);
+        html+='<div style="border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:6px;font-size:13px">';
+        html+='<div style="color:var(--dim)">'+d.toLocaleDateString()+' '+d.toLocaleTimeString().slice(0,5)+' · asiento '+(r.saddleHeightInput||"—")+' cm</div>';
+        if(r.sideA) html+='<div>Rodilla: <b>'+r.sideA.kneeAngleDeg.toFixed(1)+'°</b> (≈'+r.sideA.flexion.toFixed(0)+'° flexión)'+(r.sideB?' · pierna 2: <b>'+r.sideB.kneeAngleDeg.toFixed(1)+'°</b>':'')+'</div>';
+        if(r.kops) html+='<div>KOPS: '+Math.abs(r.kops.offsetCm).toFixed(1)+' cm '+(r.kops.ahead?"adelante":"atrás")+'</div>';
+        html+='</div>';
+      });
+      w.innerHTML=html;
+    }
+  }
+  w.classList.toggle("hidden",!show);
+};
+$("fitKopsBtn").onclick=()=>{
+  $("fitKopsOffer").classList.add("hidden");
+  $("fitStep0bDiagram").innerHTML = fitCalibMode==="wheel"?FIT_GUIDE_SVG_2_WHEEL:FIT_GUIDE_SVG_2_SADDLE;
+  $("fitStep0b").classList.remove("hidden");
+  scrollTop();
+};
+$("fitPhotoBtn2").onclick=()=>$("fitPhotoFile2").click();
+$("fitPhotoFile2").onchange=(e)=>{
+  const f=e.target.files[0]; if(!f) return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    const img=new Image();
+    img.onload=()=>{
+      fitPhase=2; fitImg=img; fitPoints=[];
+      $("fitStep0b").classList.add("hidden"); $("fitStep1").classList.remove("hidden"); $("fitGuideWrap").classList.add("hidden");
+      $("fitResult2").classList.add("hidden"); $("fitResult2").innerHTML="";
       fitDrawCanvas(); updateFitPrompt();
     };
     img.src=reader.result;
@@ -2777,15 +3031,94 @@ $("fitPhotoFile").onchange=(e)=>{
   reader.readAsDataURL(f); e.target.value="";
 };
 $("fitCanvas").addEventListener("pointerdown",(e)=>{
-  if(!fitImg || fitPoints.length>=7) return;
+  if(!fitImg || fitPoints.length>=fitNeeded()) return;
   const cv=$("fitCanvas"), rect=cv.getBoundingClientRect();
   const dispX=e.clientX-rect.left, dispY=e.clientY-rect.top;
   fitPoints.push({x:dispX/fitScale, y:dispY/fitScale});
   fitDrawCanvas(); updateFitPrompt();
-  if(fitPoints.length===7) computeFit();
+  if(fitPoints.length===fitNeeded()) computeFit();
 });
-$("fitUndo").onclick=()=>{ if(fitPoints.length) fitPoints.pop(); fitDrawCanvas(); updateFitPrompt(); $("fitResult").classList.add("hidden"); };
-$("fitRestart").onclick=()=>{ fitPoints=[]; fitDrawCanvas(); updateFitPrompt(); $("fitResult").classList.add("hidden"); };
+const FIT_GUIDE_SVG_1_SADDLE = `<svg viewBox="0 0 300 220" style="width:100%;display:block">
+  <line x1="0" y1="205" x2="300" y2="205" stroke="#273040" stroke-width="1"/>
+  <circle cx="55" cy="185" r="42" fill="none" stroke="#3a4048" stroke-width="4"/>
+  <circle cx="245" cy="185" r="42" fill="none" stroke="#3a4048" stroke-width="4"/>
+  <path d="M150,178 L55,185 M150,178 L105,80 M150,178 L200,90 L245,185 M200,90 L215,105" stroke="#3a4048" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="105" y1="80" x2="90" y2="65" stroke="#3a4048" stroke-width="6" stroke-linecap="round"/>
+  <g stroke="#4cc2ff" stroke-width="3" fill="none" stroke-linejoin="round">
+    <path d="M108,68 L145,128 L150,176"/>
+    <path d="M108,68 L165,55 L195,80 L222,100"/>
+  </g>
+  <line x1="150" y1="176" x2="150" y2="189" stroke="#4cc2ff" stroke-width="3"/>
+  <circle cx="150" cy="189" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="160" y="193" fill="#e6edf3" font-size="13" font-weight="700">1</text>
+  <circle cx="90" cy="65" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="72" y="55" fill="#e6edf3" font-size="13" font-weight="700">2</text>
+  <circle cx="150" cy="176" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="160" y="172" fill="#e6edf3" font-size="13" font-weight="700">3</text>
+  <circle cx="145" cy="128" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="118" y="124" fill="#e6edf3" font-size="13" font-weight="700">4</text>
+  <circle cx="108" cy="68" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="80" y="80" fill="#e6edf3" font-size="13" font-weight="700">5</text>
+  <circle cx="165" cy="55" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="170" y="42" fill="#e6edf3" font-size="13" font-weight="700">6</text>
+  <circle cx="195" cy="80" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="200" y="72" fill="#e6edf3" font-size="13" font-weight="700">7</text>
+</svg>
+<div style="color:var(--dim);font-size:11px;text-align:center;margin-top:2px">1 Pedal · 2 Asiento · 3 Tobillo · 4 Rodilla · 5 Cadera · 6 Hombro · 7 Codo</div>`;
+const FIT_GUIDE_SVG_1_WHEEL = `<svg viewBox="0 0 300 235" style="width:100%;display:block">
+  <circle cx="55" cy="185" r="42" fill="none" stroke="#3a4048" stroke-width="4"/>
+  <circle cx="245" cy="185" r="42" fill="none" stroke="#3a4048" stroke-width="4"/>
+  <path d="M150,178 L55,185 M150,178 L105,80 M150,178 L200,90 L245,185 M200,90 L215,105" stroke="#3a4048" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="105" y1="80" x2="90" y2="65" stroke="#3a4048" stroke-width="6" stroke-linecap="round"/>
+  <g stroke="#4cc2ff" stroke-width="3" fill="none" stroke-linejoin="round">
+    <path d="M108,68 L145,128 L150,176"/>
+    <path d="M108,68 L165,55 L195,80 L222,100"/>
+  </g>
+  <line x1="55" y1="143" x2="55" y2="227" stroke="#3fb950" stroke-width="2" stroke-dasharray="4,3"/>
+  <circle cx="55" cy="143" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="30" y="132" fill="#e6edf3" font-size="13" font-weight="700">1</text>
+  <circle cx="55" cy="227" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="30" y="222" fill="#e6edf3" font-size="13" font-weight="700">2</text>
+  <circle cx="150" cy="176" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="160" y="172" fill="#e6edf3" font-size="13" font-weight="700">3</text>
+  <circle cx="145" cy="128" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="118" y="124" fill="#e6edf3" font-size="13" font-weight="700">4</text>
+  <circle cx="108" cy="68" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="80" y="80" fill="#e6edf3" font-size="13" font-weight="700">5</text>
+  <circle cx="165" cy="55" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="170" y="42" fill="#e6edf3" font-size="13" font-weight="700">6</text>
+  <circle cx="195" cy="80" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="200" y="72" fill="#e6edf3" font-size="13" font-weight="700">7</text>
+</svg>
+<div style="color:var(--dim);font-size:11px;text-align:center;margin-top:2px">1 Arriba de la rueda · 2 Abajo de la rueda · 3 Tobillo · 4 Rodilla · 5 Cadera · 6 Hombro · 7 Codo</div>`;
+const FIT_GUIDE_SVG_2_SADDLE = `<svg viewBox="0 0 300 220" style="width:100%;display:block">
+  <line x1="0" y1="205" x2="300" y2="205" stroke="#273040" stroke-width="1"/>
+  <circle cx="55" cy="185" r="42" fill="none" stroke="#3a4048" stroke-width="4"/>
+  <circle cx="245" cy="185" r="42" fill="none" stroke="#3a4048" stroke-width="4"/>
+  <path d="M150,178 L55,185 M150,178 L105,80 M150,178 L200,90 L245,185 M200,90 L215,105" stroke="#3a4048" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="105" y1="80" x2="90" y2="65" stroke="#3a4048" stroke-width="6" stroke-linecap="round"/>
+  <g stroke="#4cc2ff" stroke-width="3" fill="none" stroke-linejoin="round">
+    <path d="M108,68 L168,135 L195,178"/>
+    <path d="M108,68 L165,55 L195,80 L222,100"/>
+  </g>
+  <circle cx="195" cy="178" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="200" y="182" fill="#e6edf3" font-size="13" font-weight="700">1</text>
+  <circle cx="90" cy="65" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="72" y="55" fill="#e6edf3" font-size="13" font-weight="700">2</text>
+  <circle cx="172" cy="146" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="135" y="150" fill="#e6edf3" font-size="13" font-weight="700">3</text>
+</svg>
+<div style="color:var(--dim);font-size:11px;text-align:center;margin-top:2px">1 Pedal (biela horizontal) · 2 Asiento · 3 Tuberosidad tibial</div>`;
+const FIT_GUIDE_SVG_2_WHEEL = `<svg viewBox="0 0 300 235" style="width:100%;display:block">
+  <circle cx="55" cy="185" r="42" fill="none" stroke="#3a4048" stroke-width="4"/>
+  <circle cx="245" cy="185" r="42" fill="none" stroke="#3a4048" stroke-width="4"/>
+  <path d="M150,178 L55,185 M150,178 L105,80 M150,178 L200,90 L245,185 M200,90 L215,105" stroke="#3a4048" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="105" y1="80" x2="90" y2="65" stroke="#3a4048" stroke-width="6" stroke-linecap="round"/>
+  <g stroke="#4cc2ff" stroke-width="3" fill="none" stroke-linejoin="round">
+    <path d="M108,68 L168,135 L195,178"/>
+    <path d="M108,68 L165,55 L195,80 L222,100"/>
+  </g>
+  <line x1="55" y1="143" x2="55" y2="227" stroke="#3fb950" stroke-width="2" stroke-dasharray="4,3"/>
+  <circle cx="195" cy="178" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="200" y="182" fill="#e6edf3" font-size="13" font-weight="700">1</text>
+  <circle cx="55" cy="143" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="30" y="132" fill="#e6edf3" font-size="13" font-weight="700">2</text>
+  <circle cx="55" cy="227" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="30" y="222" fill="#e6edf3" font-size="13" font-weight="700">3</text>
+  <circle cx="172" cy="146" r="8" fill="#f0883e" stroke="#04121c" stroke-width="2"/><text x="135" y="150" fill="#e6edf3" font-size="13" font-weight="700">4</text>
+</svg>
+<div style="color:var(--dim);font-size:11px;text-align:center;margin-top:2px">1 Pedal (biela horizontal) · 2 Arriba de la rueda · 3 Abajo de la rueda · 4 Tuberosidad tibial</div>`;
+function fitCurrentGuideSvg(){
+  if(fitPhase===1) return fitCalibMode==="wheel"?FIT_GUIDE_SVG_1_WHEEL:FIT_GUIDE_SVG_1_SADDLE;
+  return fitCalibMode==="wheel"?FIT_GUIDE_SVG_2_WHEEL:FIT_GUIDE_SVG_2_SADDLE;
+}
+$("fitGuideBtn").onclick=()=>{
+  const w=$("fitGuideWrap"); const show=w.classList.contains("hidden");
+  if(show){ w.innerHTML = fitCurrentGuideSvg(); }
+  w.classList.toggle("hidden",!show);
+};
+$("fitUndo").onclick=()=>{ if(fitPoints.length) fitPoints.pop(); fitDrawCanvas(); updateFitPrompt(); $(fitPhase===1?"fitResult":"fitResult2").classList.add("hidden"); };
+$("fitRestart").onclick=()=>{ fitPoints=[]; fitDrawCanvas(); updateFitPrompt(); $(fitPhase===1?"fitResult":"fitResult2").classList.add("hidden"); };
 $("routesBack").onclick=()=>{ $("routesCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); scrollTop(); };
 $("routesToHistBtn").onclick=()=>{ $("routesCard").classList.add("hidden"); $("historial").classList.remove("hidden"); setSelMode(false); renderHistorial(); scrollTop(); };
 $("routesCompressBtn").onclick=()=>{
@@ -2950,6 +3283,7 @@ $("gpxGhostSel").onchange=()=>{
 $("zoomBtn").onclick=()=>{ battleZoom=!battleZoom; $("zoomBtn").textContent="Zoom disputa: "+(battleZoom?"ON":"OFF"); if(state==="riding"||state==="paused")drawMap(); };
 $("road3dBtn").onclick=()=>{ road3d=!road3d; $("road3dBtn").textContent="Vista 3D: "+(road3d?"ON":"OFF"); applyGpxView(); if(!road3d && (state==="riding"||state==="paused"))drawRide(); };
 $("selToggle").onclick=()=>setSelMode(true);
+$("histFilterSel").onchange=()=>{ histFilterMode=$("histFilterSel").value; renderHistorial(); };
 $("selCancel").onclick=()=>setSelMode(false);
 $("selAll").onclick=()=>{ const list=loadSesiones();
   if(selected.size>=list.length) selected.clear(); else list.forEach(s=>selected.add(s.date));
