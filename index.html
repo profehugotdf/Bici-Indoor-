@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v87</title>
+<title>Bici Indoor · v90</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v87</h1>
+  <h1>Bici Indoor · v90</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -204,6 +204,8 @@
       <div class="row"><label for="bike">Peso bici (kg)</label><input type="number" id="bike" value="8" min="3" max="20" step="0.5"></div>
       <div class="row"><label for="crr">Rodadura (Crr)</label><input type="number" id="crr" value="0.005" min="0.002" max="0.02" step="0.001"></div>
       <div class="row"><label for="cda">Aerodinámica (CdA)</label><input type="number" id="cda" value="0.32" min="0.2" max="0.6" step="0.01"></div>
+      <div class="row"><label for="draftOn">Rebufo/succión con el fantasma</label><input type="checkbox" id="draftOn"></div>
+      <div class="row"><label for="draftPct">Intensidad rebufo (%)</label><input type="number" id="draftPct" value="100" min="0" max="200" step="10"></div>
       <div class="row"><label for="smoothM">Suavizado altimetría (m)</label><input type="number" id="smoothM" value="100" min="0" max="300" step="10"></div>
       <div class="row"><label for="diff">Dificultad rodillo (%)</label><input type="number" id="diff" value="100" min="10" max="100" step="5"></div>
       <div class="row"><label for="ftp">FTP (W)</label><input type="number" id="ftp" value="200" min="50" max="600" step="5"></div>
@@ -367,7 +369,7 @@
     <div class="hud">
       <div class="tile big"><div class="l">Tiempo</div><div class="v" id="hTime">0:00</div></div>
       <div class="tile big"><div class="l">Distancia</div><div class="v" id="hDist">0.00</div><div class="u">km</div></div>
-      <div class="tile big"><div class="l">Velocidad</div><div class="v" id="hSpd">0.0</div><div class="u">km/h</div></div>
+      <div class="tile big"><div class="l">Velocidad</div><div class="v" id="hSpd">0.0</div><div class="u">km/h<br><span id="hDraft" style="font-size:11px;color:var(--acc)"></span></div></div>
     </div>
     <div class="hud hud4" style="margin-top:10px">
       <div class="tile"><div class="l">Potencia</div><div class="v" id="hPw">0</div><div class="u">W · <b id="hZone" style="color:var(--dim)">—</b><br><span id="hPwAvg" style="font-size:11px">3s — · 10s —</span></div></div>
@@ -563,6 +565,9 @@ let device=null, epIn=0, epOut=0, inPacket=64, ifaceNum=0, connected=false, auto
 let conn="ant", bleDevice=null, bleControl=null;
 let linkLost=false, linkTimer=null, wakeLockRef=null;
 let curPower=0, curCad=0, curHR=0, sawTrainer=false, rxBuf=[];
+let curSpeedReal=null, curSpeedRealAt=0; // velocidad reportada por el propio rodillo (m/s), más frecuente que la potencia
+const SPEED_TELEMETRY_STALE_MS=3000; // si no llega actualización en este lapso, se vuelve al motor de física
+let sawSpeedTelemetry=false;
 
 // recorrido
 let points=[], dist=[], pd=[], pe=[], pg=[], total=0, fname="";
@@ -637,7 +642,7 @@ function afterReconnect(){
   refreshStart();
 }
 function onLinkLost(){
-  connected=false; sawTrainer=false; curPower=0;
+  connected=false; sawTrainer=false; curPower=0; curSpeedReal=null;
   if(state==="riding"){
     linkLost=true; setState("Reconectando…","searching"); log("Enlace perdido, esperando reconexión…","#f0883e");
     if(conn==="ble") setTimeout(()=>{ if(linkLost) reconnectBle().catch(()=>{}); }, 1500);
@@ -702,6 +707,8 @@ function frame(f){
     if(ch===CH){
       if(!sawTrainer){sawTrainer=true;setState("Rodillo conectado","live");log("¡Rodillo FE-C!","#3fb950");refreshStart();}
       if(page===0x19){const c=p[2],pw=p[5]|((p[6]&0x0F)<<8); if(c!==0xFF && !cadSensorActive)curCad=c; if(pw!==0xFFF)curPower=pw;}
+      else if(page===0x10){const sp=p[4]|(p[5]<<8); if(sp!==0xFFFF){curSpeedReal=sp*0.001; curSpeedRealAt=performance.now();
+        if(!sawSpeedTelemetry){sawSpeedTelemetry=true; log("Velocidad real del rodillo detectada (pág. 0x10)","#3fb950");}}}
     } else if(ch===HRCH){
       const hr=p[7]; if(hr>0){ if(!curHR)log("Pulsómetro OK","#3fb950"); curHR=hr; }
     } else if(ch===CADCH){
@@ -766,7 +773,8 @@ async function bleSetup(){
 }
 function parseBikeData(dv){
   const flags=dv.getUint16(0,true); let o=2;
-  if(!(flags&0x0001)) o+=2;   // inst speed
+  if(!(flags&0x0001)){ curSpeedReal=dv.getUint16(o,true)*0.01/3.6; curSpeedRealAt=performance.now(); o+=2;
+    if(!sawSpeedTelemetry){sawSpeedTelemetry=true; log("Velocidad real del rodillo detectada (BLE)","#3fb950");} }   // inst speed (0.01 km/h -> m/s)
   if(flags&0x0002) o+=2;      // avg speed
   if(flags&0x0004){ curCad=Math.round(dv.getUint16(o,true)*0.5); o+=2; }
   if(flags&0x0008) o+=2;      // avg cadence
@@ -917,6 +925,26 @@ const bikeKg=()=>Math.max(3,parseFloat($("bike").value)||8);
 const CRR=()=>parseFloat($("crr").value)||0.005;
 const CDA=()=>parseFloat($("cda").value)||0.32;
 
+// ---- Rebufo / succión (estela del fantasma) ----
+// Modelo exponencial de reducción de CdA en función de la distancia longitudinal al fantasma,
+// calibrado con datos de estela "lejana" (a 2.64 m ≈ 48% de reducción de arrastre, a 10 m ≈ 23%,
+// Barry et al. / estudios de estela en ruta). La reducción real varía mucho según postura y
+// tamaño del rival (13%-67% según distintos estudios), por eso "Intensidad rebufo" es ajustable.
+const DRAFT_MAX=0.45, DRAFT_DECAY_M=9, DRAFT_RANGE_M=20;
+let lastDraftRed=0;
+function draftFactor(){
+  if(!$("draftOn") || !$("draftOn").checked){ lastDraftRed=0; return 1; }
+  if(!ghost || !ghost.samples || !ghost.samples.length){ lastDraftRed=0; return 1; }
+  const gap = distanceM - ghostDistAt(elapsed); // negativo = vas detrás del fantasma
+  if(gap>=0){ lastDraftRed=0; return 1; } // vas adelante o parejo: sin rebufo
+  const d=-gap;
+  if(d>DRAFT_RANGE_M){ lastDraftRed=0; return 1; }
+  const pct=(parseFloat($("draftPct")?.value)||100)/100;
+  const red=Math.min(0.9, DRAFT_MAX*pct*Math.exp(-d/DRAFT_DECAY_M));
+  lastDraftRed=red;
+  return 1-red;
+}
+
 function tick(){
   if(state!=="riding")return;
   if(linkLost){ lastTs=performance.now(); return; }
@@ -939,10 +967,21 @@ function tick(){
     grade = mode==="gpx" ? gradeAt(distanceM) : fixedGrade;
   }
   const th=Math.atan(grade/100),m=riderKg()+bikeKg();
-  const vEff=Math.max(v,0.5);
-  const Fprop=curPower>0?curPower/vEff:0;
-  const Fnet=Fprop - m*G*Math.sin(th) - CRR()*m*G*Math.cos(th) - 0.5*RHO*CDA()*v*v;
-  v=Math.max(0,v+(Fnet/m)*dt);
+  // Telemetría del rodillo: solo en Libre/Velódromo (responde rápido a cambios de esfuerzo).
+  // En Recorrido (pendientes negativas reales) y Entreno se usa física propia: es determinística
+  // y comparable entre sesiones, y no depende del piso de resistencia mínimo del rodillo en bajadas.
+  const telemetryModeOk = (mode==="libre" || mode==="velodromo");
+  const telemetryFresh = telemetryModeOk && curSpeedReal!=null && (now-curSpeedRealAt)<SPEED_TELEMETRY_STALE_MS;
+  if(telemetryFresh){
+    v=curSpeedReal;
+    draftFactor(); // solo para actualizar lastDraftRed/HUD; en telemetría la velocidad ya viene del rodillo
+  } else {
+    const vEff=Math.max(v,0.5);
+    const Fprop=curPower>0?curPower/vEff:0;
+    const cdaEff=CDA()*draftFactor();
+    const Fnet=Fprop - m*G*Math.sin(th) - CRR()*m*G*Math.cos(th) - 0.5*RHO*cdaEff*v*v;
+    v=Math.max(0,v+(Fnet/m)*dt);
+  }
   distanceM+=v*dt;
   sumP+=curPower;nP++; if(curHR>0){hrSum+=curHR;hrN++;if(curHR>hrMax)hrMax=curHR;}
   // ¿terminó?
@@ -950,7 +989,13 @@ function tick(){
   if(done){ if(mode==="gpx")distanceM=total; finishRide(); return; }
   // pendiente al rodillo (gpx/libre; en entreno el control ya se envió arriba)
   if(mode!=="entreno"){
-    const tgrade=grade*(Math.max(10,Math.min(100,parseFloat($("diff").value)||100))/100);
+    let tgrade=grade*(Math.max(10,Math.min(100,parseFloat($("diff").value)||100))/100);
+    // El rebufo se traduce en una pendiente más floja enviada al rodillo, para que el ahorro
+    // aerodinámico se sienta en las piernas de verdad (no solo en la velocidad mostrada).
+    if(lastDraftRed>0){
+      const Fsaved = 0.5*RHO*CDA()*lastDraftRed*v*v;
+      tgrade -= (Fsaved/(m*G))*100;
+    }
     if(Math.abs(tgrade-lastSentGrade)>0.2||now-lastSentAt>1000){sendGrade(tgrade);lastSentGrade=tgrade;lastSentAt=now;}
   }
   // fantasma
@@ -1117,6 +1162,7 @@ function hud(grade){
   $("hTime").textContent=fmtTime(elapsed);
   $("hDist").textContent=(distanceM/1000).toFixed(2);
   $("hSpd").textContent=(v*3.6).toFixed(1);
+  $("hDraft").textContent = lastDraftRed>0 ? ("🌀 rebufo −"+Math.round(lastDraftRed*100)+"%") : "";
   $("hPw").textContent=curPower;
   $("hGr").textContent=grade.toFixed(1);
   $("hCad").textContent=curCad;
