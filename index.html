@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v90</title>
+<title>Bici Indoor · v92</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v90</h1>
+  <h1>Bici Indoor · v92</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -263,7 +263,10 @@
         <button id="fitGuideBtn" style="min-height:32px;padding:4px 10px;font-size:12px">❓ Ver guía</button>
       </div>
       <div id="fitGuideWrap" class="hidden" style="background:#0a0d12;border-radius:8px;padding:6px;margin-bottom:8px"></div>
-      <canvas id="fitCanvas" style="width:100%;display:block;border-radius:8px;touch-action:none"></canvas>
+      <div id="fitCanvasWrap" style="position:relative;display:flex;justify-content:center">
+        <canvas id="fitCanvas" style="display:block;border-radius:8px;touch-action:none"></canvas>
+        <canvas id="fitLoupe" width="150" height="150" style="position:absolute;width:150px;height:150px;border-radius:50%;border:3px solid #f0883e;box-shadow:0 4px 14px rgba(0,0,0,.5);pointer-events:none;display:none;background:#000"></canvas>
+      </div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button id="fitUndo" style="flex:1">← Deshacer punto</button>
         <button id="fitRestart" style="flex:1">Reiniciar</button>
@@ -2846,10 +2849,14 @@ function fitAngleAt(vertex,a,b){
   return Math.acos(Math.max(-1,Math.min(1,dot/(m1*m2))))*180/Math.PI;
 }
 function fitDrawCanvas(){
-  const cv=$("fitCanvas"); if(!cv||!fitImg) return;
-  const cssW=cv.clientWidth||320, scale=cssW/fitImg.naturalWidth, cssH=fitImg.naturalHeight*scale;
+  const cv=$("fitCanvas"), wrap=$("fitCanvasWrap"); if(!cv||!fitImg||!wrap) return;
+  const maxW=wrap.clientWidth||320;
+  const maxH=Math.max(220,Math.round(window.innerHeight*0.58)); // deja lugar arriba (prompt/guía) y abajo (botones) sin tapar nada
+  const scale=Math.min(maxW/fitImg.naturalWidth, maxH/fitImg.naturalHeight);
+  const cssW=Math.round(fitImg.naturalWidth*scale), cssH=Math.round(fitImg.naturalHeight*scale);
   const dpr=window.devicePixelRatio||1;
-  cv.width=Math.round(cssW*dpr); cv.height=Math.round(cssH*dpr); cv.style.height=cssH+"px";
+  cv.width=Math.round(cssW*dpr); cv.height=Math.round(cssH*dpr);
+  cv.style.width=cssW+"px"; cv.style.height=cssH+"px";
   const ctx=cv.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,cssW,cssH); ctx.drawImage(fitImg,0,0,cssW,cssH);
   fitScale=scale;
@@ -3076,13 +3083,66 @@ $("fitPhotoFile2").onchange=(e)=>{
   };
   reader.readAsDataURL(f); e.target.value="";
 };
-$("fitCanvas").addEventListener("pointerdown",(e)=>{
-  if(!fitImg || fitPoints.length>=fitNeeded()) return;
-  const cv=$("fitCanvas"), rect=cv.getBoundingClientRect();
-  const dispX=e.clientX-rect.left, dispY=e.clientY-rect.top;
-  fitPoints.push({x:dispX/fitScale, y:dispY/fitScale});
+let fitPending=null; // {pointerId,dispX,dispY} mientras el dedo está apoyado, antes de confirmar el punto
+function fitLoupeDraw(dispX,dispY){
+  const cv=$("fitCanvas"), loupe=$("fitLoupe"), wrap=$("fitCanvasWrap");
+  if(!fitImg) return;
+  const rect=cv.getBoundingClientRect(), wrapRect=wrap.getBoundingClientRect();
+  const ZOOM=3, LSIZE=150;
+  const lctx=loupe.getContext("2d");
+  lctx.clearRect(0,0,LSIZE,LSIZE);
+  lctx.save();
+  lctx.beginPath(); lctx.arc(LSIZE/2,LSIZE/2,LSIZE/2,0,Math.PI*2); lctx.clip();
+  const srcX=dispX/fitScale, srcY=dispY/fitScale; // punto tocado, en píxeles naturales de la imagen
+  const viewDispSize=LSIZE/ZOOM; // cuántos px de pantalla entran en el círculo de la lupa
+  const viewNatSize=viewDispSize/fitScale; // lo mismo, en píxeles naturales de la imagen
+  lctx.drawImage(fitImg, srcX-viewNatSize/2, srcY-viewNatSize/2, viewNatSize, viewNatSize, 0,0,LSIZE,LSIZE);
+  lctx.restore();
+  lctx.strokeStyle="#f0883e"; lctx.lineWidth=1.5;
+  lctx.beginPath(); lctx.moveTo(LSIZE/2-12,LSIZE/2); lctx.lineTo(LSIZE/2+12,LSIZE/2); lctx.stroke();
+  lctx.beginPath(); lctx.moveTo(LSIZE/2,LSIZE/2-12); lctx.lineTo(LSIZE/2,LSIZE/2+12); lctx.stroke();
+  lctx.beginPath(); lctx.arc(LSIZE/2,LSIZE/2,3,0,Math.PI*2); lctx.fillStyle="#f0883e"; lctx.fill();
+  // La lupa se ubica arriba del dedo (o abajo si no entra) para que el dedo no la tape
+  let loupeLeft=dispX-LSIZE/2, loupeTop=dispY-LSIZE-24;
+  if(loupeTop<0) loupeTop=dispY+24;
+  loupeLeft=Math.max(0,Math.min(rect.width-LSIZE,loupeLeft));
+  loupe.style.left=loupeLeft+"px"; loupe.style.top=loupeTop+"px"; loupe.style.display="block";
+}
+function fitLoupeHide(){ $("fitLoupe").style.display="none"; }
+function fitCommitPending(){
+  if(!fitPending) return;
+  fitPoints.push({x:fitPending.dispX/fitScale, y:fitPending.dispY/fitScale});
+  fitPending=null; fitLoupeHide();
   fitDrawCanvas(); updateFitPrompt();
   if(fitPoints.length===fitNeeded()) computeFit();
+}
+$("fitCanvas").addEventListener("pointerdown",(e)=>{
+  if(!fitImg || fitPoints.length>=fitNeeded()) return;
+  e.preventDefault();
+  const cv=$("fitCanvas");
+  try{ cv.setPointerCapture(e.pointerId); }catch(err){}
+  const rect=cv.getBoundingClientRect();
+  const dispX=Math.max(0,Math.min(rect.width,e.clientX-rect.left));
+  const dispY=Math.max(0,Math.min(rect.height,e.clientY-rect.top));
+  fitPending={pointerId:e.pointerId,dispX,dispY};
+  fitLoupeDraw(dispX,dispY);
+});
+$("fitCanvas").addEventListener("pointermove",(e)=>{
+  if(!fitPending || e.pointerId!==fitPending.pointerId) return;
+  e.preventDefault();
+  const cv=$("fitCanvas"), rect=cv.getBoundingClientRect();
+  const dispX=Math.max(0,Math.min(rect.width,e.clientX-rect.left));
+  const dispY=Math.max(0,Math.min(rect.height,e.clientY-rect.top));
+  fitPending.dispX=dispX; fitPending.dispY=dispY;
+  fitLoupeDraw(dispX,dispY);
+});
+$("fitCanvas").addEventListener("pointerup",(e)=>{
+  if(!fitPending || e.pointerId!==fitPending.pointerId) return;
+  fitCommitPending();
+});
+$("fitCanvas").addEventListener("pointercancel",(e)=>{
+  if(!fitPending || e.pointerId!==fitPending.pointerId) return;
+  fitPending=null; fitLoupeHide();
 });
 const FIT_GUIDE_SVG_1_SADDLE = `<svg viewBox="0 0 300 220" style="width:100%;display:block">
   <line x1="0" y1="205" x2="300" y2="205" stroke="#273040" stroke-width="1"/>
@@ -3340,7 +3400,7 @@ $("delSel").onclick=()=>{ if(!selected.size){return;}
     localStorage.setItem("bici_sesiones",JSON.stringify(a));
     setSelMode(false); populateGhosts(); } };
 
-window.addEventListener("resize",()=>{ if(state==="riding"||state==="paused"){drawRide(); if(raceActive()){fitLane();drawLane();}} });
+window.addEventListener("resize",()=>{ if(state==="riding"||state==="paused"){drawRide(); if(raceActive()){fitLane();drawLane();}} if(fitImg) fitDrawCanvas(); });
 if(!("usb" in navigator))msg("WebUSB no disponible en este navegador.");
 </script>
 </body>
