@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v92</title>
+<title>Bici Indoor · v93</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v92</h1>
+  <h1>Bici Indoor · v93</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -595,6 +595,9 @@ const NET=0,CH=0,RF=57,PERIOD=8192,FEC=17;
 const HRCH=1,HRDEV=120,HRPER=8070;
 const CADCH=2,CADDEV=122,CADPER=8102;
 let cadSensorActive=false, cadPrevEvt=null, cadPrevRev=null, cadLastRealUpdate=0;
+const SPDCH=3,SPDDEV=123,SPDPER=8118;
+let spdSensorActive=false, spdPrevEvt=null, spdPrevRev=null, spdLastRealUpdate=0;
+function wheelCircM(){ return Math.PI*((parseFloat($("fitWheelD")?.value)||67)/100); } // circunferencia en metros, del diámetro de rueda de Fitting
 const M={RESET:0x4A,KEY:0x46,ASSIGN:0x42,ID:0x51,STO:0x44,RF:0x45,PER:0x43,OPEN:0x4B,CLOSE:0x4C,
   BCAST:0x4E,ACK:0x4F,EVENT:0x40,STARTUP:0x6F};
 const FILTERS=[{vendorId:0x0fcf,productId:0x1008},{vendorId:0x0fcf,productId:0x1009},{vendorId:0x0fcf}];
@@ -659,6 +662,7 @@ function releaseWake(){ try{ wakeLockRef&&wakeLockRef.release(); }catch(_){} wak
 async function initAnt(){
   setState("Inicializando…","searching");
   cadPrevEvt=null; cadPrevRev=null; cadSensorActive=false;
+  spdPrevEvt=null; spdPrevRev=null; spdSensorActive=false;
   await send(antMsg(M.RESET,[0]));               await sleep(600);
   await send(antMsg(M.KEY,[NET,...ANTPLUS_KEY])); await sleep(50);
   await send(antMsg(M.ASSIGN,[CH,0x00,NET]));     await sleep(50);
@@ -681,8 +685,15 @@ async function initAnt(){
   await send(antMsg(M.RF,[CADCH,RF]));            await sleep(50);
   await send(antMsg(M.PER,[CADCH,CADPER&0xFF,(CADPER>>8)&0xFF])); await sleep(50);
   await send(antMsg(M.OPEN,[CADCH]));
+  // canal 3: sensor de velocidad dedicado (opcional)
+  await send(antMsg(M.ASSIGN,[SPDCH,0x00,NET])); await sleep(50);
+  await send(antMsg(M.ID,[SPDCH,0,0,SPDDEV,0]));  await sleep(50);
+  await send(antMsg(M.STO,[SPDCH,0xFF]));         await sleep(50);
+  await send(antMsg(M.RF,[SPDCH,RF]));             await sleep(50);
+  await send(antMsg(M.PER,[SPDCH,SPDPER&0xFF,(SPDPER>>8)&0xFF])); await sleep(50);
+  await send(antMsg(M.OPEN,[SPDCH]));
   setState("Buscando rodillo… pedaleá","searching");
-  log("Canales FE-C + pulso + cadencia abiertos");
+  log("Canales FE-C + pulso + cadencia + velocidad abiertos");
 }
 async function readLoop(){
   let fails=0;
@@ -710,7 +721,7 @@ function frame(f){
     if(ch===CH){
       if(!sawTrainer){sawTrainer=true;setState("Rodillo conectado","live");log("¡Rodillo FE-C!","#3fb950");refreshStart();}
       if(page===0x19){const c=p[2],pw=p[5]|((p[6]&0x0F)<<8); if(c!==0xFF && !cadSensorActive)curCad=c; if(pw!==0xFFF)curPower=pw;}
-      else if(page===0x10){const sp=p[4]|(p[5]<<8); if(sp!==0xFFFF){curSpeedReal=sp*0.001; curSpeedRealAt=performance.now();
+      else if(page===0x10){const sp=p[4]|(p[5]<<8); if(sp!==0xFFFF && !spdSensorActive){curSpeedReal=sp*0.001; curSpeedRealAt=performance.now();
         if(!sawSpeedTelemetry){sawSpeedTelemetry=true; log("Velocidad real del rodillo detectada (pág. 0x10)","#3fb950");}}}
     } else if(ch===HRCH){
       const hr=p[7]; if(hr>0){ if(!curHR)log("Pulsómetro OK","#3fb950"); curHR=hr; }
@@ -722,6 +733,17 @@ function frame(f){
         if(dEvt>0 && dRev>0 && dEvt<32768){ curCad=Math.round(dRev*60*1024/dEvt); cadLastRealUpdate=performance.now(); }
       }
       cadPrevEvt=evt; cadPrevRev=rev;
+    } else if(ch===SPDCH){
+      if(!spdSensorActive){spdSensorActive=true; log("Sensor de velocidad dedicado detectado (reemplaza al del rodillo)","#3fb950");}
+      const evt=p[4]|(p[5]<<8), rev=p[6]|(p[7]<<8);
+      if(spdPrevEvt!=null){
+        const dEvt=(evt-spdPrevEvt+65536)%65536, dRev=(rev-spdPrevRev+65536)%65536;
+        if(dEvt>0 && dRev>0 && dEvt<32768){
+          const wheelRpm=dRev*60*1024/dEvt;
+          curSpeedReal=wheelRpm*wheelCircM()/60; curSpeedRealAt=performance.now(); spdLastRealUpdate=performance.now();
+        }
+      }
+      spdPrevEvt=evt; spdPrevRev=rev;
     }
   }
 }
@@ -776,7 +798,7 @@ async function bleSetup(){
 }
 function parseBikeData(dv){
   const flags=dv.getUint16(0,true); let o=2;
-  if(!(flags&0x0001)){ curSpeedReal=dv.getUint16(o,true)*0.01/3.6; curSpeedRealAt=performance.now(); o+=2;
+  if(!(flags&0x0001) && !spdSensorActive){ curSpeedReal=dv.getUint16(o,true)*0.01/3.6; curSpeedRealAt=performance.now(); o+=2;
     if(!sawSpeedTelemetry){sawSpeedTelemetry=true; log("Velocidad real del rodillo detectada (BLE)","#3fb950");} }   // inst speed (0.01 km/h -> m/s)
   if(flags&0x0002) o+=2;      // avg speed
   if(flags&0x0004){ curCad=Math.round(dv.getUint16(o,true)*0.5); o+=2; }
@@ -2649,6 +2671,7 @@ toggleMode();
 document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible" && state==="riding") requestWake(); });
 window.addEventListener("beforeunload",(e)=>{ if(state==="riding"||state==="paused"){ e.preventDefault(); e.returnValue=""; } });
 setInterval(()=>{ if(cadSensorActive && curCad>0 && performance.now()-cadLastRealUpdate>3000) curCad=0; }, 1000);
+setInterval(()=>{ if(spdSensorActive && curSpeedReal>0 && performance.now()-spdLastRealUpdate>3000){ curSpeedReal=0; curSpeedRealAt=performance.now(); } }, 1000);
 if("usb" in navigator){
   navigator.usb.addEventListener("disconnect",e=>{
     if(device && e.device===device){
