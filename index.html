@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v93</title>
+<title>Bici Indoor · v94</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v93</h1>
+  <h1>Bici Indoor · v94</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -435,6 +435,20 @@
     </div>
     <div class="row" style="margin-bottom:10px">
       <button id="selToggle" style="flex:1">Seleccionar varias</button>
+      <button id="trendToggle" style="flex:1">📈 Evolución</button>
+    </div>
+    <div id="trendPanel" class="hidden" style="margin-bottom:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <b style="font-size:13px">Evolución entre sesiones (promedios, con el filtro de arriba)</b>
+        <button id="trendClose" style="min-height:32px;padding:4px 10px">✕</button>
+      </div>
+      <div style="color:var(--dim);font-size:11px;margin-bottom:4px">Potencia media (W)</div>
+      <canvas id="trendCvP" height="90" style="width:100%;display:block"></canvas>
+      <div style="color:var(--dim);font-size:11px;margin:6px 0 4px">Pulso medio (bpm)</div>
+      <canvas id="trendCvH" height="90" style="width:100%;display:block"></canvas>
+      <div style="color:var(--dim);font-size:11px;margin:6px 0 4px">Velocidad media (km/h)</div>
+      <canvas id="trendCvV" height="90" style="width:100%;display:block"></canvas>
+      <div id="trendReadout" style="color:var(--dim);font-size:12px;margin-top:6px">Tocá un punto para ver el detalle</div>
     </div>
     <div id="selBar" class="hidden" style="display:flex;gap:8px;margin-bottom:10px">
       <button id="selAll" style="flex:1">Todas</button>
@@ -442,6 +456,19 @@
       <button id="selCancel" style="flex:1">Cancelar</button>
     </div>
     <div id="sessList"></div>
+    <div id="sessDetailPanel" class="hidden" style="margin:10px 0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <b id="sessDetailTitle" style="font-size:13px"></b>
+        <button id="sessDetailClose" style="min-height:32px;padding:4px 10px">✕</button>
+      </div>
+      <div style="color:var(--dim);font-size:11px;margin-bottom:4px">Potencia (W)</div>
+      <canvas id="sessCvP" height="90" style="width:100%;display:block"></canvas>
+      <div style="color:var(--dim);font-size:11px;margin:6px 0 4px">Pulso (bpm)</div>
+      <canvas id="sessCvH" height="90" style="width:100%;display:block"></canvas>
+      <div style="color:var(--dim);font-size:11px;margin:6px 0 4px">Velocidad (km/h)</div>
+      <canvas id="sessCvV" height="90" style="width:100%;display:block"></canvas>
+      <div id="sessDetailReadout" style="color:var(--dim);font-size:12px;margin-top:6px">Deslizá el dedo por cualquier gráfico para ver el detalle</div>
+    </div>
     <div class="controls">
       <button id="exportAll">Exportar todo</button>
       <button id="importBtn">Importar</button>
@@ -2748,6 +2775,12 @@ function renderHistorial(){
         if(txt!==null){ if(!saveSessionNotes(s.date,txt)) alert("No se pudo guardar la nota (¿sin espacio?)."); renderHistorial(); }
       };
       row.appendChild(note);
+      if(s.samples && s.samples.length>1){
+        const gr=document.createElement("button");gr.textContent="📈";gr.title="Ver evolución de esta sesión";
+        gr.style.minHeight="40px";gr.style.padding="8px 10px";
+        gr.onclick=()=>openSessDetail(s);
+        row.appendChild(gr);
+      }
       const del=document.createElement("button");del.className="del";del.textContent="✕";
       del.onclick=()=>{ if(confirm("¿Borrar esta sesión?")){deleteByDate(s.date);renderHistorial();populateGhosts();} };
       row.appendChild(del);
@@ -2757,6 +2790,119 @@ function renderHistorial(){
 }
 function setSelMode(on){ selMode=on; selected.clear(); updateDelCount();
   $("selBar").classList.toggle("hidden",!on); $("selToggle").classList.toggle("hidden",on); renderHistorial(); }
+
+// ---- Gráficos de evolución (dentro de sesión y entre sesiones) ----
+function drawLineChart(cv,pts,color,scrubT){
+  const r=fit(cv), ctx=r.ctx, w=r.w, h=r.h;
+  ctx.clearRect(0,0,w,h);
+  if(!pts || pts.length<2) return null;
+  const pad={l:34,r:8,t:8,b:6}, cw=Math.max(1,w-pad.l-pad.r), ch=Math.max(1,h-pad.t-pad.b);
+  let xmin=pts[0].x, xmax=pts[pts.length-1].x; if(xmax-xmin<1e-9) xmax=xmin+1;
+  let ymin=Math.min(...pts.map(p=>p.y)), ymax=Math.max(...pts.map(p=>p.y));
+  if(ymax-ymin<1e-6){ ymax+=1; ymin-=1; }
+  const X=v=>pad.l+((v-xmin)/(xmax-xmin))*cw, Y=v=>pad.t+(1-(v-ymin)/(ymax-ymin))*ch;
+  ctx.strokeStyle="rgba(255,255,255,.08)"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(pad.l,pad.t+ch); ctx.lineTo(pad.l+cw,pad.t+ch); ctx.stroke();
+  ctx.fillStyle="#8b96a5"; ctx.font="10px sans-serif"; ctx.textAlign="right"; ctx.textBaseline="middle";
+  ctx.fillText(Math.round(ymax)+"", pad.l-4, pad.t+4);
+  ctx.fillText(Math.round(ymin)+"", pad.l-4, pad.t+ch-4);
+  ctx.beginPath(); ctx.moveTo(X(pts[0].x),Y(pts[0].y));
+  for(const p of pts) ctx.lineTo(X(p.x),Y(p.y));
+  ctx.lineTo(X(pts[pts.length-1].x),pad.t+ch); ctx.lineTo(X(pts[0].x),pad.t+ch); ctx.closePath();
+  ctx.fillStyle=color+"26"; ctx.fill();
+  ctx.beginPath(); ctx.moveTo(X(pts[0].x),Y(pts[0].y));
+  for(const p of pts) ctx.lineTo(X(p.x),Y(p.y));
+  ctx.strokeStyle=color; ctx.lineWidth=1.6; ctx.stroke();
+  if(scrubT!=null){
+    let best=pts[0], bd=Infinity;
+    for(const p of pts){ const dd=Math.abs(p.x-scrubT); if(dd<bd){bd=dd;best=p;} }
+    const xx=X(best.x), yy=Y(best.y);
+    ctx.strokeStyle="#e6edf3"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(xx,pad.t); ctx.lineTo(xx,pad.t+ch); ctx.stroke();
+    ctx.beginPath(); ctx.arc(xx,yy,4,0,7); ctx.fillStyle=color; ctx.fill(); ctx.strokeStyle="#04121c"; ctx.lineWidth=1.5; ctx.stroke();
+  }
+  return {xmin,xmax,pad,cw};
+}
+function nearestPt(arr,x){ if(!arr||!arr.length) return null; let best=arr[0],bd=Infinity; for(const p of arr){const dd=Math.abs(p.x-x); if(dd<bd){bd=dd;best=p;}} return best; }
+function seriesFromSamples(samples){
+  const P=[],H=[],V=[];
+  for(let i=0;i<samples.length;i++){ const s=samples[i]; P.push({x:s.t,y:s.p||0}); if(s.hr>0) H.push({x:s.t,y:s.hr}); }
+  for(let i=1;i<samples.length;i++){ const a=samples[i-1],b=samples[i],dt=b.t-a.t; if(dt>0) V.push({x:b.t,y:Math.max(0,(b.d-a.d)/dt*3.6)}); }
+  return {P,H,V};
+}
+let sessDetailData=null;
+function openSessDetail(s){
+  sessDetailData=seriesFromSamples(s.samples);
+  $("sessDetailTitle").textContent=fmtDate(s.date)+" · "+fmtTime(s.dur||0);
+  $("sessDetailPanel").classList.remove("hidden");
+  $("sessDetailReadout").textContent="Deslizá el dedo por cualquier gráfico para ver el detalle";
+  drawSessDetailAt(null);
+  $("sessDetailPanel").scrollIntoView({behavior:"smooth",block:"start"});
+}
+function drawSessDetailAt(scrubT){
+  if(!sessDetailData) return;
+  drawLineChart($("sessCvP"),sessDetailData.P,"#f0883e",scrubT);
+  drawLineChart($("sessCvH"),sessDetailData.H,"#ff6b6b",scrubT);
+  drawLineChart($("sessCvV"),sessDetailData.V,"#4cc2ff",scrubT);
+  if(scrubT!=null){
+    const np=nearestPt(sessDetailData.P,scrubT), nh=nearestPt(sessDetailData.H,scrubT), nv=nearestPt(sessDetailData.V,scrubT);
+    $("sessDetailReadout").innerHTML=`t <b>${fmtTime(scrubT)}</b>`+(np?` · Pot <b>${Math.round(np.y)}W</b>`:"")+(nh?` · Pulso <b>${Math.round(nh.y)}</b>`:"")+(nv?` · Vel <b>${nv.y.toFixed(1)}km/h</b>`:"");
+  }
+}
+function sessScrub(ev){
+  if(!sessDetailData || !sessDetailData.P.length) return;
+  const cv=ev.currentTarget, rect=cv.getBoundingClientRect();
+  const px=(ev.touches?ev.touches[0].clientX:ev.clientX)-rect.left;
+  const pad_l=34,pad_r=8, cw=Math.max(1,rect.width-pad_l-pad_r);
+  const frac=Math.max(0,Math.min(1,(px-pad_l)/cw));
+  const xmin=sessDetailData.P[0].x, xmax=sessDetailData.P[sessDetailData.P.length-1].x;
+  drawSessDetailAt(xmin+frac*(xmax-xmin));
+}
+["sessCvP","sessCvH","sessCvV"].forEach(id=>{ const cv=$(id);
+  cv.addEventListener("pointerdown",sessScrub); cv.addEventListener("pointermove",(e)=>{ if(e.buttons||e.pointerType==="touch") sessScrub(e); });
+});
+$("sessDetailClose").onclick=()=>{ $("sessDetailPanel").classList.add("hidden"); sessDetailData=null; };
+
+function computeSessAvg(s){
+  const arr=s.samples||[]; let sp=0,np=0,sh=0,nh=0;
+  for(const x of arr){ sp+=x.p||0; np++; if(x.hr>0){sh+=x.hr;nh++;} }
+  const avgP=np?sp/np:0, avgHr=s.hrAvg||(nh?Math.round(sh/nh):0), avgV=(s.dur>0)?(s.dist||0)/s.dur*3.6:0;
+  return {avgP,avgHr,avgV};
+}
+let trendData=[];
+function renderHistTrend(){
+  const listAll=loadSesiones();
+  const list=(histFilterMode==="all"?listAll:listAll.filter(s=>s.mode===histFilterMode)).filter(s=>s.samples&&s.samples.length).slice().sort((a,b)=>a.date-b.date);
+  trendData=list.map(s=>{ const a=computeSessAvg(s); return {date:s.date,...a}; });
+  if(!trendData.length){ $("trendReadout").textContent="No hay sesiones con datos para graficar (con ese filtro)."; drawTrendAt(null); return; }
+  drawTrendAt(null);
+}
+function drawTrendAt(idx){
+  const ptsFor=(key)=>trendData.map((d,i)=>({x:i,y:d[key]}));
+  drawLineChart($("trendCvP"),ptsFor("avgP"),"#f0883e",idx);
+  drawLineChart($("trendCvH"),ptsFor("avgHr").filter(p=>p.y>0),"#ff6b6b",idx);
+  drawLineChart($("trendCvV"),ptsFor("avgV"),"#4cc2ff",idx);
+  if(idx!=null && trendData[idx]){
+    const d=trendData[idx];
+    $("trendReadout").innerHTML=`${fmtDate(d.date)} · Pot media <b>${Math.round(d.avgP)}W</b> · Pulso medio <b>${d.avgHr||"—"}</b> · Vel media <b>${d.avgV.toFixed(1)}km/h</b>`;
+  } else if(trendData.length){
+    $("trendReadout").textContent=trendData.length+" sesiones · tocá un punto para ver el detalle";
+  }
+}
+function trendScrub(ev){
+  if(!trendData.length) return;
+  const cv=ev.currentTarget, rect=cv.getBoundingClientRect();
+  const px=(ev.touches?ev.touches[0].clientX:ev.clientX)-rect.left;
+  const pad_l=34,pad_r=8, cw=Math.max(1,rect.width-pad_l-pad_r);
+  const frac=Math.max(0,Math.min(1,(px-pad_l)/cw));
+  drawTrendAt(Math.round(frac*(trendData.length-1)));
+}
+["trendCvP","trendCvH","trendCvV"].forEach(id=>{ const cv=$(id);
+  cv.addEventListener("pointerdown",trendScrub); cv.addEventListener("pointermove",(e)=>{ if(e.buttons||e.pointerType==="touch") trendScrub(e); });
+});
+$("trendToggle").onclick=()=>{ const p=$("trendPanel"); const show=p.classList.contains("hidden"); p.classList.toggle("hidden",!show); if(show){ renderHistTrend(); p.scrollIntoView({behavior:"smooth",block:"start"}); } };
+$("trendClose").onclick=()=>{ $("trendPanel").classList.add("hidden"); };
+$("histFilterSel").addEventListener("change",()=>{ if(!$("trendPanel").classList.contains("hidden")) renderHistTrend(); });
+window.addEventListener("resize",()=>{ if(!$("sessDetailPanel").classList.contains("hidden")) drawSessDetailAt(null); if(!$("trendPanel").classList.contains("hidden")) drawTrendAt(null); });
 function exportAll(){
   let cfg={}; try{cfg=JSON.parse(localStorage.getItem("bici_config")||"{}");}catch(_){}
   let routes={}; try{routes=JSON.parse(localStorage.getItem("bici_routes")||"{}");}catch(_){}
