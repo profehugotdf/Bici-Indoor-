@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v94</title>
+<title>Bici Indoor · v96</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v94</h1>
+  <h1>Bici Indoor · v96</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -436,6 +436,18 @@
     <div class="row" style="margin-bottom:10px">
       <button id="selToggle" style="flex:1">Seleccionar varias</button>
       <button id="trendToggle" style="flex:1">📈 Evolución</button>
+      <button id="pmcToggle" style="flex:1">📊 Forma</button>
+    </div>
+    <div id="pmcPanel" class="hidden" style="margin-bottom:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <b style="font-size:13px">Forma (Fitness/Fatiga/TSB) — todas las sesiones con TSS</b>
+        <button id="pmcClose" style="min-height:32px;padding:4px 10px">✕</button>
+      </div>
+      <div style="color:var(--dim);font-size:11px;margin-bottom:4px"><span style="color:#4cc2ff">■</span> CTL (fitness, 42d) &nbsp; <span style="color:#f85149">■</span> ATL (fatiga, 7d)</div>
+      <canvas id="pmcCvCA" height="100" style="width:100%;display:block"></canvas>
+      <div style="color:var(--dim);font-size:11px;margin:6px 0 4px"><span style="color:#3fb950">■</span> TSB (forma = CTL−ATL)</div>
+      <canvas id="pmcCvTSB" height="90" style="width:100%;display:block"></canvas>
+      <div id="pmcReadout" style="color:var(--dim);font-size:12px;margin-top:6px">Cargando…</div>
     </div>
     <div id="trendPanel" class="hidden" style="margin-bottom:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -448,6 +460,8 @@
       <canvas id="trendCvH" height="90" style="width:100%;display:block"></canvas>
       <div style="color:var(--dim);font-size:11px;margin:6px 0 4px">Velocidad media (km/h)</div>
       <canvas id="trendCvV" height="90" style="width:100%;display:block"></canvas>
+      <div style="color:var(--dim);font-size:11px;margin:6px 0 4px">Eficiencia aeróbica (W/bpm)</div>
+      <canvas id="trendCvEF" height="90" style="width:100%;display:block"></canvas>
       <div id="trendReadout" style="color:var(--dim);font-size:12px;margin-top:6px">Tocá un punto para ver el detalle</div>
     </div>
     <div id="selBar" class="hidden" style="display:flex;gap:8px;margin-bottom:10px">
@@ -468,6 +482,8 @@
       <div style="color:var(--dim);font-size:11px;margin:6px 0 4px">Velocidad (km/h)</div>
       <canvas id="sessCvV" height="90" style="width:100%;display:block"></canvas>
       <div id="sessDetailReadout" style="color:var(--dim);font-size:12px;margin-top:6px">Deslizá el dedo por cualquier gráfico para ver el detalle</div>
+      <div id="sessDecoupling" style="color:var(--dim);font-size:12px;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)"></div>
+      <div id="sessLapStats" style="color:var(--dim);font-size:12px;margin-top:6px"></div>
     </div>
     <div class="controls">
       <button id="exportAll">Exportar todo</button>
@@ -1352,9 +1368,9 @@ function openSceneEditor(routeName,totalM,returnTo){
   $("sceneZoomFrom").value=sceneZoomFromKm.toFixed(1); $("sceneZoomTo").value=sceneZoomToKm.toFixed(1);
   renderSceneRows();
   renderBridgeRows();
-  if(returnTo==="gpx"){ $("gpxSetup").classList.add("hidden"); $("preview").classList.add("hidden"); }
-  else if(returnTo==="replay"){ $("replayCard").classList.add("hidden"); }
-  else { $("routesCard").classList.add("hidden"); }
+  // Oculto TODAS las tarjetas de nivel superior (no solo la de origen) para evitar que quede
+  // alguna otra pantalla (p.ej. la del rodillo en vivo con la vista 3D) pisada detrás del editor.
+  document.querySelectorAll(".card").forEach(c=>{ if(c.id!=="sceneCard") c.classList.add("hidden"); });
   $("sceneCard").classList.remove("hidden");
   scrollTop();
 }
@@ -2823,11 +2839,75 @@ function drawLineChart(cv,pts,color,scrubT){
   return {xmin,xmax,pad,cw};
 }
 function nearestPt(arr,x){ if(!arr||!arr.length) return null; let best=arr[0],bd=Infinity; for(const p of arr){const dd=Math.abs(p.x-x); if(dd<bd){bd=dd;best=p;}} return best; }
+function drawMultiLineChart(cv,seriesArr,scrubX){
+  const r=fit(cv), ctx=r.ctx, w=r.w, h=r.h;
+  ctx.clearRect(0,0,w,h);
+  const ns=seriesArr.filter(s=>s.pts && s.pts.length>=2);
+  if(!ns.length) return null;
+  const pad={l:34,r:8,t:8,b:6}, cw=Math.max(1,w-pad.l-pad.r), ch=Math.max(1,h-pad.t-pad.b);
+  let xmin=Infinity,xmax=-Infinity,ymin=Infinity,ymax=-Infinity;
+  for(const s of ns) for(const p of s.pts){ if(p.x<xmin)xmin=p.x; if(p.x>xmax)xmax=p.x; if(p.y<ymin)ymin=p.y; if(p.y>ymax)ymax=p.y; }
+  if(xmax-xmin<1e-9) xmax=xmin+1;
+  if(ymax-ymin<1e-6){ ymax+=1; ymin-=1; }
+  const X=v=>pad.l+((v-xmin)/(xmax-xmin))*cw, Y=v=>pad.t+(1-(v-ymin)/(ymax-ymin))*ch;
+  if(ymin<0 && ymax>0){ ctx.strokeStyle="rgba(255,255,255,.18)"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(pad.l,Y(0)); ctx.lineTo(pad.l+cw,Y(0)); ctx.stroke(); }
+  else { ctx.strokeStyle="rgba(255,255,255,.08)"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(pad.l,pad.t+ch); ctx.lineTo(pad.l+cw,pad.t+ch); ctx.stroke(); }
+  ctx.fillStyle="#8b96a5"; ctx.font="10px sans-serif"; ctx.textAlign="right"; ctx.textBaseline="middle";
+  ctx.fillText(Math.round(ymax)+"", pad.l-4, pad.t+4);
+  ctx.fillText(Math.round(ymin)+"", pad.l-4, pad.t+ch-4);
+  for(const s of ns){
+    ctx.beginPath(); ctx.moveTo(X(s.pts[0].x),Y(s.pts[0].y));
+    for(const p of s.pts) ctx.lineTo(X(p.x),Y(p.y));
+    ctx.strokeStyle=s.color; ctx.lineWidth=1.6; ctx.stroke();
+  }
+  if(scrubX!=null){
+    const xx=X(scrubX);
+    ctx.strokeStyle="#e6edf3"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(xx,pad.t); ctx.lineTo(xx,pad.t+ch); ctx.stroke();
+    for(const s of ns){ const np=nearestPt(s.pts,scrubX); if(np){ ctx.beginPath(); ctx.arc(X(np.x),Y(np.y),4,0,7); ctx.fillStyle=s.color; ctx.fill(); ctx.strokeStyle="#04121c"; ctx.lineWidth=1.5; ctx.stroke(); } }
+  }
+  return {xmin,xmax,pad,cw};
+}
 function seriesFromSamples(samples){
   const P=[],H=[],V=[];
   for(let i=0;i<samples.length;i++){ const s=samples[i]; P.push({x:s.t,y:s.p||0}); if(s.hr>0) H.push({x:s.t,y:s.hr}); }
   for(let i=1;i<samples.length;i++){ const a=samples[i-1],b=samples[i],dt=b.t-a.t; if(dt>0) V.push({x:b.t,y:Math.max(0,(b.d-a.d)/dt*3.6)}); }
   return {P,H,V};
+}
+function computeDecoupling(samples){
+  if(!samples || samples.length<20) return null;
+  const withHR=samples.filter(s=>s.hr>0 && s.p>0);
+  if(withHR.length<20) return null;
+  const tStart=withHR[0].t, tEnd=withHR[withHR.length-1].t, tMid=(tStart+tEnd)/2;
+  const first=withHR.filter(s=>s.t<=tMid), second=withHR.filter(s=>s.t>tMid);
+  if(first.length<10||second.length<10) return null;
+  const avg=(arr,key)=>arr.reduce((a,s)=>a+s[key],0)/arr.length;
+  const r1=avg(first,"p")/avg(first,"hr"), r2=avg(second,"p")/avg(second,"hr");
+  if(!(r1>0)) return null;
+  return {r1,r2,pct:(r1-r2)/r1*100};
+}
+function computeLapSplits(s){
+  if(s.mode!=="velodromo" || !s.samples || s.samples.length<2) return null;
+  const trackLen=s.trackLen||250, samples=s.samples;
+  const laps=[]; let nextBoundary=trackLen, lastT=samples[0].t, lastIdx=0;
+  for(let i=1;i<samples.length;i++){
+    if(samples[i].d>=nextBoundary){
+      const a=samples[i-1], b=samples[i], denom=(b.d-a.d)||1;
+      const frac=Math.max(0,Math.min(1,(nextBoundary-a.d)/denom));
+      const tCross=a.t+frac*(b.t-a.t);
+      const segP=samples.slice(lastIdx,i+1).filter(x=>x.p>0);
+      laps.push({lapTime:tCross-lastT, avgP: segP.length?segP.reduce((acc,x)=>acc+x.p,0)/segP.length:0});
+      lastT=tCross; lastIdx=i; nextBoundary+=trackLen;
+    }
+  }
+  return laps;
+}
+function lapStats(laps){
+  if(!laps || laps.length<3) return null;
+  const times=laps.map(l=>l.lapTime), n=times.length;
+  const mean=times.reduce((a,b)=>a+b,0)/n;
+  const sd=Math.sqrt(times.reduce((a,b)=>a+(b-mean)**2,0)/n);
+  const cv=mean>0?(sd/mean*100):0;
+  return {n,mean,sd,cv};
 }
 let sessDetailData=null;
 function openSessDetail(s){
@@ -2835,6 +2915,14 @@ function openSessDetail(s){
   $("sessDetailTitle").textContent=fmtDate(s.date)+" · "+fmtTime(s.dur||0);
   $("sessDetailPanel").classList.remove("hidden");
   $("sessDetailReadout").textContent="Deslizá el dedo por cualquier gráfico para ver el detalle";
+  const dec=computeDecoupling(s.samples);
+  $("sessDecoupling").innerHTML = dec
+    ? `Desacople Pw:Hr <b>${dec.pct>=0?"+":""}${dec.pct.toFixed(1)}%</b> — ${Math.abs(dec.pct)<5?"buena base aeróbica para esta duración":Math.abs(dec.pct)<10?"aceptable, al límite":"posible falta de base aeróbica para este ritmo/duración"}`
+    : "Sesión muy corta o sin pulso/potencia suficiente para calcular desacople cardíaco.";
+  const laps=computeLapSplits(s), ls=lapStats(laps);
+  $("sessLapStats").innerHTML = ls
+    ? `Consistencia por vuelta: <b>${ls.n}</b> vueltas · promedio <b>${ls.mean.toFixed(1)}s</b> · desvío ±<b>${ls.sd.toFixed(1)}s</b> (CV ${ls.cv.toFixed(1)}% — ${ls.cv<3?"muy parejo":ls.cv<6?"aceptable":"irregular"})`
+    : "";
   drawSessDetailAt(null);
   $("sessDetailPanel").scrollIntoView({behavior:"smooth",block:"start"});
 }
@@ -2866,7 +2954,8 @@ function computeSessAvg(s){
   const arr=s.samples||[]; let sp=0,np=0,sh=0,nh=0;
   for(const x of arr){ sp+=x.p||0; np++; if(x.hr>0){sh+=x.hr;nh++;} }
   const avgP=np?sp/np:0, avgHr=s.hrAvg||(nh?Math.round(sh/nh):0), avgV=(s.dur>0)?(s.dist||0)/s.dur*3.6:0;
-  return {avgP,avgHr,avgV};
+  const ef=avgHr>0?avgP/avgHr:0;
+  return {avgP,avgHr,avgV,ef};
 }
 let trendData=[];
 function renderHistTrend(){
@@ -2881,9 +2970,10 @@ function drawTrendAt(idx){
   drawLineChart($("trendCvP"),ptsFor("avgP"),"#f0883e",idx);
   drawLineChart($("trendCvH"),ptsFor("avgHr").filter(p=>p.y>0),"#ff6b6b",idx);
   drawLineChart($("trendCvV"),ptsFor("avgV"),"#4cc2ff",idx);
+  drawLineChart($("trendCvEF"),ptsFor("ef").filter(p=>p.y>0),"#b46bd6",idx);
   if(idx!=null && trendData[idx]){
     const d=trendData[idx];
-    $("trendReadout").innerHTML=`${fmtDate(d.date)} · Pot media <b>${Math.round(d.avgP)}W</b> · Pulso medio <b>${d.avgHr||"—"}</b> · Vel media <b>${d.avgV.toFixed(1)}km/h</b>`;
+    $("trendReadout").innerHTML=`${fmtDate(d.date)} · Pot media <b>${Math.round(d.avgP)}W</b> · Pulso medio <b>${d.avgHr||"—"}</b> · Vel media <b>${d.avgV.toFixed(1)}km/h</b> · EF <b>${d.ef?d.ef.toFixed(2):"—"}</b>`;
   } else if(trendData.length){
     $("trendReadout").textContent=trendData.length+" sesiones · tocá un punto para ver el detalle";
   }
@@ -2896,13 +2986,54 @@ function trendScrub(ev){
   const frac=Math.max(0,Math.min(1,(px-pad_l)/cw));
   drawTrendAt(Math.round(frac*(trendData.length-1)));
 }
-["trendCvP","trendCvH","trendCvV"].forEach(id=>{ const cv=$(id);
+["trendCvP","trendCvH","trendCvV","trendCvEF"].forEach(id=>{ const cv=$(id);
   cv.addEventListener("pointerdown",trendScrub); cv.addEventListener("pointermove",(e)=>{ if(e.buttons||e.pointerType==="touch") trendScrub(e); });
 });
 $("trendToggle").onclick=()=>{ const p=$("trendPanel"); const show=p.classList.contains("hidden"); p.classList.toggle("hidden",!show); if(show){ renderHistTrend(); p.scrollIntoView({behavior:"smooth",block:"start"}); } };
 $("trendClose").onclick=()=>{ $("trendPanel").classList.add("hidden"); };
 $("histFilterSel").addEventListener("change",()=>{ if(!$("trendPanel").classList.contains("hidden")) renderHistTrend(); });
-window.addEventListener("resize",()=>{ if(!$("sessDetailPanel").classList.contains("hidden")) drawSessDetailAt(null); if(!$("trendPanel").classList.contains("hidden")) drawTrendAt(null); });
+
+// ---- Forma: CTL (fitness, 42d) / ATL (fatiga, 7d) / TSB (forma) ----
+function computeDailyTSS(){
+  const all=loadSesiones().filter(s=>s.tss);
+  if(!all.length) return [];
+  const byDay={};
+  for(const s of all){ const day=Math.floor(s.date/86400000); byDay[day]=(byDay[day]||0)+(s.tss||0); }
+  const days=Object.keys(byDay).map(Number);
+  const first=Math.min(...days), last=Math.max(Math.floor(Date.now()/86400000),Math.max(...days));
+  const out=[]; let ctl=0, atl=0;
+  for(let d=first; d<=last; d++){
+    const tss=byDay[d]||0;
+    ctl = ctl + (tss-ctl)/42;
+    atl = atl + (tss-atl)/7;
+    out.push({day:d, tss, ctl, atl, tsb: ctl-atl});
+  }
+  return out;
+}
+let pmcData=[];
+function renderPMC(){ pmcData=computeDailyTSS(); drawPMCAt(null); }
+function drawPMCAt(idx){
+  const ctlPts=pmcData.map((d,i)=>({x:i,y:d.ctl})), atlPts=pmcData.map((d,i)=>({x:i,y:d.atl})), tsbPts=pmcData.map((d,i)=>({x:i,y:d.tsb}));
+  drawMultiLineChart($("pmcCvCA"),[{pts:ctlPts,color:"#4cc2ff"},{pts:atlPts,color:"#f85149"}],idx);
+  drawMultiLineChart($("pmcCvTSB"),[{pts:tsbPts,color:"#3fb950"}],idx);
+  if(!pmcData.length){ $("pmcReadout").textContent="No hay sesiones con TSS calculado todavía."; return; }
+  const d = idx!=null ? pmcData[idx] : pmcData[pmcData.length-1];
+  const dt=new Date(d.day*86400000);
+  const tag = idx!=null ? (dt.getDate()+"/"+(dt.getMonth()+1)) : "Hoy";
+  $("pmcReadout").innerHTML=`${tag} · CTL (fitness) <b>${d.ctl.toFixed(1)}</b> · ATL (fatiga) <b>${d.atl.toFixed(1)}</b> · TSB (forma) <b>${d.tsb>=0?"+":""}${d.tsb.toFixed(1)}</b>`+(idx==null?" · tocá un punto para otra fecha":"");
+}
+function pmcScrub(ev){
+  if(!pmcData.length) return;
+  const cv=ev.currentTarget, rect=cv.getBoundingClientRect();
+  const px=(ev.touches?ev.touches[0].clientX:ev.clientX)-rect.left;
+  const pad_l=34,pad_r=8, cw=Math.max(1,rect.width-pad_l-pad_r);
+  const frac=Math.max(0,Math.min(1,(px-pad_l)/cw));
+  drawPMCAt(Math.round(frac*(pmcData.length-1)));
+}
+["pmcCvCA","pmcCvTSB"].forEach(id=>{ const cv=$(id); cv.addEventListener("pointerdown",pmcScrub); cv.addEventListener("pointermove",(e)=>{ if(e.buttons||e.pointerType==="touch") pmcScrub(e); }); });
+$("pmcToggle").onclick=()=>{ const p=$("pmcPanel"); const show=p.classList.contains("hidden"); p.classList.toggle("hidden",!show); if(show){ renderPMC(); p.scrollIntoView({behavior:"smooth",block:"start"}); } };
+$("pmcClose").onclick=()=>{ $("pmcPanel").classList.add("hidden"); };
+window.addEventListener("resize",()=>{ if(!$("sessDetailPanel").classList.contains("hidden")) drawSessDetailAt(null); if(!$("trendPanel").classList.contains("hidden")) drawTrendAt(null); if(!$("pmcPanel").classList.contains("hidden")) drawPMCAt(null); });
 function exportAll(){
   let cfg={}; try{cfg=JSON.parse(localStorage.getItem("bici_config")||"{}");}catch(_){}
   let routes={}; try{routes=JSON.parse(localStorage.getItem("bici_routes")||"{}");}catch(_){}
