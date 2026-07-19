@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v96</title>
+<title>Bici Indoor · v97</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v96</h1>
+  <h1>Bici Indoor · v97</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1297,7 +1297,8 @@ function velodromeGeom(trackLen){
   return {R, curveLen, straight, total:2*straight+2*curveLen};
 }
 function velodromeBearingAt(d,trackLen){
-  const g=velodromeGeom(trackLen); d=((d%g.total)+g.total)%g.total;
+  const g=velodromeGeom(trackLen);
+  d=(((d+g.straight)%g.total)+g.total)%g.total; // fase corrida: d=0 (vuelta) cae en la línea de llegada real (final de la recta principal, entrando a la curva 1), no al inicio
   const {R,curveLen,straight}=g;
   // se gira a la izquierda (antihorario), como en un velódromo real (norma UCI)
   if(d<straight) return 0;
@@ -1745,6 +1746,17 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
     if(light){ const cb=Math.max(1,b.hw*0.06), ca=Math.max(0.7,a.hw*0.06);
       ctx.fillStyle="#efe7c8";
       ctx.beginPath();ctx.moveTo(b.cx-cb,b.y);ctx.lineTo(b.cx+cb,b.y);ctx.lineTo(a.cx+ca,a.y);ctx.lineTo(a.cx-ca,a.y);ctx.closePath();ctx.fill(); }
+    // línea de llegada real (velódromo): franja a cuadros blanco/rojo cruzando todo el ancho de la pista
+    if(geom && geom.trackLen && Math.floor(b.d/geom.trackLen)!==Math.floor(a.d/geom.trackLen)){
+      const nCheck=8;
+      for(let c=0;c<nCheck;c++){
+        const t0=c/nCheck, t1=(c+1)/nCheck;
+        const bx0=b.cx-b.hw+2*b.hw*t0, by0=bLY+(bRY-bLY)*t0, bx1=b.cx-b.hw+2*b.hw*t1, by1=bLY+(bRY-bLY)*t1;
+        const ax0=a.cx-a.hw+2*a.hw*t0, ay0=aLY+(aRY-aLY)*t0, ax1=a.cx-a.hw+2*a.hw*t1, ay1=aLY+(aRY-aLY)*t1;
+        ctx.fillStyle=(c%2===0)?"#e6edf3":"#c0392b";
+        ctx.beginPath();ctx.moveTo(bx0,by0);ctx.lineTo(bx1,by1);ctx.lineTo(ax1,ay1);ctx.lineTo(ax0,ay0);ctx.closePath();ctx.fill();
+      }
+    }
     // decorado lateral según escenario en este tramo
     const decorSpacing=30, wallSpacing=16;
     const bsc0=sceneOverride||sceneAt(routeName,b.d);
@@ -1810,7 +1822,7 @@ function drawVelodromeRoad(ctx,w,h){
   const dNow=distanceM + v*idt;
   const d0=((dNow%velTrackLen)+velTrackLen)%velTrackLen;
   const bFn=(d)=>velodromeBearingAt(d,velTrackLen);
-  const S=roadBands(ctx,w,h,d0,bFn,velodromeEleAt,null,SCENES[velEnv]||SCENES.velodromo,VELO_GEOM);
+  const S=roadBands(ctx,w,h,d0,bFn,velodromeEleAt,null,SCENES[velEnv]||SCENES.velodromo,{...VELO_GEOM,trackLen:velTrackLen});
   const youS=Math.max(20,h*0.135);
   if(ghost){
     const gNow=ghostDistAt(elapsed+idt);
@@ -2533,7 +2545,7 @@ function drawRepVelodrome(st){
   const L=repVeloTrackLen;
   const camD0=((cam.d%L)+L)%L;
   const bFn=(d)=>velodromeBearingAt(d,L);
-  const S=roadBands(ctx,w,h,camD0,bFn,velodromeEleAt,null,SCENES[repVeloEnv]||SCENES.velodromo,VELO_GEOM);
+  const S=roadBands(ctx,w,h,camD0,bFn,velodromeEleAt,null,SCENES[repVeloEnv]||SCENES.velodromo,{...VELO_GEOM,trackLen:L});
   const youS=Math.max(20,h*0.135);
   const others=st.filter(x=>x.r!==camRacer).map(x=>{
     const xd0=((x.d%L)+L)%L, relAhead=((xd0-camD0)%L+L)%L;
