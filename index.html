@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v97</title>
+<title>Bici Indoor · v98</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v97</h1>
+  <h1>Bici Indoor · v98</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -2153,7 +2153,7 @@ function finishRide(){
   const avgP=nP?sumP/nP:0, avgV=elapsed>0?(distanceM/elapsed)*3.6:0, avgHr=hrN?Math.round(hrSum/hrN):0;
   session.dur=+elapsed.toFixed(1); session.dist=+distanceM.toFixed(1); session.hrAvg=avgHr; session.hrMax=hrMax;
   session.np=Math.round(npVal); session.if=+ifVal.toFixed(2); session.tss=Math.round(tssVal);
-  saveSesion(session); populateGhosts();
+  saveSesion(session); populateGhosts(); populateVelGhosts();
   $("sTime").textContent=fmtTime(elapsed);
   $("sDist").textContent=(distanceM/1000).toFixed(2);
   $("sSpd").textContent=avgV.toFixed(1);
@@ -2810,7 +2810,7 @@ function renderHistorial(){
         row.appendChild(gr);
       }
       const del=document.createElement("button");del.className="del";del.textContent="✕";
-      del.onclick=()=>{ if(confirm("¿Borrar esta sesión?")){deleteByDate(s.date);renderHistorial();populateGhosts();} };
+      del.onclick=()=>{ if(confirm("¿Borrar esta sesión?")){deleteByDate(s.date);renderHistorial();populateGhosts();populateVelGhosts();} };
       row.appendChild(del);
     }
     wrap.appendChild(row);
@@ -3077,7 +3077,7 @@ function importSesiones(text){
   if(entrenos && entrenos.length){ try{ const cw=loadWorkouts(), seenWo=new Set(cw.map(w=>w.name+"|"+w.text));
     for(const w of entrenos){ if(w&&w.text&&!seenWo.has(w.name+"|"+w.text)){ cw.push(w); seenWo.add(w.name+"|"+w.text); addedWo++; } }
     localStorage.setItem("bici_entrenos",JSON.stringify(cw)); }catch(_){} }
-  renderHistorial();populateGhosts();
+  renderHistorial();populateGhosts();populateVelGhosts();
   alert("Importadas "+added+" sesiones nuevas"+(cfg?" y tu configuración":"")+(routes?" y tus rutas":"")+(scenes?" y tus escenarios":"")+(bridges?" y tus puentes/rampas":"")+(addedWo?" y "+addedWo+" entrenamientos":"")+".");
 }
 function minifyGpxForStorage(text){
@@ -3657,7 +3657,7 @@ $("histBack").onclick=()=>{ $("historial").classList.add("hidden");$("setup").cl
 $("exportAll").onclick=exportAll;
 $("importBtn").onclick=()=>$("importFile").click();
 $("importFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>importSesiones(r.result);r.readAsText(f);e.target.value="";};
-$("clearAll").onclick=()=>{ if(confirm("¿Borrar TODAS las sesiones? No se puede deshacer.")){localStorage.removeItem("bici_sesiones");renderHistorial();populateGhosts();} };
+$("clearAll").onclick=()=>{ if(confirm("¿Borrar TODAS las sesiones? No se puede deshacer.")){localStorage.removeItem("bici_sesiones");renderHistorial();populateGhosts();populateVelGhosts();} };
 function parseTcxGhost(text,filename){
   let xml; try{xml=new DOMParser().parseFromString(text,"application/xml");}catch{alert("No pude leer el TCX");return;}
   if(xml.querySelector("parsererror")){alert("TCX inválido");return;}
@@ -3680,7 +3680,7 @@ function parseTcxGhost(text,filename){
   const dur=samples[samples.length-1].t, dist=samples[samples.length-1].d;
   saveSesion({mode:"tcx",name:filename.replace(/\.tcx$/i,""),date:Date.now(),samples,
     dur:+dur.toFixed(1),dist:+dist.toFixed(1),hrAvg:hrN?Math.round(hrSum/hrN):0,hrMax});
-  populateGhosts(); populateGpxGhosts(); renderHistorial();
+  populateGhosts(); populateVelGhosts(); populateGpxGhosts(); renderHistorial();
   alert("Fantasma TCX importado: "+fmtTime(dur)+" · "+(dist/1000).toFixed(2)+" km"+(hrN?(" · ♥ "+Math.round(hrSum/hrN)):""));
 }
 $("importTcxBtn").onclick=()=>$("importTcxFile").click();
@@ -3710,7 +3710,7 @@ $("delSel").onclick=()=>{ if(!selected.size){return;}
   if(confirm("¿Borrar "+selected.size+" sesiones?")){
     const a=loadSesiones().filter(s=>!selected.has(s.date));
     localStorage.setItem("bici_sesiones",JSON.stringify(a));
-    setSelMode(false); populateGhosts(); } };
+    setSelMode(false); populateGhosts(); populateVelGhosts(); } };
 
 window.addEventListener("resize",()=>{ if(state==="riding"||state==="paused"){drawRide(); if(raceActive()){fitLane();drawLane();}} if(fitImg) fitDrawCanvas(); });
 if(!("usb" in navigator))msg("WebUSB no disponible en este navegador.");
