@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v98</title>
+<title>Bici Indoor · v99</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v98</h1>
+  <h1>Bici Indoor · v99</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -495,6 +495,8 @@
     <input type="file" id="importRetoFile" accept="application/json,.json" style="display:none">
     <input type="file" id="importTcxFile" accept=".tcx,application/xml,text/xml" style="display:none">
     <button class="full danger" id="clearAll" style="margin-top:10px">Borrar todo</button>
+    <button class="full" id="diagBtn" style="margin-top:10px">🔍 Diagnóstico de almacenamiento</button>
+    <pre id="diagOut" class="hidden" style="white-space:pre-wrap;word-break:break-all;font-size:11px;background:#0a0d12;border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:8px;max-height:400px;overflow:auto"></pre>
     <button class="primary full" id="histBack" style="margin-top:10px">Volver</button>
   </div>
 
@@ -3658,6 +3660,45 @@ $("exportAll").onclick=exportAll;
 $("importBtn").onclick=()=>$("importFile").click();
 $("importFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>importSesiones(r.result);r.readAsText(f);e.target.value="";};
 $("clearAll").onclick=()=>{ if(confirm("¿Borrar TODAS las sesiones? No se puede deshacer.")){localStorage.removeItem("bici_sesiones");renderHistorial();populateGhosts();populateVelGhosts();} };
+$("diagBtn").onclick=()=>{
+  const lines=[];
+  lines.push("=== bici_sesiones ===");
+  const raw=localStorage.getItem("bici_sesiones");
+  if(raw===null){ lines.push("La clave NO EXISTE en localStorage (nunca se guardó nada, o algo la borró por completo)."); }
+  else {
+    lines.push("Largo del texto guardado: "+raw.length+" caracteres.");
+    try{
+      const arr=JSON.parse(raw);
+      if(!Array.isArray(arr)){ lines.push("⚠️ Se pudo leer como JSON pero NO es una lista — formato inesperado."); }
+      else {
+        lines.push("Se pudo leer correctamente. Cantidad de sesiones: "+arr.length);
+        if(arr.length){
+          const sorted=arr.slice().sort((a,b)=>a.date-b.date);
+          lines.push("Más antigua: "+fmtDate(sorted[0].date));
+          lines.push("Más nueva: "+fmtDate(sorted[sorted.length-1].date));
+          lines.push("");
+          lines.push("Últimas 5 (fecha · modo · duración · muestras):");
+          sorted.slice(-5).forEach(s=>{ lines.push("  "+fmtDate(s.date)+" · "+(s.mode||"?")+" · "+fmtTime(s.dur||0)+" · "+((s.samples||[]).length)+" muestras"); });
+        }
+      }
+    }catch(e){ lines.push("❌ EL TEXTO GUARDADO NO SE PUEDE LEER COMO JSON (corrupto): "+e.message); lines.push("Primeros 300 caracteres:"); lines.push(raw.slice(0,300)); lines.push("Últimos 300 caracteres:"); lines.push(raw.slice(-300)); }
+  }
+  lines.push("");
+  lines.push("=== bici_inprogress (sesión en curso sin terminar) ===");
+  const rawIp=localStorage.getItem("bici_inprogress");
+  if(rawIp===null){ lines.push("No hay ninguna sesión en curso pendiente de recuperar."); }
+  else {
+    lines.push("HAY una sesión en curso guardada, largo: "+rawIp.length+" caracteres.");
+    try{ const s=JSON.parse(rawIp); const last=(s.samples||[])[((s.samples||[]).length)-1]; lines.push("Última muestra: t="+(last?last.t:"?")+"s, d="+(last?last.d:"?")+"m, "+((s.samples||[]).length)+" muestras en total."); }
+    catch(e){ lines.push("❌ tampoco se puede leer como JSON: "+e.message); }
+  }
+  lines.push("");
+  lines.push("=== Todas las claves guardadas ===");
+  try{ for(const k in localStorage){ if(localStorage.hasOwnProperty(k)){ const v=localStorage.getItem(k)||""; lines.push(k+": "+v.length+" caracteres"); } } }catch(e){ lines.push("No pude listar: "+e.message); }
+  $("diagOut").textContent=lines.join("\n");
+  $("diagOut").classList.remove("hidden");
+  $("diagOut").scrollIntoView({behavior:"smooth",block:"start"});
+};
 function parseTcxGhost(text,filename){
   let xml; try{xml=new DOMParser().parseFromString(text,"application/xml");}catch{alert("No pude leer el TCX");return;}
   if(xml.querySelector("parsererror")){alert("TCX inválido");return;}
