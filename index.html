@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v99</title>
+<title>Bici Indoor · v102</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v99</h1>
+  <h1>Bici Indoor · v102</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -99,7 +99,7 @@
       <label for="connType">Conexión</label>
       <select id="connType" style="flex:1">
         <option value="ant">ANT+ (stick USB)</option>
-        <option value="ble">Bluetooth (FTMS: Tacx, Wahoo…)</option>
+        <option value="ble">Bluetooth (FTMS — rodillos smart en general, ej. Tacx, Wahoo)</option>
       </select>
     </div>
     <button class="primary full" id="connect" style="margin-top:8px">Conectar rodillo</button>
@@ -430,7 +430,7 @@
         <option value="libre">Libre</option>
         <option value="velodromo">Velódromo</option>
         <option value="entreno">Entreno</option>
-        <option value="tcx">TCX Garmin</option>
+        <option value="tcx">TCX (fantasma importado)</option>
       </select>
     </div>
     <div class="row" style="margin-bottom:10px">
@@ -490,8 +490,9 @@
       <button id="importBtn">Importar</button>
     </div>
     <input type="file" id="importFile" accept="application/json" style="display:none">
-    <button class="full" id="importTcxBtn" style="margin-top:10px">Importar fantasma TCX (Garmin)</button>
+    <button class="full" id="importTcxBtn" style="margin-top:10px">Importar fantasma TCX</button>
     <button class="full" id="importRetoBtn" style="margin-top:10px">Importar reto (de un conocido)</button>
+    <div style="color:var(--dim);font-size:11px;margin-top:8px">Los nombres de marca que puedan aparecer en esta pantalla son solo para indicar compatibilidad — esta app es un proyecto personal, sin afiliación con esas empresas.</div>
     <input type="file" id="importRetoFile" accept="application/json,.json" style="display:none">
     <input type="file" id="importTcxFile" accept=".tcx,application/xml,text/xml" style="display:none">
     <button class="full danger" id="clearAll" style="margin-top:10px">Borrar todo</button>
@@ -1077,7 +1078,7 @@ function tick(){
   }
   // grabación 1 Hz
   if(elapsed-lastRec>=1){lastRec=elapsed;session.samples.push({t:+elapsed.toFixed(1),d:+distanceM.toFixed(1),hr:curHR||0,c:curCad||0,p:curPower||0});
-    if(elapsed-lastAutosaveT>=15){ lastAutosaveT=elapsed; try{localStorage.setItem("bici_inprogress",JSON.stringify(session));}catch(_){} }
+    if(elapsed-lastAutosaveT>=5){ lastAutosaveT=elapsed; try{localStorage.setItem("bici_inprogress",JSON.stringify(session));}catch(_){} }
     pw30.push(curPower||0); if(pw30.length>30)pw30.shift();
     const avg30=pw30.reduce((a,b)=>a+b,0)/pw30.length;
     npSum+=Math.pow(avg30,4); npCount++;
@@ -2000,6 +2001,29 @@ function refreshStart(){
   $("start").disabled=!(connected&&sawTrainer&&(pendingWorkout?true:(m==="gpx"?pd.length>0:true)));
 }
 function loadSesiones(){try{return JSON.parse(localStorage.getItem("bici_sesiones")||"[]");}catch{return[];}}
+
+// ---- Registro compartido de "Forma" entre mis apps (mismo dominio, distinta carpeta) ----
+// Los fantasmas importados (mode:"tcx") no son entrenamiento propio, así que no cuentan acá.
+function actualizarFormaCompartida(s){
+  if(!s || s.mode==="tcx") return;
+  try{
+    const reg=JSON.parse(localStorage.getItem("entrenamiento_forma_registro")||"[]");
+    reg.push({fecha:new Date(s.date).toISOString().slice(0,10), deporte:"bici", tss:s.tss||0, id:s.date});
+    localStorage.setItem("entrenamiento_forma_registro",JSON.stringify(reg));
+  }catch(_){}
+}
+function eliminarDeFormaCompartida(id){
+  try{
+    const reg=JSON.parse(localStorage.getItem("entrenamiento_forma_registro")||"[]");
+    localStorage.setItem("entrenamiento_forma_registro",JSON.stringify(reg.filter(r=>!(r.deporte==="bici"&&r.id===id))));
+  }catch(_){}
+}
+function eliminarTodoBiciDeFormaCompartida(){
+  try{
+    const reg=JSON.parse(localStorage.getItem("entrenamiento_forma_registro")||"[]");
+    localStorage.setItem("entrenamiento_forma_registro",JSON.stringify(reg.filter(r=>r.deporte!=="bici")));
+  }catch(_){}
+}
 function populateGhosts(){
   ghostList=loadSesiones().filter(s=>s.mode==="libre"||s.mode==="tcx"||s.mode==="velodromo");
   const sel=$("ghostSel"); if(!sel)return;
@@ -2155,7 +2179,7 @@ function finishRide(){
   const avgP=nP?sumP/nP:0, avgV=elapsed>0?(distanceM/elapsed)*3.6:0, avgHr=hrN?Math.round(hrSum/hrN):0;
   session.dur=+elapsed.toFixed(1); session.dist=+distanceM.toFixed(1); session.hrAvg=avgHr; session.hrMax=hrMax;
   session.np=Math.round(npVal); session.if=+ifVal.toFixed(2); session.tss=Math.round(tssVal);
-  saveSesion(session); populateGhosts(); populateVelGhosts();
+  saveSesion(session); actualizarFormaCompartida(session); populateGhosts(); populateVelGhosts();
   $("sTime").textContent=fmtTime(elapsed);
   $("sDist").textContent=(distanceM/1000).toFixed(2);
   $("sSpd").textContent=avgV.toFixed(1);
@@ -2715,13 +2739,14 @@ toggleMode();
     const last=s.samples[s.samples.length-1];
     const mins=Math.floor((last.t||0)/60), secs=Math.round((last.t||0)%60);
     const km=((last.d||0)/1000).toFixed(2);
-    const ok=confirm("Encontré una sesión sin terminar (cortada por recarga o cierre): "+mins+":"+String(secs).padStart(2,"0")+" · "+km+" km.\n\n¿La guardo en el historial?");
-    if(ok){
-      s.dur=last.t||0; s.dist=last.d||0;
-      const cur=loadSesiones();
-      if(!cur.some(x=>x.date===s.date)){ cur.push(s); cur.sort((a,b)=>a.date-b.date); localStorage.setItem("bici_sesiones",JSON.stringify(cur)); }
-    }
+    // Se guarda directo, sin preguntar: un toque accidental en "Cancelar" no debe poder borrar una sesión.
+    // La protección contra duplicados (misma fecha) evita que se guarde dos veces si también se cerró bien por otro lado.
+    s.dur=last.t||0; s.dist=last.d||0;
+    const cur=loadSesiones();
+    let added=false;
+    if(!cur.some(x=>x.date===s.date)){ cur.push(s); cur.sort((a,b)=>a.date-b.date); localStorage.setItem("bici_sesiones",JSON.stringify(cur)); added=true; actualizarFormaCompartida(s); }
     localStorage.removeItem("bici_inprogress");
+    if(added) alert("Recuperé una sesión que se había cortado sin terminar ("+mins+":"+String(secs).padStart(2,"0")+" · "+km+" km) y la guardé en el historial.");
   }catch(_){ try{localStorage.removeItem("bici_inprogress");}catch(_2){} }
 })();
 
@@ -2767,7 +2792,7 @@ function renderHistorial(){
   if(!list.length){wrap.innerHTML='<div style="color:var(--dim);font-size:13px">Ninguna sesión con ese filtro.</div>';return;}
   wrap.innerHTML="";
   list.map((s,i)=>({s,i})).reverse().forEach(({s})=>{
-    const modo=s.mode==="libre"?("Libre · "+(s.raceBy||"")):s.mode==="tcx"?"TCX Garmin":s.mode==="entreno"?"Entreno":s.mode==="velodromo"?("Velódromo · "+(s.trackLen||250)+"m"):"Recorrido";
+    const modo=s.mode==="libre"?("Libre · "+(s.raceBy||"")):s.mode==="tcx"?"TCX (fantasma importado)":s.mode==="entreno"?"Entreno":s.mode==="velodromo"?("Velódromo · "+(s.trackLen||250)+"m"):"Recorrido";
     const dist=((s.dist||s.total||0)/1000).toFixed(2);
     const hr=s.hrAvg?(" · ♥ "+s.hrAvg+(s.hrMax?"/"+s.hrMax:"")):"";
     const row=document.createElement("div");row.className="srow";
@@ -2788,12 +2813,12 @@ function renderHistorial(){
         sh.style.minHeight="40px";sh.style.padding="8px 12px";
         sh.onclick=()=>shareRetoFor(s,null);
         row.appendChild(sh);
-        const tx=document.createElement("button");tx.textContent="TCX";tx.title="Exportar para TrainingPeaks";
+        const tx=document.createElement("button");tx.textContent="TCX";tx.title="Exportar sesión en formato TCX";
         tx.style.minHeight="40px";tx.style.padding="8px 10px";tx.style.fontSize="12px";
         tx.onclick=()=>exportTcxFor(s);
         row.appendChild(tx);
       } else if(s.mode==="entreno"){
-        const tx=document.createElement("button");tx.textContent="TCX";tx.title="Exportar para TrainingPeaks";
+        const tx=document.createElement("button");tx.textContent="TCX";tx.title="Exportar sesión en formato TCX";
         tx.style.minHeight="40px";tx.style.padding="8px 10px";tx.style.fontSize="12px";
         tx.onclick=()=>exportTcxFor(s);
         row.appendChild(tx);
@@ -2812,7 +2837,7 @@ function renderHistorial(){
         row.appendChild(gr);
       }
       const del=document.createElement("button");del.className="del";del.textContent="✕";
-      del.onclick=()=>{ if(confirm("¿Borrar esta sesión?")){deleteByDate(s.date);renderHistorial();populateGhosts();populateVelGhosts();} };
+      del.onclick=()=>{ if(confirm("¿Borrar esta sesión?")){deleteByDate(s.date);eliminarDeFormaCompartida(s.date);renderHistorial();populateGhosts();populateVelGhosts();} };
       row.appendChild(del);
     }
     wrap.appendChild(row);
@@ -3067,10 +3092,11 @@ function importSesiones(text){
   else if(inc && Array.isArray(inc.sesiones)){ arr=inc.sesiones; cfg=inc.config; routes=inc.routes; scenes=inc.scenes; entrenos=inc.entrenos; bridges=inc.bridges; }
   else { alert("Formato inesperado"); return; }
   const cur=loadSesiones(), seen=new Set(cur.map(s=>s.date));
-  let added=0;
-  for(const s of arr){ if(s&&s.date&&!seen.has(s.date)){cur.push(s);seen.add(s.date);added++;} }
+  let added=0, nuevas=[];
+  for(const s of arr){ if(s&&s.date&&!seen.has(s.date)){cur.push(s);seen.add(s.date);added++;nuevas.push(s);} }
   cur.sort((a,b)=>a.date-b.date);
   localStorage.setItem("bici_sesiones",JSON.stringify(cur));
+  nuevas.forEach(actualizarFormaCompartida);
   if(cfg){ try{localStorage.setItem("bici_config",JSON.stringify(cfg));}catch(_){} loadCfg(); }
   if(routes){ try{const r=loadRoutesMap(); for(const name in routes) r[name]=minifyGpxForStorage(routes[name]); localStorage.setItem("bici_routes",JSON.stringify(r)); }catch(_){} }
   if(scenes){ try{const s2=loadScenes(); Object.assign(s2,scenes); saveScenes(s2); }catch(_){} }
@@ -3659,7 +3685,7 @@ $("histBack").onclick=()=>{ $("historial").classList.add("hidden");$("setup").cl
 $("exportAll").onclick=exportAll;
 $("importBtn").onclick=()=>$("importFile").click();
 $("importFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>importSesiones(r.result);r.readAsText(f);e.target.value="";};
-$("clearAll").onclick=()=>{ if(confirm("¿Borrar TODAS las sesiones? No se puede deshacer.")){localStorage.removeItem("bici_sesiones");renderHistorial();populateGhosts();populateVelGhosts();} };
+$("clearAll").onclick=()=>{ if(confirm("¿Borrar TODAS las sesiones? No se puede deshacer.")){localStorage.removeItem("bici_sesiones");eliminarTodoBiciDeFormaCompartida();renderHistorial();populateGhosts();populateVelGhosts();} };
 $("diagBtn").onclick=()=>{
   const lines=[];
   lines.push("=== bici_sesiones ===");
@@ -3751,6 +3777,7 @@ $("delSel").onclick=()=>{ if(!selected.size){return;}
   if(confirm("¿Borrar "+selected.size+" sesiones?")){
     const a=loadSesiones().filter(s=>!selected.has(s.date));
     localStorage.setItem("bici_sesiones",JSON.stringify(a));
+    selected.forEach(eliminarDeFormaCompartida);
     setSelMode(false); populateGhosts(); populateVelGhosts(); } };
 
 window.addEventListener("resize",()=>{ if(state==="riding"||state==="paused"){drawRide(); if(raceActive()){fitLane();drawLane();}} if(fitImg) fitDrawCanvas(); });
