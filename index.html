@@ -440,7 +440,7 @@
     </div>
     <div id="pmcPanel" class="hidden" style="margin-bottom:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <b style="font-size:13px">Forma (Fitness/Fatiga/TSB) — Bici + Correr combinados</b>
+        <b style="font-size:13px">Forma (Fitness/Fatiga/TSB) — todas las sesiones con TSS</b>
         <button id="pmcClose" style="min-height:32px;padding:4px 10px">✕</button>
       </div>
       <div style="color:var(--dim);font-size:11px;margin-bottom:4px"><span style="color:#4cc2ff">■</span> CTL (fitness, 42d) &nbsp; <span style="color:#f85149">■</span> ATL (fatiga, 7d)</div>
@@ -448,7 +448,6 @@
       <div style="color:var(--dim);font-size:11px;margin:6px 0 4px"><span style="color:#3fb950">■</span> TSB (forma = CTL−ATL)</div>
       <canvas id="pmcCvTSB" height="90" style="width:100%;display:block"></canvas>
       <div id="pmcReadout" style="color:var(--dim);font-size:12px;margin-top:6px">Cargando…</div>
-      <div id="pmcDesglose" style="color:var(--dim);font-size:11px;margin-top:4px"></div>
     </div>
     <div id="trendPanel" class="hidden" style="margin-bottom:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -615,6 +614,7 @@ let device=null, epIn=0, epOut=0, inPacket=64, ifaceNum=0, connected=false, auto
 let conn="ant", bleDevice=null, bleControl=null;
 let linkLost=false, linkTimer=null, wakeLockRef=null;
 let curPower=0, curCad=0, curHR=0, sawTrainer=false, rxBuf=[];
+let lastRxAt=0; // último momento en que llegó un dato real del rodillo (ANT+ o BLE) — para detectar un "canal zombi" que no tira error pero dejó de mandar datos
 let curSpeedReal=null, curSpeedRealAt=0; // velocidad reportada por el propio rodillo (m/s), más frecuente que la potencia
 const SPEED_TELEMETRY_STALE_MS=3000; // si no llega actualización en este lapso, se vuelve al motor de física
 let sawSpeedTelemetry=false;
@@ -708,6 +708,7 @@ async function requestWake(){ try{ if("wakeLock" in navigator && !wakeLockRef){ 
 function releaseWake(){ try{ wakeLockRef&&wakeLockRef.release(); }catch(_){} wakeLockRef=null; }
 async function initAnt(){
   setState("Inicializando…","searching");
+  lastRxAt=performance.now();
   cadPrevEvt=null; cadPrevRev=null; cadSensorActive=false;
   spdPrevEvt=null; spdPrevRev=null; spdSensorActive=false;
   await send(antMsg(M.RESET,[0]));               await sleep(600);
@@ -764,6 +765,7 @@ function ingest(bytes){
 function frame(f){
   const id=f[2],d=f.slice(3,3+f[1]);
   if(id===M.BCAST||id===M.ACK){
+    lastRxAt=performance.now();
     const ch=d[0], p=d.slice(1), page=p[0];
     if(ch===CH){
       if(!sawTrainer){sawTrainer=true;setState("Rodillo conectado","live");log("¡Rodillo FE-C!","#3fb950");refreshStart();}
@@ -826,6 +828,7 @@ async function connectBle(){
     });
     bleDevice.addEventListener('gattserverdisconnected',onBleDisconnect);
     await bleSetup();
+    lastRxAt=performance.now();
     sawTrainer=true; $("connect").textContent="Rodillo conectado (BT)";
     setState("Rodillo BT conectado","live");
     log("FTMS conectado: "+(bleDevice.name||"rodillo"),"#3fb950");
@@ -837,7 +840,7 @@ async function bleSetup(){
   const ftms=await server.getPrimaryService('fitness_machine');
   const bike=await ftms.getCharacteristic('indoor_bike_data');
   await bike.startNotifications();
-  bike.addEventListener('characteristicvaluechanged',e=>parseBikeData(e.target.value));
+  bike.addEventListener('characteristicvaluechanged',e=>{lastRxAt=performance.now();parseBikeData(e.target.value);});
   bleControl=await ftms.getCharacteristic('fitness_machine_control_point');
   try{ await bleControl.startNotifications(); }catch(_){}
   await bleControl.writeValueWithResponse(Uint8Array.of(0x00)); // request control
@@ -862,7 +865,7 @@ function onBleDisconnect(){
 }
 async function reconnectBle(){
   if(!bleDevice) return connectBle();
-  try{ await bleSetup(); sawTrainer=true; setState("Rodillo BT conectado","live"); afterReconnect(); }
+  try{ await bleSetup(); lastRxAt=performance.now(); sawTrainer=true; setState("Rodillo BT conectado","live"); afterReconnect(); }
   catch(e){ log("Reconexión BT falló: "+e.message,"#f85149"); showReconnect(true); }
 }
 async function connectHrBle(){
@@ -2755,6 +2758,16 @@ document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==
 window.addEventListener("beforeunload",(e)=>{ if(state==="riding"||state==="paused"){ e.preventDefault(); e.returnValue=""; } });
 setInterval(()=>{ if(cadSensorActive && curCad>0 && performance.now()-cadLastRealUpdate>3000) curCad=0; }, 1000);
 setInterval(()=>{ if(spdSensorActive && curSpeedReal>0 && performance.now()-spdLastRealUpdate>3000){ curSpeedReal=0; curSpeedRealAt=performance.now(); } }, 1000);
+// Watchdog de canal zombi: un transferOut o una notificación BLE pueden fallar sin tirar ningún error
+// (la conexión "parece" abierta pero el rodillo dejó de mandar datos). Si estamos andando y hace rato
+// que no llega nada real, lo tratamos igual que una desconexión detectada.
+setInterval(()=>{
+  if(state!=="riding" || linkLost || !sawTrainer) return;
+  if(lastRxAt>0 && performance.now()-lastRxAt>6000){
+    log("Sin datos del rodillo hace más de 6s (canal zombi) — reconectando…","#f0883e");
+    onLinkLost();
+  }
+}, 2000);
 if("usb" in navigator){
   navigator.usb.addEventListener("disconnect",e=>{
     if(device && e.device===device){
@@ -3034,8 +3047,6 @@ $("trendClose").onclick=()=>{ $("trendPanel").classList.add("hidden"); };
 $("histFilterSel").addEventListener("change",()=>{ if(!$("trendPanel").classList.contains("hidden")) renderHistTrend(); });
 
 // ---- Forma: CTL (fitness, 42d) / ATL (fatiga, 7d) / TSB (forma) ----
-// Solo bici (se deja disponible por si hace falta un desglose de "solo Bici" más adelante,
-// mismo criterio que calcularSerieForma() en Correr) — ya NO es la vista principal del panel.
 function computeDailyTSS(){
   const all=loadSesiones().filter(s=>s.tss);
   if(!all.length) return [];
@@ -3052,48 +3063,8 @@ function computeDailyTSS(){
   }
   return out;
 }
-// Combinada entre apps (Bici + Correr, y cualquier otra que escriba en la misma clave), leyendo
-// entrenamiento_forma_registro — mismo criterio EXACTO que calcularSerieFormaCombinada() de Correr,
-// incluida la fórmula de TSB (ctlPrev-atlPrev, "forma con la que arrancás el día", no ctl-atl de
-// hoy) para que las dos apps muestren siempre el mismo número de forma actual. Devuelve además el
-// desglose de TSS acumulado por deporte.
-function computeFormaCombinada(){
-  let registro=[];
-  try{ registro=JSON.parse(localStorage.getItem("entrenamiento_forma_registro")||"[]"); }catch(_){}
-  registro=[...registro].sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
-  if(!registro.length) return {serie:[], ctl:0, atl:0, tsb:0, porDeporte:{}};
-  const porDia={}, porDeporte={};
-  registro.forEach(r=>{
-    porDia[r.fecha]=(porDia[r.fecha]||0)+(r.tss||0);
-    porDeporte[r.deporte]=(porDeporte[r.deporte]||0)+(r.tss||0);
-  });
-  const dias=Object.keys(porDia).sort();
-  const inicio=new Date(dias[0]);
-  const fin=new Date();
-  let ctl=0, atl=0;
-  const serie=[];
-  for(let d=new Date(inicio); d<=fin; d.setDate(d.getDate()+1)){
-    const key=d.toISOString().slice(0,10);
-    const tssHoy=porDia[key]||0;
-    const ctlPrev=ctl, atlPrev=atl;
-    ctl=ctlPrev+(tssHoy-ctlPrev)/42;
-    atl=atlPrev+(tssHoy-atlPrev)/7;
-    const tsb=ctlPrev-atlPrev;
-    serie.push({day:Math.floor(new Date(key).getTime()/86400000), tss:tssHoy, ctl, atl, tsb});
-  }
-  const ultimo=serie[serie.length-1];
-  return {serie, ctl:ultimo.ctl, atl:ultimo.atl, tsb:ultimo.tsb, porDeporte};
-}
 let pmcData=[];
-function renderPMC(){
-  const forma=computeFormaCombinada();
-  pmcData=forma.serie;
-  drawPMCAt(null);
-  const deportes=Object.keys(forma.porDeporte||{}).sort((a,b)=>forma.porDeporte[b]-forma.porDeporte[a]);
-  $("pmcDesglose").textContent=deportes.length
-    ? ("TSS acumulado por deporte (todo lo que haya en el navegador): "+deportes.map(d=>d+" "+Math.round(forma.porDeporte[d])).join(" · "))
-    : "Todavía no hay TSS registrado de ninguna app.";
-}
+function renderPMC(){ pmcData=computeDailyTSS(); drawPMCAt(null); }
 function drawPMCAt(idx){
   const ctlPts=pmcData.map((d,i)=>({x:i,y:d.ctl})), atlPts=pmcData.map((d,i)=>({x:i,y:d.atl})), tsbPts=pmcData.map((d,i)=>({x:i,y:d.tsb}));
   drawMultiLineChart($("pmcCvCA"),[{pts:ctlPts,color:"#4cc2ff"},{pts:atlPts,color:"#f85149"}],idx);
