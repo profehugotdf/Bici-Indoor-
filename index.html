@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v103</title>
+<title>Bici Indoor · v104</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v103</h1>
+  <h1>Bici Indoor · v104</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -2541,9 +2541,11 @@ function renderReplay(){
   // standings top 4
   let html="";
   top.forEach((x,i)=>{
+    const dd=new Date(x.r.sess.date);
     html+=`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px">
       <b style="width:20px">${i+1}º</b>
       <span style="width:12px;height:12px;border-radius:3px;background:${x.r.color};display:inline-block;flex:none"></span>
+      <span style="width:38px;color:var(--dim);font-size:11px">${dd.getDate()}/${dd.getMonth()+1}</span>
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(x.d/1000).toFixed(2)} km</span>
       <span style="width:52px;text-align:right">${x.p||"—"} W</span>
       <span style="width:44px;text-align:right;color:#ff6b6b">${x.hr||"—"}</span>
@@ -2679,7 +2681,7 @@ function applyRepView(){
   $("repCamRow").classList.toggle("hidden",!on);
 }
 function updateCamBtn(){ const r=repRacers[repCam];
-  if(r) $("repCamBtn").innerHTML=`Cámara: <span style="color:${r.color}">●</span> corredor ${repCam+1}`; }
+  if(r) $("repCamBtn").innerHTML=`Cámara: <span style="color:${r.color}">●</span> ${repLabel(r.sess)}`; }
 function fitRepRoad(){ repRoadCtx=fit($("repRoad")); }
 function drawRepRoad(st){
   if(!repRoadCtx||repRoadCtx.w<10) fitRepRoad();
