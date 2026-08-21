@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v104</title>
+<title>Bici Indoor · v107</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v104</h1>
+  <h1>Bici Indoor · v107</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1790,6 +1790,35 @@ function roadPointAt(S,d){
   const t=(d-S[i].d)/((S[i+1].d-S[i].d)||1);
   return {cx:S[i].cx+(S[i+1].cx-S[i].cx)*t, y:S[i].y+(S[i+1].y-S[i].y)*t, hw:S[i].hw+(S[i+1].hw-S[i].hw)*t};
 }
+// A pocos metros de la cámara, la perspectiva de profundidad ya no representa bien la posición real —
+// a esa distancia (yendo "a rueda", o en pleno sobrepaso) lo natural es verse al costado, no apilado
+// adelante/atrás en la misma línea. Por debajo de DRAFT_ZONE_M se dibuja desplazado lateralmente,
+// mezclando suavemente con la posición de profundidad normal justo en el borde de la zona (sin salto).
+const DRAFT_ZONE_M=1.5; // hasta acá sigue en la misma línea (rueda con rueda); por debajo, es sobrepaso o rodar en paralelo
+function laneSignFor(racer){ const idx=repRacers.indexOf(racer); return (idx>=0 && idx%2===0)?-1:1; }
+function ensureNearSeparation(p, s, h){
+  const maxY=(h-6) - h*0.09;
+  if(p.y<=maxY) return {p, s};
+  const push=p.y-maxY;
+  return {p:{cx:p.cx, y:maxY, hw:p.hw}, s:Math.max(4, s-push*0.15)};
+}
+function racerScreenPos(S, camD0, gap, camCx, camY, camHw, laneSign, youS, h){
+  const ag=Math.abs(gap);
+  if(ag>=DRAFT_ZONE_M){
+    let p=roadPointAt(S, camD0+gap); if(!p) return null;
+    let s=Math.max(5, Math.min(youS*0.85, p.hw*0.14));
+    ({p,s}=ensureNearSeparation(p,s,h));
+    return {cx:p.cx, y:p.y, s};
+  }
+  const t=1-(ag/DRAFT_ZONE_M); // 0 en el borde de la zona (empalma con la rama de arriba), 1 justo al lado
+  const edgeGap=gap>=0?DRAFT_ZONE_M:-DRAFT_ZONE_M;
+  let edge=roadPointAt(S, camD0+edgeGap) || {cx:camCx,y:camY,hw:camHw};
+  let es=Math.max(5, Math.min(youS*0.85, edge.hw*0.14));
+  ({p:edge,s:es}=ensureNearSeparation(edge,es,h));
+  const sideCx=camCx+laneSign*camHw*0.55;
+  const cx=edge.cx+(sideCx-edge.cx)*t, y=edge.y+(camY-edge.y)*t, s=es+(youS*0.95-es)*t;
+  return {cx,y,s};
+}
 function roadInterpDt(){ if(state!=="riding"||linkLost)return 0; const e=(performance.now()-lastTs)/1000; return (e>0&&e<0.5)?e:0; }
 let velTrackLen=250, velEnv="velodromo";
 function drawRoad(){
@@ -1802,14 +1831,17 @@ function drawRoad(){
   const gNow=ghost?ghostDistAt(elapsed+idt):0;
   const S=roadBands(ctx,w,h,dNow,bearingAt,eleAt,fname);
   const youS=Math.max(20,h*0.135);
-  if(ghost && gNow>dNow){ const p=roadPointAt(S,gNow);
-    if(p){ const gs=Math.max(5, Math.min(youS*0.8, p.hw*0.14));
-      drawCyclistRear(ctx, p.cx, p.y, gs, ghostRoadCrank, "#9fb0c0", 0.45);
+  const camCx0=w/2, camY0=h-6, camHw0=S[0]?S[0].hw:youS*1.5;
+  if(ghost){
+    const ghostGap=gNow-dNow; // positivo = fantasma adelante, negativo = fantasma atrás (recién lo pasaste)
+    const pos=racerScreenPos(S,dNow,ghostGap,camCx0,camY0,camHw0,-1,youS,h);
+    if(pos){
+      drawCyclistRear(ctx, pos.cx, pos.y, pos.s, ghostRoadCrank, "#9fb0c0", 0.45);
       const gap=Math.round(dNow-gNow), label=(gap>=0?"+":"")+gap+" m";
       ctx.font="700 13px system-ui"; ctx.textAlign="center";
-      const ly=p.y-gs*3.5, tw=ctx.measureText(label).width;
-      ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(p.cx-tw/2-5,ly-13,tw+10,18);
-      ctx.fillStyle=gap<0?"#ff6b6b":"#3fb950"; ctx.fillText(label,p.cx,ly);
+      const ly=pos.y-pos.s*3.5, tw=ctx.measureText(label).width;
+      ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(pos.cx-tw/2-5,ly-13,tw+10,18);
+      ctx.fillStyle=gap<0?"#ff6b6b":"#3fb950"; ctx.fillText(label,pos.cx,ly);
       ctx.textAlign="start";
     } }
   drawCyclistRear(ctx, w/2, h-6, youS, roadCrank, "#2f6f9c", 1);
@@ -1831,13 +1863,13 @@ function drawVelodromeRoad(ctx,w,h){
   const bFn=(d)=>velodromeBearingAt(d,velTrackLen);
   const S=roadBands(ctx,w,h,d0,bFn,velodromeEleAt,null,SCENES[velEnv]||SCENES.velodromo,{...VELO_GEOM,trackLen:velTrackLen});
   const youS=Math.max(20,h*0.135);
+  const camCx0=w/2, camY0=h-6, camHw0=S[0]?S[0].hw:youS*1.5;
   if(ghost){
     const gNow=ghostDistAt(elapsed+idt);
     const gd0=((gNow%velTrackLen)+velTrackLen)%velTrackLen;
-    const relAhead=((gd0-d0)%velTrackLen+velTrackLen)%velTrackLen;
-    const p=roadPointAt(S,d0+relAhead);
-    if(p){ const gs=Math.max(5, Math.min(youS*0.8, p.hw*0.14));
-      drawCyclistRear(ctx, p.cx, p.y, gs, ghostRoadCrank, "#9fb0c0", 0.45); }
+    const ghostGap=((gd0-d0+velTrackLen/2)%velTrackLen+velTrackLen)%velTrackLen - velTrackLen/2;
+    const pos=racerScreenPos(S,d0,ghostGap,camCx0,camY0,camHw0,-1,youS,h);
+    if(pos){ drawCyclistRear(ctx, pos.cx, pos.y, pos.s, ghostRoadCrank, "#9fb0c0", 0.45); }
     const gapNow=Math.round(dNow-gNow), ahead=gapNow>=0;
     const yourLaps=Math.floor(dNow/velTrackLen), ghostLaps=Math.floor(gNow/velTrackLen);
     const lapDiff=yourLaps-ghostLaps;
@@ -2579,22 +2611,23 @@ function drawRepVelodrome(st){
   const bFn=(d)=>velodromeBearingAt(d,L);
   const S=roadBands(ctx,w,h,camD0,bFn,velodromeEleAt,null,SCENES[repVeloEnv]||SCENES.velodromo,{...VELO_GEOM,trackLen:L});
   const youS=Math.max(20,h*0.135);
+  const camCx=w/2, camY=h-6, camHw=S[0]?S[0].hw:youS*1.5;
   const others=st.filter(x=>x.r!==camRacer).map(x=>{
-    const xd0=((x.d%L)+L)%L, relAhead=((xd0-camD0)%L+L)%L;
-    return {x, posD:camD0+relAhead, relAhead};
-  }).sort((a,b)=>b.relAhead-a.relAhead);
-  for(const {x,posD} of others){
-    const p=roadPointAt(S,posD); if(!p)continue;
-    const s=Math.max(5, Math.min(youS*0.85, p.hw*0.14));
-    drawCyclistRear(ctx, p.cx, p.y, s, x.r.crank, x.r.color, 0.9);
-    const lapDiff=Math.floor(x.d/L)-Math.floor(cam.d/L), gap=Math.round(x.d-cam.d);
-    const label=(gap>=0?"+":"")+gap+" m"+(lapDiff!==0?" ("+(lapDiff>0?"+":"")+lapDiff+"v)":"");
+    const xd0=((x.d%L)+L)%L;
+    const gap=((xd0-camD0+L/2)%L+L)%L - L/2; // brecha con signo (positivo=adelante, negativo=atrás), sin el salto de "casi una vuelta"
+    return {x, gap};
+  }).sort((a,b)=>b.gap-a.gap);
+  for(const {x,gap} of others){
+    const pos=racerScreenPos(S,camD0,gap,camCx,camY,camHw,laneSignFor(x.r),youS,h); if(!pos)continue;
+    drawCyclistRear(ctx, pos.cx, pos.y, pos.s, x.r.crank, x.r.color, 0.9);
+    const lapDiff=Math.floor(x.d/L)-Math.floor(cam.d/L), gapM=Math.round(gap);
+    const label=(gapM>=0?"+":"")+gapM+" m"+(lapDiff!==0?" ("+(lapDiff>0?"+":"")+lapDiff+"v)":"");
     ctx.font="700 12px system-ui"; ctx.textAlign="center";
-    const ly=p.y-s*3.5, tw=ctx.measureText(label).width;
-    ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(p.cx-tw/2-4,ly-12,tw+8,16);
-    ctx.fillStyle=x.r.color; ctx.fillText(label,p.cx,ly); ctx.textAlign="start";
+    const ly=pos.y-pos.s*3.5, tw=ctx.measureText(label).width;
+    ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(pos.cx-tw/2-4,ly-12,tw+8,16);
+    ctx.fillStyle=x.r.color; ctx.fillText(label,pos.cx,ly); ctx.textAlign="start";
   }
-  drawCyclistRear(ctx, w/2, h-6, youS, camRacer.crank, camRacer.color, 1);
+  drawCyclistRear(ctx, camCx, camY, youS, camRacer.crank, camRacer.color, 1);
 }
 function drawRepLane(st){
   const cv=$("repLane"),r=fit(cv),ctx=r.ctx,w=r.w,h=r.h; if(w<10)return;
@@ -2692,19 +2725,20 @@ function drawRepRoad(st){
   const camD=cam.d;
   const S=roadBands(ctx,w,h,camD, d=>bearingRoute(replayRoute,d), d=>eleRoute(replayRoute,d), repRouteName);
   const youS=Math.max(20,h*0.135);
-  // otros corredores (adelante de la cámara), de lejos a cerca
-  const others=st.filter(x=>x.r!==camRacer).sort((a,b)=>b.d-a.d);
-  for(const x of others){ const p=roadPointAt(S,x.d); if(!p)continue;
-    const s=Math.max(5, Math.min(youS*0.85, p.hw*0.14));
-    drawCyclistRear(ctx, p.cx, p.y, s, x.r.crank, x.r.color, 0.9);
-    const gap=Math.round(x.d-camD), label="+"+gap+" m";
+  const camCx=w/2, camY=h-6, camHw=S[0]?S[0].hw:youS*1.5;
+  // otros corredores (adelante o a rueda de la cámara), de lejos a cerca
+  const others=st.filter(x=>x.r!==camRacer).map(x=>({x, gap:x.d-camD})).sort((a,b)=>b.gap-a.gap);
+  for(const {x,gap} of others){
+    const pos=racerScreenPos(S,camD,gap,camCx,camY,camHw,laneSignFor(x.r),youS,h); if(!pos)continue;
+    drawCyclistRear(ctx, pos.cx, pos.y, pos.s, x.r.crank, x.r.color, 0.9);
+    const gapM=Math.round(gap), label=(gapM>=0?"+":"")+gapM+" m";
     ctx.font="700 12px system-ui"; ctx.textAlign="center";
-    const ly=p.y-s*3.5, tw=ctx.measureText(label).width;
-    ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(p.cx-tw/2-4,ly-12,tw+8,16);
-    ctx.fillStyle=x.r.color; ctx.fillText(label,p.cx,ly); ctx.textAlign="start";
+    const ly=pos.y-pos.s*3.5, tw=ctx.measureText(label).width;
+    ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(pos.cx-tw/2-4,ly-12,tw+8,16);
+    ctx.fillStyle=x.r.color; ctx.fillText(label,pos.cx,ly); ctx.textAlign="start";
   }
   // cámara = ciclista elegido, de espaldas abajo
-  drawCyclistRear(ctx, w/2, h-6, youS, camRacer.crank, camRacer.color, 1);
+  drawCyclistRear(ctx, camCx, camY, youS, camRacer.crank, camRacer.color, 1);
 }
 $("repCamBtn")&&($("repCamBtn").onclick=()=>{ if(!repRacers.length)return; repCam=(repCam+1)%repRacers.length; updateCamBtn(); renderReplay(); });
 $("rep3dBtn").onclick=()=>{ rep3d=!rep3d; $("rep3dBtn").textContent="Vista 3D: "+(rep3d?"ON":"OFF"); applyRepView(); if(replayRoute)renderReplay(); };
