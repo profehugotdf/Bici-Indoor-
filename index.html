@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v111</title>
+<title>Bici Indoor · v112</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v111</h1>
+  <h1>Bici Indoor · v112</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1939,66 +1939,75 @@ $("perspBack").onclick=()=>{ $("perspCard").classList.add("hidden"); $("setup").
 ["perspGap","perspZone","perspSide","perspSep","perspSize","perspYouScale","perspGhostScale"].forEach(id=>{ $(id).addEventListener("input",drawPerspEditor); });
 window.addEventListener("resize",()=>{ if(!$("perspCard").classList.contains("hidden")) drawPerspEditor(); });
 let velTrackLen=250, velEnv="velodromo";
+let roadDrawErrLogged=false;
 function drawRoad(){
   if(!roadCtx||roadCtx.w<10) fitRoad();
   if(!roadCtx||roadCtx.w<10) return;
   const {ctx,w,h}=roadCtx;
-  if(mode==="velodromo"){ drawVelodromeRoad(ctx,w,h); return; }
-  const idt=roadInterpDt();
-  let dNow=distanceM + v*idt; if(mode==="gpx") dNow=Math.min(total,dNow);
-  const gNow=ghost?ghostDistAt(elapsed+idt):0;
-  const S=roadBands(ctx,w,h,dNow,bearingAt,eleAt,fname);
-  const youS=Math.max(20,h*0.135*PERSP_YOU_SCALE);
-  const camCx0=w/2, camY0=h-6, camHw0=S[0]?S[0].hw:youS*1.5;
-  if(ghost){
-    const ghostGap=gNow-dNow; // positivo = fantasma adelante, negativo = fantasma atrás (recién lo pasaste)
-    const pos=racerScreenPos(S,dNow,ghostGap,camCx0,camY0,camHw0,-1,youS,h);
-    if(pos){
-      drawCyclistRear(ctx, pos.cx, pos.y, pos.s, ghostRoadCrank, "#9fb0c0", 0.45);
-      const gap=Math.round(dNow-gNow), label=(gap>=0?"+":"")+gap+" m";
-      ctx.font="700 13px system-ui"; ctx.textAlign="center";
-      const ly=pos.y-pos.s*3.5, tw=ctx.measureText(label).width;
-      ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(pos.cx-tw/2-5,ly-13,tw+10,18);
-      ctx.fillStyle=gap<0?"#ff6b6b":"#3fb950"; ctx.fillText(label,pos.cx,ly);
+  try{
+    if(mode==="velodromo"){ drawVelodromeRoad(ctx,w,h); return; }
+    const idt=roadInterpDt();
+    let dNow=distanceM + v*idt; if(mode==="gpx") dNow=Math.min(total,dNow);
+    const gNow=ghost?ghostDistAt(elapsed+idt):0;
+    const S=roadBands(ctx,w,h,dNow,bearingAt,eleAt,fname);
+    const youS=Math.max(20,h*0.135);
+    if(ghost && gNow>dNow){ const p=roadPointAt(S,gNow);
+      if(p){ const gs=Math.max(5, Math.min(youS*0.8, p.hw*0.14));
+        drawCyclistRear(ctx, p.cx, p.y, gs, ghostRoadCrank, "#9fb0c0", 0.45);
+        const gap=Math.round(dNow-gNow), label=(gap>=0?"+":"")+gap+" m";
+        ctx.font="700 13px system-ui"; ctx.textAlign="center";
+        const ly=p.y-gs*3.5, tw=ctx.measureText(label).width;
+        ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(p.cx-tw/2-5,ly-13,tw+10,18);
+        ctx.fillStyle=gap<0?"#ff6b6b":"#3fb950"; ctx.fillText(label,p.cx,ly);
+        ctx.textAlign="start";
+      } }
+    drawCyclistRear(ctx, w/2, h-6, youS, roadCrank, "#2f6f9c", 1);
+    // cartel de ventaja/desventaja respecto del fantasma (arriba)
+    if(ghost){ const gapNow=Math.round(dNow-gNow), ahead=gapNow>=0;
+      const lbl=(ahead?"+":"−")+Math.abs(gapNow)+" m "+(ahead?"adelante":"atrás");
+      ctx.font="700 15px system-ui"; ctx.textAlign="center";
+      const tw=ctx.measureText(lbl).width;
+      ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(w/2-tw/2-7,8,tw+14,24);
+      ctx.fillStyle=ahead?"#3fb950":"#ff6b6b"; ctx.fillText(lbl,w/2,25);
       ctx.textAlign="start";
-    } }
-  drawCyclistRear(ctx, w/2, h-6, youS, roadCrank, "#2f6f9c", 1);
-  // cartel de ventaja/desventaja respecto del fantasma (arriba)
-  if(ghost){ const gapNow=Math.round(dNow-gNow), ahead=gapNow>=0;
-    const lbl=(ahead?"+":"−")+Math.abs(gapNow)+" m "+(ahead?"adelante":"atrás");
-    ctx.font="700 15px system-ui"; ctx.textAlign="center";
-    const tw=ctx.measureText(lbl).width;
-    ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(w/2-tw/2-7,8,tw+14,24);
-    ctx.fillStyle=ahead?"#3fb950":"#ff6b6b"; ctx.fillText(lbl,w/2,25);
-    ctx.textAlign="start";
+    }
+    roadDrawErrLogged=false;
+  }catch(e){
+    if(!roadDrawErrLogged){ roadDrawErrLogged=true; log("Error dibujando la vista 3D: "+e.message,"#f85149"); }
   }
 }
 const VELO_GEOM={N:100, NEAR:0.8, GROW:0.012, wRoad:4.2};
+let veloDrawErrLogged=false;
 function drawVelodromeRoad(ctx,w,h){
-  const idt=roadInterpDt();
-  const dNow=distanceM + v*idt;
-  const d0=((dNow%velTrackLen)+velTrackLen)%velTrackLen;
-  const bFn=(d)=>velodromeBearingAt(d,velTrackLen);
-  const S=roadBands(ctx,w,h,d0,bFn,velodromeEleAt,null,SCENES[velEnv]||SCENES.velodromo,{...VELO_GEOM,trackLen:velTrackLen});
-  const youS=Math.max(20,h*0.135*PERSP_YOU_SCALE);
-  const camCx0=w/2, camY0=h-6, camHw0=S[0]?S[0].hw:youS*1.5;
-  if(ghost){
-    const gNow=ghostDistAt(elapsed+idt);
-    const gd0=((gNow%velTrackLen)+velTrackLen)%velTrackLen;
-    const ghostGap=((gd0-d0+velTrackLen/2)%velTrackLen+velTrackLen)%velTrackLen - velTrackLen/2;
-    const pos=racerScreenPos(S,d0,ghostGap,camCx0,camY0,camHw0,-1,youS,h);
-    if(pos){ drawCyclistRear(ctx, pos.cx, pos.y, pos.s, ghostRoadCrank, "#9fb0c0", 0.45); }
-    const gapNow=Math.round(dNow-gNow), ahead=gapNow>=0;
-    const yourLaps=Math.floor(dNow/velTrackLen), ghostLaps=Math.floor(gNow/velTrackLen);
-    const lapDiff=yourLaps-ghostLaps;
-    const lbl=(ahead?"+":"−")+Math.abs(gapNow)+" m "+(ahead?"adelante":"atrás")+(lapDiff!==0?"  ("+(lapDiff>0?"+":"")+lapDiff+" vta)":"");
-    ctx.font="700 15px system-ui"; ctx.textAlign="center";
-    const tw=ctx.measureText(lbl).width;
-    ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(w/2-tw/2-7,8,tw+14,24);
-    ctx.fillStyle=ahead?"#3fb950":"#ff6b6b"; ctx.fillText(lbl,w/2,25);
-    ctx.textAlign="start";
+  try{
+    const idt=roadInterpDt();
+    const dNow=distanceM + v*idt;
+    const d0=((dNow%velTrackLen)+velTrackLen)%velTrackLen;
+    const bFn=(d)=>velodromeBearingAt(d,velTrackLen);
+    const S=roadBands(ctx,w,h,d0,bFn,velodromeEleAt,null,SCENES[velEnv]||SCENES.velodromo,{...VELO_GEOM,trackLen:velTrackLen});
+    const youS=Math.max(20,h*0.135);
+    if(ghost){
+      const gNow=ghostDistAt(elapsed+idt);
+      const gd0=((gNow%velTrackLen)+velTrackLen)%velTrackLen;
+      const relAhead=((gd0-d0)%velTrackLen+velTrackLen)%velTrackLen;
+      const p=roadPointAt(S,d0+relAhead);
+      if(p){ const gs=Math.max(5, Math.min(youS*0.8, p.hw*0.14));
+        drawCyclistRear(ctx, p.cx, p.y, gs, ghostRoadCrank, "#9fb0c0", 0.45); }
+      const gapNow=Math.round(dNow-gNow), ahead=gapNow>=0;
+      const yourLaps=Math.floor(dNow/velTrackLen), ghostLaps=Math.floor(gNow/velTrackLen);
+      const lapDiff=yourLaps-ghostLaps;
+      const lbl=(ahead?"+":"−")+Math.abs(gapNow)+" m "+(ahead?"adelante":"atrás")+(lapDiff!==0?"  ("+(lapDiff>0?"+":"")+lapDiff+" vta)":"");
+      ctx.font="700 15px system-ui"; ctx.textAlign="center";
+      const tw=ctx.measureText(lbl).width;
+      ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(w/2-tw/2-7,8,tw+14,24);
+      ctx.fillStyle=ahead?"#3fb950":"#ff6b6b"; ctx.fillText(lbl,w/2,25);
+      ctx.textAlign="start";
+    }
+    drawCyclistRear(ctx, w/2, h-6, youS, roadCrank, "#2f6f9c", 1);
+    veloDrawErrLogged=false;
+  }catch(e){
+    if(!veloDrawErrLogged){ veloDrawErrLogged=true; log("Error dibujando la vista de velódromo: "+e.message,"#f85149"); }
   }
-  drawCyclistRear(ctx, w/2, h-6, youS, roadCrank, "#2f6f9c", 1);
 }
 function bearingRoute(route,d){ const {pts,dist}=route; let i=0; while(i<dist.length-2&&dist[i+1]<d)i++;
   const a=pts[i],b=pts[i+1],toR=Math.PI/180;
