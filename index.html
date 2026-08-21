@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v109</title>
+<title>Bici Indoor · v111</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v109</h1>
+  <h1>Bici Indoor · v111</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -244,6 +244,10 @@
     <input type="range" id="perspSep" min="0" max="20" step="1" value="9" style="width:100%">
     <div class="row" style="margin-top:10px"><label for="perspSize">Tamaño al costado (% de tu tamaño): <span id="perspSizeVal">95</span></label></div>
     <input type="range" id="perspSize" min="50" max="100" step="1" value="95" style="width:100%">
+    <div class="row" style="margin-top:10px"><label for="perspYouScale">Tamaño de TU ciclista en pantalla (%): <span id="perspYouScaleVal">100</span></label></div>
+    <input type="range" id="perspYouScale" min="50" max="200" step="5" value="100" style="width:100%">
+    <div class="row" style="margin-top:10px"><label for="perspGhostScale">Tamaño del fantasma en pantalla (%): <span id="perspGhostScaleVal">100</span></label></div>
+    <input type="range" id="perspGhostScale" min="50" max="200" step="5" value="100" style="width:100%">
     <pre id="perspReadout" style="white-space:pre-wrap;font-size:11px;background:#0a0d12;border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:12px"></pre>
     <div class="row" style="margin-top:8px">
       <button id="perspCopyBtn" style="flex:1">📋 Copiar</button>
@@ -1819,7 +1823,7 @@ function roadPointAt(S,d){
 // adelante/atrás en la misma línea. Por debajo de DRAFT_ZONE_M se dibuja desplazado lateralmente,
 // mezclando suavemente con la posición de profundidad normal justo en el borde de la zona (sin salto).
 // Estas constantes son las que ajusta el Editor de perspectiva (Parámetros avanzados).
-let DRAFT_ZONE_M=1.5, PERSP_SIDE_FRAC=0.55, PERSP_SEP_FRAC=0.09, PERSP_SIZE_FRAC=0.95;
+let DRAFT_ZONE_M=1.5, PERSP_SIDE_FRAC=0.55, PERSP_SEP_FRAC=0.09, PERSP_SIZE_FRAC=0.95, PERSP_YOU_SCALE=1, PERSP_GHOST_SCALE=1;
 function laneSignFor(racer){ const idx=repRacers.indexOf(racer); return (idx>=0 && idx%2===0)?-1:1; }
 function ensureNearSeparation(p, s, h, sepFrac){
   const sf=sepFrac!=null?sepFrac:PERSP_SEP_FRAC;
@@ -1833,12 +1837,13 @@ function racerScreenPos(S, camD0, gap, camCx, camY, camHw, laneSign, youS, h, op
   const sideFrac=(opts&&opts.sideFrac!=null)?opts.sideFrac:PERSP_SIDE_FRAC;
   const sepFrac=(opts&&opts.sepFrac!=null)?opts.sepFrac:PERSP_SEP_FRAC;
   const sizeFrac=(opts&&opts.sizeFrac!=null)?opts.sizeFrac:PERSP_SIZE_FRAC;
+  const ghostScale=(opts&&opts.ghostScale!=null)?opts.ghostScale:PERSP_GHOST_SCALE;
   const ag=Math.abs(gap);
   if(ag>=zone){
     let p=roadPointAt(S, camD0+gap); if(!p) return null;
     let s=Math.max(5, Math.min(youS*0.85, p.hw*0.14));
     ({p,s}=ensureNearSeparation(p,s,h,sepFrac));
-    return {cx:p.cx, y:p.y, s};
+    return {cx:p.cx, y:p.y, s:s*ghostScale};
   }
   const t=1-(ag/zone); // 0 en el borde de la zona (empalma con la rama de arriba), 1 justo al lado
   const edgeGap=gap>=0?zone:-zone;
@@ -1847,7 +1852,7 @@ function racerScreenPos(S, camD0, gap, camCx, camY, camHw, laneSign, youS, h, op
   ({p:edge,s:es}=ensureNearSeparation(edge,es,h,sepFrac));
   const sideCx=camCx+laneSign*camHw*sideFrac;
   const cx=edge.cx+(sideCx-edge.cx)*t, y=edge.y+(camY-edge.y)*t, s=es+(youS*sizeFrac-es)*t;
-  return {cx,y,s};
+  return {cx,y,s:s*ghostScale};
 }
 function drawPerspEditor(){
   const cv=$("perspCv"); if(!cv) return;
@@ -1857,18 +1862,22 @@ function drawPerspEditor(){
   const sideFrac=parseFloat($("perspSide").value)/100;
   const sepFrac=parseFloat($("perspSep").value)/100;
   const sizeFrac=parseFloat($("perspSize").value)/100;
+  const youScale=parseFloat($("perspYouScale").value)/100;
+  const ghostScale=parseFloat($("perspGhostScale").value)/100;
   $("perspGapVal").textContent=gap.toFixed(1);
   $("perspZoneVal").textContent=zone.toFixed(1);
   $("perspSideVal").textContent=Math.round(sideFrac*100);
   $("perspSepVal").textContent=Math.round(sepFrac*100);
   $("perspSizeVal").textContent=Math.round(sizeFrac*100);
+  $("perspYouScaleVal").textContent=Math.round(youScale*100);
+  $("perspGhostScaleVal").textContent=Math.round(ghostScale*100);
   // Pista sintética recta (sin curva ni peralte) para que el foco esté 100% en la separación,
   // no en distorsión de curva. camD0 con margen para poder probar brechas negativas también.
   const camD0=50;
   const S=roadBands(ctx,w,h,camD0,()=>0,()=>0,null,SCENES.velodromo,{...VELO_GEOM,trackLen:1000000});
-  const youS=Math.max(20,h*0.135);
+  const youS=Math.max(20,h*0.135*youScale);
   const camCx=w/2, camY=h-6, camHw=S[0]?S[0].hw:youS*1.5;
-  const pos=racerScreenPos(S,camD0,gap,camCx,camY,camHw,-1,youS,h,{zone,sideFrac,sepFrac,sizeFrac});
+  const pos=racerScreenPos(S,camD0,gap,camCx,camY,camHw,-1,youS,h,{zone,sideFrac,sepFrac,sizeFrac,ghostScale});
   if(pos){
     drawCyclistRear(ctx,pos.cx,pos.y,pos.s,0,"#f0883e",0.9);
     ctx.font="700 13px system-ui"; ctx.textAlign="center"; ctx.fillStyle="#fff";
@@ -1876,21 +1885,25 @@ function drawPerspEditor(){
     ctx.textAlign="start";
   }
   drawCyclistRear(ctx,camCx,camY,youS,0,"#2f6f9c",1);
-  $("perspReadout").textContent=perspParamsText({zone,sideFrac,sepFrac,sizeFrac});
+  $("perspReadout").textContent=perspParamsText({zone,sideFrac,sepFrac,sizeFrac,youScale,ghostScale});
 }
 function perspParams(){
   return { zone:parseFloat($("perspZone").value), sideFrac:parseFloat($("perspSide").value)/100,
-    sepFrac:parseFloat($("perspSep").value)/100, sizeFrac:parseFloat($("perspSize").value)/100 };
+    sepFrac:parseFloat($("perspSep").value)/100, sizeFrac:parseFloat($("perspSize").value)/100,
+    youScale:parseFloat($("perspYouScale").value)/100, ghostScale:parseFloat($("perspGhostScale").value)/100 };
 }
 function perspParamsText(p){
   return "DRAFT_ZONE_M = "+p.zone.toFixed(2)+"\nPERSP_SIDE_FRAC = "+p.sideFrac.toFixed(2)+
-    "\nPERSP_SEP_FRAC = "+p.sepFrac.toFixed(2)+"\nPERSP_SIZE_FRAC = "+p.sizeFrac.toFixed(2);
+    "\nPERSP_SEP_FRAC = "+p.sepFrac.toFixed(2)+"\nPERSP_SIZE_FRAC = "+p.sizeFrac.toFixed(2)+
+    "\nPERSP_YOU_SCALE = "+p.youScale.toFixed(2)+"\nPERSP_GHOST_SCALE = "+p.ghostScale.toFixed(2);
 }
 function applyPerspParams(p){
   if(p.zone!=null) $("perspZone").value=p.zone;
   if(p.sideFrac!=null) $("perspSide").value=Math.round(p.sideFrac*100);
   if(p.sepFrac!=null) $("perspSep").value=Math.round(p.sepFrac*100);
   if(p.sizeFrac!=null) $("perspSize").value=Math.round(p.sizeFrac*100);
+  if(p.youScale!=null) $("perspYouScale").value=Math.round(p.youScale*100);
+  if(p.ghostScale!=null) $("perspGhostScale").value=Math.round(p.ghostScale*100);
   drawPerspEditor();
 }
 $("perspCopyBtn").onclick=async ()=>{
@@ -1923,7 +1936,7 @@ function openPerspEditor(){
 }
 $("perspEditBtn").onclick=openPerspEditor;
 $("perspBack").onclick=()=>{ $("perspCard").classList.add("hidden"); $("setup").classList.remove("hidden"); };
-["perspGap","perspZone","perspSide","perspSep","perspSize"].forEach(id=>{ $(id).addEventListener("input",drawPerspEditor); });
+["perspGap","perspZone","perspSide","perspSep","perspSize","perspYouScale","perspGhostScale"].forEach(id=>{ $(id).addEventListener("input",drawPerspEditor); });
 window.addEventListener("resize",()=>{ if(!$("perspCard").classList.contains("hidden")) drawPerspEditor(); });
 let velTrackLen=250, velEnv="velodromo";
 function drawRoad(){
@@ -1935,7 +1948,7 @@ function drawRoad(){
   let dNow=distanceM + v*idt; if(mode==="gpx") dNow=Math.min(total,dNow);
   const gNow=ghost?ghostDistAt(elapsed+idt):0;
   const S=roadBands(ctx,w,h,dNow,bearingAt,eleAt,fname);
-  const youS=Math.max(20,h*0.135);
+  const youS=Math.max(20,h*0.135*PERSP_YOU_SCALE);
   const camCx0=w/2, camY0=h-6, camHw0=S[0]?S[0].hw:youS*1.5;
   if(ghost){
     const ghostGap=gNow-dNow; // positivo = fantasma adelante, negativo = fantasma atrás (recién lo pasaste)
@@ -1967,7 +1980,7 @@ function drawVelodromeRoad(ctx,w,h){
   const d0=((dNow%velTrackLen)+velTrackLen)%velTrackLen;
   const bFn=(d)=>velodromeBearingAt(d,velTrackLen);
   const S=roadBands(ctx,w,h,d0,bFn,velodromeEleAt,null,SCENES[velEnv]||SCENES.velodromo,{...VELO_GEOM,trackLen:velTrackLen});
-  const youS=Math.max(20,h*0.135);
+  const youS=Math.max(20,h*0.135*PERSP_YOU_SCALE);
   const camCx0=w/2, camY0=h-6, camHw0=S[0]?S[0].hw:youS*1.5;
   if(ghost){
     const gNow=ghostDistAt(elapsed+idt);
@@ -2715,7 +2728,7 @@ function drawRepVelodrome(st){
   const camD0=((cam.d%L)+L)%L;
   const bFn=(d)=>velodromeBearingAt(d,L);
   const S=roadBands(ctx,w,h,camD0,bFn,velodromeEleAt,null,SCENES[repVeloEnv]||SCENES.velodromo,{...VELO_GEOM,trackLen:L});
-  const youS=Math.max(20,h*0.135);
+  const youS=Math.max(20,h*0.135*PERSP_YOU_SCALE);
   const camCx=w/2, camY=h-6, camHw=S[0]?S[0].hw:youS*1.5;
   const others=st.filter(x=>x.r!==camRacer).map(x=>{
     const xd0=((x.d%L)+L)%L;
@@ -2829,7 +2842,7 @@ function drawRepRoad(st){
   const cam=st.find(x=>x.r===camRacer)||st[0];
   const camD=cam.d;
   const S=roadBands(ctx,w,h,camD, d=>bearingRoute(replayRoute,d), d=>eleRoute(replayRoute,d), repRouteName);
-  const youS=Math.max(20,h*0.135);
+  const youS=Math.max(20,h*0.135*PERSP_YOU_SCALE);
   const camCx=w/2, camY=h-6, camHw=S[0]?S[0].hw:youS*1.5;
   // otros corredores (adelante o a rueda de la cámara), de lejos a cerca
   const others=st.filter(x=>x.r!==camRacer).map(x=>({x, gap:x.d-camD})).sort((a,b)=>b.gap-a.gap);
