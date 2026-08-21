@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v112</title>
+<title>Bici Indoor · v113</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v112</h1>
+  <h1>Bici Indoor · v113</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1854,6 +1854,7 @@ function racerScreenPos(S, camD0, gap, camCx, camY, camHw, laneSign, youS, h, op
   const cx=edge.cx+(sideCx-edge.cx)*t, y=edge.y+(camY-edge.y)*t, s=es+(youS*sizeFrac-es)*t;
   return {cx,y,s:s*ghostScale};
 }
+function roadInterpDt(){ if(state!=="riding"||linkLost)return 0; const e=(performance.now()-lastTs)/1000; return (e>0&&e<0.5)?e:0; }
 function drawPerspEditor(){
   const cv=$("perspCv"); if(!cv) return;
   const r=fit(cv), ctx=r.ctx, w=r.w, h=r.h;
