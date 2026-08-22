@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v113</title>
+<title>Bici Indoor · v114</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v113</h1>
+  <h1>Bici Indoor · v114</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -231,23 +231,29 @@
 
   <div class="card hidden" id="perspCard">
     <button id="perspBack" style="margin-bottom:10px">← Volver</button>
-    <h2 style="margin:0 0 4px">Editor de perspectiva</h2>
-    <div style="color:var(--dim);font-size:12px;margin-bottom:10px">Movés los sliders viendo el resultado en vivo. Cuando quede bien, copiá los números de abajo y pasámelos.</div>
+    <h2 style="margin:0 0 4px">Editor de perspectiva — fantasma en vivo</h2>
+    <div style="color:var(--dim);font-size:12px;margin-bottom:10px">Elegís uno de los 7 puntos de brecha, ajustás X/Y/transparencia/tamaño ahí, y repetís con los demás. Entre puntos, el juego interpola solo. La vista previa libre de abajo es solo para chequear cómo queda la mezcla — no edita nada.</div>
     <canvas id="perspCv" height="260" style="width:100%;display:block;border-radius:8px;background:#0a0d12"></canvas>
-    <div class="row"><label for="perspGap">Brecha (m): <span id="perspGapVal">3.0</span></label></div>
-    <input type="range" id="perspGap" min="-8" max="25" step="0.1" value="3" style="width:100%">
-    <div class="row" style="margin-top:10px"><label for="perspZone">Zona "a rueda" (m): <span id="perspZoneVal">1.5</span></label></div>
-    <input type="range" id="perspZone" min="0.3" max="8" step="0.1" value="1.5" style="width:100%">
-    <div class="row" style="margin-top:10px"><label for="perspSide">Desplazamiento lateral (% del ancho de pista): <span id="perspSideVal">55</span></label></div>
-    <input type="range" id="perspSide" min="15" max="95" step="1" value="55" style="width:100%">
-    <div class="row" style="margin-top:10px"><label for="perspSep">Empuje vertical mínimo (% alto pantalla): <span id="perspSepVal">9</span></label></div>
-    <input type="range" id="perspSep" min="0" max="20" step="1" value="9" style="width:100%">
-    <div class="row" style="margin-top:10px"><label for="perspSize">Tamaño al costado (% de tu tamaño): <span id="perspSizeVal">95</span></label></div>
-    <input type="range" id="perspSize" min="50" max="100" step="1" value="95" style="width:100%">
+
+    <div style="color:var(--dim);font-size:11px;margin-top:10px">Punto que estás editando:</div>
+    <div class="row" id="perspKfBtns" style="flex-wrap:wrap;gap:6px"></div>
+
+    <div class="row" style="margin-top:10px"><label for="perspX">Desplazamiento X (%, + derecha / − izquierda): <span id="perspXVal">0</span></label></div>
+    <input type="range" id="perspX" min="-100" max="100" step="1" value="0" style="width:100%">
+    <div class="row" style="margin-top:10px"><label for="perspY">Desplazamiento Y (%, − más arriba/lejos): <span id="perspYVal">0</span></label></div>
+    <input type="range" id="perspY" min="-40" max="15" step="1" value="0" style="width:100%">
+    <div class="row" style="margin-top:10px"><label for="perspAlpha">Transparencia (%): <span id="perspAlphaVal">85</span></label></div>
+    <input type="range" id="perspAlpha" min="10" max="100" step="1" value="85" style="width:100%">
+    <div class="row" style="margin-top:10px"><label for="perspKfSize">Tamaño (% de tu tamaño): <span id="perspKfSizeVal">90</span></label></div>
+    <input type="range" id="perspKfSize" min="5" max="120" step="1" value="90" style="width:100%">
+
+    <div style="color:var(--dim);font-size:11px;margin-top:14px;border-top:1px solid var(--line);padding-top:10px">Vista previa libre (no edita, solo chequea la interpolación):</div>
+    <div class="row"><label for="perspGap">Brecha de previsualización (m): <span id="perspGapVal">3.0</span></label></div>
+    <input type="range" id="perspGap" min="-5" max="25" step="0.1" value="3" style="width:100%">
+
     <div class="row" style="margin-top:10px"><label for="perspYouScale">Tamaño de TU ciclista en pantalla (%): <span id="perspYouScaleVal">100</span></label></div>
     <input type="range" id="perspYouScale" min="50" max="200" step="5" value="100" style="width:100%">
-    <div class="row" style="margin-top:10px"><label for="perspGhostScale">Tamaño del fantasma en pantalla (%): <span id="perspGhostScaleVal">100</span></label></div>
-    <input type="range" id="perspGhostScale" min="50" max="200" step="5" value="100" style="width:100%">
+
     <pre id="perspReadout" style="white-space:pre-wrap;font-size:11px;background:#0a0d12;border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:12px"></pre>
     <div class="row" style="margin-top:8px">
       <button id="perspCopyBtn" style="flex:1">📋 Copiar</button>
@@ -1824,6 +1830,36 @@ function roadPointAt(S,d){
 // mezclando suavemente con la posición de profundidad normal justo en el borde de la zona (sin salto).
 // Estas constantes son las que ajusta el Editor de perspectiva (Parámetros avanzados).
 let DRAFT_ZONE_M=1.5, PERSP_SIDE_FRAC=0.55, PERSP_SEP_FRAC=0.09, PERSP_SIZE_FRAC=0.95, PERSP_YOU_SCALE=1, PERSP_GHOST_SCALE=1;
+
+// ---- Calibración por puntos del fantasma EN VIVO (Recorrido/Velódromo) ----
+// Reemplaza la fórmula de zona/mezcla para el fantasma en vivo: 7 puntos fijos de brecha (m),
+// cada uno con su propio desplazamiento X/Y, transparencia y tamaño. Entre puntos se interpola
+// lineal. El replay (Carrera Virtual) sigue usando racerScreenPos, esto no lo toca.
+// xPct: fracción del medio-ancho de pista en ese punto (+ derecha, - izquierda).
+// yPct: fracción del alto de pantalla, sumada a la posición Y de tu propio avatar (- = más arriba/lejos).
+// alpha: 0 a 1. sizePct: fracción de tu propio tamaño (youS).
+let PERSP_KEYFRAMES=[
+  {gap:-2, xPct:0.45, yPct:0.00,  alpha:0.85, sizePct:0.90},
+  {gap:0,  xPct:0.30, yPct:0.00,  alpha:0.85, sizePct:0.92},
+  {gap:2,  xPct:0.12, yPct:-0.02, alpha:0.80, sizePct:0.80},
+  {gap:5,  xPct:0.00, yPct:-0.06, alpha:0.70, sizePct:0.55},
+  {gap:10, xPct:0.00, yPct:-0.12, alpha:0.60, sizePct:0.32},
+  {gap:15, xPct:0.00, yPct:-0.17, alpha:0.50, sizePct:0.20},
+  {gap:20, xPct:0.00, yPct:-0.21, alpha:0.45, sizePct:0.14},
+];
+function ghostKeyframeAt(gap){
+  const K=PERSP_KEYFRAMES;
+  if(gap<=K[0].gap) return K[0];
+  if(gap>=K[K.length-1].gap) return K[K.length-1];
+  let i=0; while(i<K.length-1 && K[i+1].gap<gap) i++;
+  const a=K[i], b=K[i+1], t=(gap-a.gap)/((b.gap-a.gap)||1);
+  return { gap, xPct:a.xPct+(b.xPct-a.xPct)*t, yPct:a.yPct+(b.yPct-a.yPct)*t,
+    alpha:a.alpha+(b.alpha-a.alpha)*t, sizePct:a.sizePct+(b.sizePct-a.sizePct)*t };
+}
+function ghostScreenPos(camCx,camY,camHw,youS,h,gap){
+  const k=ghostKeyframeAt(gap);
+  return { cx:camCx+k.xPct*camHw, y:camY+k.yPct*h, s:Math.max(4,youS*k.sizePct), alpha:Math.max(0,Math.min(1,k.alpha)) };
+}
 function laneSignFor(racer){ const idx=repRacers.indexOf(racer); return (idx>=0 && idx%2===0)?-1:1; }
 function ensureNearSeparation(p, s, h, sepFrac){
   const sf=sepFrac!=null?sepFrac:PERSP_SEP_FRAC;
@@ -1855,65 +1891,77 @@ function racerScreenPos(S, camD0, gap, camCx, camY, camHw, laneSign, youS, h, op
   return {cx,y,s:s*ghostScale};
 }
 function roadInterpDt(){ if(state!=="riding"||linkLost)return 0; const e=(performance.now()-lastTs)/1000; return (e>0&&e<0.5)?e:0; }
+let perspEditingKf=0; // índice del punto de PERSP_KEYFRAMES que se está editando ahora
+function renderPerspKfBtns(){
+  const wrap=$("perspKfBtns"); wrap.innerHTML="";
+  PERSP_KEYFRAMES.forEach((k,i)=>{
+    const b=document.createElement("button");
+    b.textContent=(k.gap>=0?"+":"")+k.gap+"m";
+    b.style.flex="1"; b.style.minWidth="60px"; b.style.padding="8px 4px";
+    if(i===perspEditingKf) b.style.background="var(--acc)";
+    b.onclick=()=>{ perspEditingKf=i; loadKfIntoSliders(); $("perspGap").value=k.gap; drawPerspEditor(); };
+    wrap.appendChild(b);
+  });
+}
+function loadKfIntoSliders(){
+  const k=PERSP_KEYFRAMES[perspEditingKf];
+  $("perspX").value=Math.round(k.xPct*100);
+  $("perspY").value=Math.round(k.yPct*100);
+  $("perspAlpha").value=Math.round(k.alpha*100);
+  $("perspKfSize").value=Math.round(k.sizePct*100);
+  renderPerspKfBtns();
+}
 function drawPerspEditor(){
   const cv=$("perspCv"); if(!cv) return;
   const r=fit(cv), ctx=r.ctx, w=r.w, h=r.h;
+  // Los sliders X/Y/transparencia/tamaño escriben directo sobre el punto que se está editando.
+  const k=PERSP_KEYFRAMES[perspEditingKf];
+  k.xPct=parseFloat($("perspX").value)/100;
+  k.yPct=parseFloat($("perspY").value)/100;
+  k.alpha=parseFloat($("perspAlpha").value)/100;
+  k.sizePct=parseFloat($("perspKfSize").value)/100;
+  $("perspXVal").textContent=Math.round(k.xPct*100);
+  $("perspYVal").textContent=Math.round(k.yPct*100);
+  $("perspAlphaVal").textContent=Math.round(k.alpha*100);
+  $("perspKfSizeVal").textContent=Math.round(k.sizePct*100);
   const gap=parseFloat($("perspGap").value);
-  const zone=parseFloat($("perspZone").value);
-  const sideFrac=parseFloat($("perspSide").value)/100;
-  const sepFrac=parseFloat($("perspSep").value)/100;
-  const sizeFrac=parseFloat($("perspSize").value)/100;
   const youScale=parseFloat($("perspYouScale").value)/100;
-  const ghostScale=parseFloat($("perspGhostScale").value)/100;
   $("perspGapVal").textContent=gap.toFixed(1);
-  $("perspZoneVal").textContent=zone.toFixed(1);
-  $("perspSideVal").textContent=Math.round(sideFrac*100);
-  $("perspSepVal").textContent=Math.round(sepFrac*100);
-  $("perspSizeVal").textContent=Math.round(sizeFrac*100);
   $("perspYouScaleVal").textContent=Math.round(youScale*100);
-  $("perspGhostScaleVal").textContent=Math.round(ghostScale*100);
-  // Pista sintética recta (sin curva ni peralte) para que el foco esté 100% en la separación,
+  // Pista sintética recta (sin curva ni peralte) para que el foco esté 100% en la posición del fantasma,
   // no en distorsión de curva. camD0 con margen para poder probar brechas negativas también.
   const camD0=50;
   const S=roadBands(ctx,w,h,camD0,()=>0,()=>0,null,SCENES.velodromo,{...VELO_GEOM,trackLen:1000000});
   const youS=Math.max(20,h*0.135*youScale);
   const camCx=w/2, camY=h-6, camHw=S[0]?S[0].hw:youS*1.5;
-  const pos=racerScreenPos(S,camD0,gap,camCx,camY,camHw,-1,youS,h,{zone,sideFrac,sepFrac,sizeFrac,ghostScale});
-  if(pos){
-    drawCyclistRear(ctx,pos.cx,pos.y,pos.s,0,"#f0883e",0.9);
-    ctx.font="700 13px system-ui"; ctx.textAlign="center"; ctx.fillStyle="#fff";
-    ctx.fillText((gap>=0?"+":"")+gap.toFixed(1)+" m", pos.cx, Math.max(14,pos.y-pos.s*3.5-8));
-    ctx.textAlign="start";
-  }
+  const gp=ghostScreenPos(camCx,camY,camHw,youS,h,gap);
+  drawCyclistRear(ctx,gp.cx,gp.y,gp.s,0,"#f0883e",gp.alpha);
+  ctx.font="700 13px system-ui"; ctx.textAlign="center"; ctx.fillStyle="#fff";
+  ctx.fillText((gap>=0?"+":"")+gap.toFixed(1)+" m", gp.cx, Math.max(14,gp.y-gp.s*3.5-8));
+  ctx.textAlign="start";
   drawCyclistRear(ctx,camCx,camY,youS,0,"#2f6f9c",1);
-  $("perspReadout").textContent=perspParamsText({zone,sideFrac,sepFrac,sizeFrac,youScale,ghostScale});
+  $("perspReadout").textContent=perspParamsText();
 }
-function perspParams(){
-  return { zone:parseFloat($("perspZone").value), sideFrac:parseFloat($("perspSide").value)/100,
-    sepFrac:parseFloat($("perspSep").value)/100, sizeFrac:parseFloat($("perspSize").value)/100,
-    youScale:parseFloat($("perspYouScale").value)/100, ghostScale:parseFloat($("perspGhostScale").value)/100 };
-}
-function perspParamsText(p){
-  return "DRAFT_ZONE_M = "+p.zone.toFixed(2)+"\nPERSP_SIDE_FRAC = "+p.sideFrac.toFixed(2)+
-    "\nPERSP_SEP_FRAC = "+p.sepFrac.toFixed(2)+"\nPERSP_SIZE_FRAC = "+p.sizeFrac.toFixed(2)+
-    "\nPERSP_YOU_SCALE = "+p.youScale.toFixed(2)+"\nPERSP_GHOST_SCALE = "+p.ghostScale.toFixed(2);
+function perspParamsText(){
+  let t="PERSP_YOU_SCALE = "+(parseFloat($("perspYouScale").value)/100).toFixed(2)+"\nPERSP_KEYFRAMES = [\n";
+  PERSP_KEYFRAMES.forEach(k=>{ t+="  {gap:"+k.gap+", xPct:"+k.xPct.toFixed(2)+", yPct:"+k.yPct.toFixed(2)+", alpha:"+k.alpha.toFixed(2)+", sizePct:"+k.sizePct.toFixed(2)+"},\n"; });
+  return t+"]";
 }
 function applyPerspParams(p){
-  if(p.zone!=null) $("perspZone").value=p.zone;
-  if(p.sideFrac!=null) $("perspSide").value=Math.round(p.sideFrac*100);
-  if(p.sepFrac!=null) $("perspSep").value=Math.round(p.sepFrac*100);
-  if(p.sizeFrac!=null) $("perspSize").value=Math.round(p.sizeFrac*100);
+  if(p.keyframes && Array.isArray(p.keyframes) && p.keyframes.length===PERSP_KEYFRAMES.length){
+    p.keyframes.forEach((nk,i)=>{ PERSP_KEYFRAMES[i]={...PERSP_KEYFRAMES[i], ...nk}; });
+  }
   if(p.youScale!=null) $("perspYouScale").value=Math.round(p.youScale*100);
-  if(p.ghostScale!=null) $("perspGhostScale").value=Math.round(p.ghostScale*100);
+  loadKfIntoSliders();
   drawPerspEditor();
 }
 $("perspCopyBtn").onclick=async ()=>{
-  const txt=perspParamsText(perspParams());
+  const txt=perspParamsText();
   try{ await navigator.clipboard.writeText(txt); alert("Copiado — pegalo en el chat."); }
   catch(e){ prompt("No pude copiar solo, copiá esto a mano:", txt); }
 };
 $("perspExportBtn").onclick=()=>{
-  const bundle={kind:"bici-persp", v:1, params:perspParams()};
+  const bundle={kind:"bici-persp", v:2, params:{youScale:parseFloat($("perspYouScale").value)/100, keyframes:PERSP_KEYFRAMES}};
   const blob=new Blob([JSON.stringify(bundle,null,2)],{type:"application/json"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="perspectiva-bici-indoor.json"; a.click();
 };
@@ -1932,12 +1980,13 @@ $("perspImportFile").onchange=e=>{
 function openPerspEditor(){
   document.querySelectorAll(".card").forEach(c=>{ if(c.id!=="perspCard") c.classList.add("hidden"); });
   $("perspCard").classList.remove("hidden");
+  loadKfIntoSliders();
   drawPerspEditor();
   scrollTop();
 }
 $("perspEditBtn").onclick=openPerspEditor;
 $("perspBack").onclick=()=>{ $("perspCard").classList.add("hidden"); $("setup").classList.remove("hidden"); };
-["perspGap","perspZone","perspSide","perspSep","perspSize","perspYouScale","perspGhostScale"].forEach(id=>{ $(id).addEventListener("input",drawPerspEditor); });
+["perspGap","perspX","perspY","perspAlpha","perspKfSize","perspYouScale"].forEach(id=>{ $(id).addEventListener("input",drawPerspEditor); });
 window.addEventListener("resize",()=>{ if(!$("perspCard").classList.contains("hidden")) drawPerspEditor(); });
 let velTrackLen=250, velEnv="velodromo";
 let roadDrawErrLogged=false;
@@ -1952,16 +2001,18 @@ function drawRoad(){
     const gNow=ghost?ghostDistAt(elapsed+idt):0;
     const S=roadBands(ctx,w,h,dNow,bearingAt,eleAt,fname);
     const youS=Math.max(20,h*0.135);
-    if(ghost && gNow>dNow){ const p=roadPointAt(S,gNow);
-      if(p){ const gs=Math.max(5, Math.min(youS*0.8, p.hw*0.14));
-        drawCyclistRear(ctx, p.cx, p.y, gs, ghostRoadCrank, "#9fb0c0", 0.45);
-        const gap=Math.round(dNow-gNow), label=(gap>=0?"+":"")+gap+" m";
-        ctx.font="700 13px system-ui"; ctx.textAlign="center";
-        const ly=p.y-gs*3.5, tw=ctx.measureText(label).width;
-        ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(p.cx-tw/2-5,ly-13,tw+10,18);
-        ctx.fillStyle=gap<0?"#ff6b6b":"#3fb950"; ctx.fillText(label,p.cx,ly);
-        ctx.textAlign="start";
-      } }
+    const camCx0=w/2, camY0=h-6, camHw0=S[0]?S[0].hw:youS*1.5;
+    if(ghost){
+      const ghostGap=gNow-dNow; // positivo = fantasma adelante, negativo = fantasma atrás (recién lo pasaste)
+      const gp=ghostScreenPos(camCx0,camY0,camHw0,youS,h,ghostGap);
+      drawCyclistRear(ctx, gp.cx, gp.y, gp.s, ghostRoadCrank, "#9fb0c0", gp.alpha);
+      const gap=Math.round(dNow-gNow), label=(gap>=0?"+":"")+gap+" m";
+      ctx.font="700 13px system-ui"; ctx.textAlign="center";
+      const ly=gp.y-gp.s*3.5, tw=ctx.measureText(label).width;
+      ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(gp.cx-tw/2-5,ly-13,tw+10,18);
+      ctx.fillStyle=gap<0?"#ff6b6b":"#3fb950"; ctx.fillText(label,gp.cx,ly);
+      ctx.textAlign="start";
+    }
     drawCyclistRear(ctx, w/2, h-6, youS, roadCrank, "#2f6f9c", 1);
     // cartel de ventaja/desventaja respecto del fantasma (arriba)
     if(ghost){ const gapNow=Math.round(dNow-gNow), ahead=gapNow>=0;
@@ -1987,13 +2038,13 @@ function drawVelodromeRoad(ctx,w,h){
     const bFn=(d)=>velodromeBearingAt(d,velTrackLen);
     const S=roadBands(ctx,w,h,d0,bFn,velodromeEleAt,null,SCENES[velEnv]||SCENES.velodromo,{...VELO_GEOM,trackLen:velTrackLen});
     const youS=Math.max(20,h*0.135);
+    const camCx0=w/2, camY0=h-6, camHw0=S[0]?S[0].hw:youS*1.5;
     if(ghost){
       const gNow=ghostDistAt(elapsed+idt);
       const gd0=((gNow%velTrackLen)+velTrackLen)%velTrackLen;
-      const relAhead=((gd0-d0)%velTrackLen+velTrackLen)%velTrackLen;
-      const p=roadPointAt(S,d0+relAhead);
-      if(p){ const gs=Math.max(5, Math.min(youS*0.8, p.hw*0.14));
-        drawCyclistRear(ctx, p.cx, p.y, gs, ghostRoadCrank, "#9fb0c0", 0.45); }
+      const ghostGap=((gd0-d0+velTrackLen/2)%velTrackLen+velTrackLen)%velTrackLen - velTrackLen/2; // + adelante, - atrás
+      const gp=ghostScreenPos(camCx0,camY0,camHw0,youS,h,ghostGap);
+      drawCyclistRear(ctx, gp.cx, gp.y, gp.s, ghostRoadCrank, "#9fb0c0", gp.alpha);
       const gapNow=Math.round(dNow-gNow), ahead=gapNow>=0;
       const yourLaps=Math.floor(dNow/velTrackLen), ghostLaps=Math.floor(gNow/velTrackLen);
       const lapDiff=yourLaps-ghostLaps;
