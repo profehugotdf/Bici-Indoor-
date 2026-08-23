@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v131</title>
+<title>Bici Indoor · v134</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v131</h1>
+  <h1>Bici Indoor · v134</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1821,8 +1821,11 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
 // para que en una curva cerrada se vea correrse hacia adentro, en vez de quedar siempre fijo
 // en el centro con la pista curvándose sola alrededor.
 let CURVE_SHIFT_GAIN=500, CURVE_SHIFT_MAX_FRAC=0.5;
+let smoothCurveShift1=0, smoothCurveShift2=0, smoothCurveShift3=0, smoothCurveShift4=0;
+const CURVE_SHIFT_SMOOTH=0.15; // qué tan rápido converge al valor real; más chico = transición más suave
 function curveShiftFor(bFn,d0,camHw){
-  const turnRate=bFn(d0+0.5)-bFn(d0-0.5); // rad, negativo = curva a la izquierda
+  let turnRate=bFn(d0+0.5)-bFn(d0-0.5); // rad, negativo = curva a la izquierda
+  turnRate=Math.atan2(Math.sin(turnRate),Math.cos(turnRate)); // evita el salto falso justo al completar la vuelta
   const raw=turnRate*CURVE_SHIFT_GAIN;
   const cap=camHw*CURVE_SHIFT_MAX_FRAC;
   return Math.max(-cap,Math.min(cap,raw));
@@ -1993,10 +1996,16 @@ function drawPerspEditor(){
   const youS=Math.max(20,h*0.135*youScale);
   const camCx=w/2, camY=h-6, camHw=S[0]?S[0].hw:youS*1.5;
   const gp=ghostScreenPos(S,camD0,camCx,camY,camHw,youS,h,gap);
-  drawCyclistRear(ctx,gp.cx,gp.y,gp.s,0,"#f0883e",gp.alpha);
-  ctx.font="700 13px system-ui"; ctx.textAlign="center"; ctx.fillStyle="#fff";
-  ctx.fillText((gap>=0?"+":"")+gap.toFixed(1)+" m", gp.cx, Math.max(14,gp.y-gp.s*3.5-8));
-  ctx.textAlign="start";
+  if(gp){
+    drawCyclistRear(ctx,gp.cx,gp.y,gp.s,0,"#f0883e",gp.alpha);
+    ctx.font="700 13px system-ui"; ctx.textAlign="center"; ctx.fillStyle="#fff";
+    ctx.fillText((gap>=0?"+":"")+gap.toFixed(1)+" m", gp.cx, Math.max(14,gp.y-gp.s*3.5-8));
+    ctx.textAlign="start";
+  } else {
+    ctx.font="700 12px system-ui"; ctx.textAlign="center"; ctx.fillStyle="#8b96a5";
+    ctx.fillText("(fuera de pantalla a esta brecha)", camCx, 30);
+    ctx.textAlign="start";
+  }
   drawCyclistRear(ctx,camCx,camY,youS,0,"#2f6f9c",1);
   $("perspReadout").textContent=perspParamsText();
 }
@@ -2061,17 +2070,20 @@ function drawRoad(){
     const S=roadBands(ctx,w,h,dNow,bearingAt,eleAt,fname);
     const youS=Math.max(20,h*0.135);
     const curveShift1=curveShiftFor(bearingAt,dNow,S[0]?S[0].hw:youS*1.5);
-    const camCx0=w/2+curveShift1, camY0=h-6, camHw0=S[0]?S[0].hw:youS*1.5;
+    smoothCurveShift1+=(curveShift1-smoothCurveShift1)*CURVE_SHIFT_SMOOTH;
+    const camCx0=w/2+smoothCurveShift1, camY0=h-6, camHw0=S[0]?S[0].hw:youS*1.5;
     if(ghost){
       const ghostGap=gNow-dNow; // positivo = fantasma adelante, negativo = fantasma atrás (recién lo pasaste)
       const gp=ghostScreenPos(S,dNow,camCx0,camY0,camHw0,youS,h,ghostGap);
-      drawCyclistRear(ctx, gp.cx, gp.y, gp.s, ghostRoadCrank, "#9fb0c0", gp.alpha);
-      const gap=Math.round(dNow-gNow), label=(gap>=0?"+":"")+gap+" m";
-      ctx.font="700 13px system-ui"; ctx.textAlign="center";
-      const ly=gp.y-gp.s*3.5, tw=ctx.measureText(label).width;
-      ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(gp.cx-tw/2-5,ly-13,tw+10,18);
-      ctx.fillStyle=gap<0?"#ff6b6b":"#3fb950"; ctx.fillText(label,gp.cx,ly);
-      ctx.textAlign="start";
+      if(gp){
+        drawCyclistRear(ctx, gp.cx, gp.y, gp.s, ghostRoadCrank, "#9fb0c0", gp.alpha);
+        const gap=Math.round(dNow-gNow), label=(gap>=0?"+":"")+gap+" m";
+        ctx.font="700 13px system-ui"; ctx.textAlign="center";
+        const ly=gp.y-gp.s*3.5, tw=ctx.measureText(label).width;
+        ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(gp.cx-tw/2-5,ly-13,tw+10,18);
+        ctx.fillStyle=gap<0?"#ff6b6b":"#3fb950"; ctx.fillText(label,gp.cx,ly);
+        ctx.textAlign="start";
+      }
     }
     drawCyclistRear(ctx, camCx0, h-6, youS, roadCrank, "#2f6f9c", 1);
     // cartel de ventaja/desventaja respecto del fantasma (arriba)
@@ -2099,13 +2111,14 @@ function drawVelodromeRoad(ctx,w,h){
     const S=roadBands(ctx,w,h,d0,bFn,velodromeEleAt,null,SCENES[velEnv]||SCENES.velodromo,{...VELO_GEOM,trackLen:velTrackLen});
     const youS=Math.max(20,h*0.135);
     const curveShift2=curveShiftFor(bFn,d0,S[0]?S[0].hw:youS*1.5);
-    const camCx0=w/2+curveShift2, camY0=h-6, camHw0=S[0]?S[0].hw:youS*1.5;
+    smoothCurveShift2+=(curveShift2-smoothCurveShift2)*CURVE_SHIFT_SMOOTH;
+    const camCx0=w/2+smoothCurveShift2, camY0=h-6, camHw0=S[0]?S[0].hw:youS*1.5;
     if(ghost){
       const gNow=ghostDistAt(elapsed+idt);
       const gd0=((gNow%velTrackLen)+velTrackLen)%velTrackLen;
       const ghostGap=((gd0-d0+velTrackLen/2)%velTrackLen+velTrackLen)%velTrackLen - velTrackLen/2; // + adelante, - atrás
       const gp=ghostScreenPos(S,d0,camCx0,camY0,camHw0,youS,h,ghostGap);
-      drawCyclistRear(ctx, gp.cx, gp.y, gp.s, ghostRoadCrank, "#9fb0c0", gp.alpha);
+      if(gp) drawCyclistRear(ctx, gp.cx, gp.y, gp.s, ghostRoadCrank, "#9fb0c0", gp.alpha);
       const gapNow=Math.round(dNow-gNow), ahead=gapNow>=0;
       const yourLaps=Math.floor(dNow/velTrackLen), ghostLaps=Math.floor(gNow/velTrackLen);
       const lapDiff=yourLaps-ghostLaps;
@@ -2852,7 +2865,8 @@ function drawRepVelodrome(st){
   const S=roadBands(ctx,w,h,camD0,bFn,velodromeEleAt,null,SCENES[repVeloEnv]||SCENES.velodromo,{...VELO_GEOM,trackLen:L});
   const youS=Math.max(20,h*0.135*PERSP_YOU_SCALE);
   const curveShift3=curveShiftFor(bFn,camD0,S[0]?S[0].hw:youS*1.5);
-  const camCx=w/2+curveShift3, camY=h-6, camHw=S[0]?S[0].hw:youS*1.5;
+  smoothCurveShift3+=(curveShift3-smoothCurveShift3)*CURVE_SHIFT_SMOOTH;
+  const camCx=w/2+smoothCurveShift3, camY=h-6, camHw=S[0]?S[0].hw:youS*1.5;
   const others=st.filter(x=>x.r!==camRacer).map(x=>{
     const xd0=((x.d%L)+L)%L;
     const gap=((xd0-camD0+L/2)%L+L)%L - L/2; // brecha con signo (positivo=adelante, negativo=atrás), sin el salto de "casi una vuelta"
@@ -2968,7 +2982,8 @@ function drawRepRoad(st){
   const youS=Math.max(20,h*0.135*PERSP_YOU_SCALE);
   const bFnRep=d=>bearingRoute(replayRoute,d);
   const curveShift4=curveShiftFor(bFnRep,camD,S[0]?S[0].hw:youS*1.5);
-  const camCx=w/2+curveShift4, camY=h-6, camHw=S[0]?S[0].hw:youS*1.5;
+  smoothCurveShift4+=(curveShift4-smoothCurveShift4)*CURVE_SHIFT_SMOOTH;
+  const camCx=w/2+smoothCurveShift4, camY=h-6, camHw=S[0]?S[0].hw:youS*1.5;
   // otros corredores (adelante o a rueda de la cámara), de lejos a cerca
   const others=st.filter(x=>x.r!==camRacer).map(x=>({x, gap:x.d-camD})).sort((a,b)=>b.gap-a.gap);
   for(const {x,gap} of others){
