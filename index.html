@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v117</title>
+<title>Bici Indoor · v124</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v117</h1>
+  <h1>Bici Indoor · v124</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1818,6 +1818,16 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
   }
   return S;
 }
+// Cuánto se desplaza el ciclista (y el fantasma, relativo a él) hacia el lado de la curva —
+// para que en una curva cerrada se vea correrse hacia adentro, en vez de quedar siempre fijo
+// en el centro con la pista curvándose sola alrededor.
+let CURVE_SHIFT_GAIN=500, CURVE_SHIFT_MAX_FRAC=0.5;
+function curveShiftFor(bFn,d0,camHw){
+  const turnRate=bFn(d0+0.5)-bFn(d0-0.5); // rad, negativo = curva a la izquierda
+  const raw=turnRate*CURVE_SHIFT_GAIN;
+  const cap=camHw*CURVE_SHIFT_MAX_FRAC;
+  return Math.max(-cap,Math.min(cap,raw));
+}
 function roadPointAt(S,d){
   if(d<=S[0].d || d>=S[S.length-1].d) return null;
   let i=0; while(i<S.length-1 && S[i+1].d<d) i++;
@@ -1856,17 +1866,33 @@ function ghostKeyframeAt(gap){
   return { gap, xPct:a.xPct+(b.xPct-a.xPct)*t, yPct:a.yPct+(b.yPct-a.yPct)*t,
     alpha:a.alpha+(b.alpha-a.alpha)*t, sizePct:a.sizePct+(b.sizePct-a.sizePct)*t };
 }
-// minSepFrac: separación lateral mínima garantizada entre corredores, como fracción del tamaño
-// renderizado — se suma al desplazamiento calibrado para que dos corredores nunca queden pisados
-// entre sí aunque la tabla diga "sin desplazamiento" en ese tramo de brecha (pasa con un solo
-// fantasma calibrado, pero en el replay puede haber varios corredores a brechas parecidas).
-function ghostScreenPos(camCx,camY,camHw,youS,h,gap,laneSign,minSepFrac){
+// La POSICIÓN (X, Y) sale siempre de la geometría real de la pista — así las curvas se ven bien
+// a cualquier distancia, sin ningún quiebre entre "cerca" y "lejos". La tabla de calibración aporta
+// el TAMAÑO y la TRANSPARENCIA (para eso se armó), y su desplazamiento X/Y queda como un ajuste fino
+// que se SUMA a la posición real, no que la reemplaza — para el efecto de "ir al costado" al sobrepasar.
+// minSepFrac: separación lateral mínima garantizada entre corredores (replay con varios a la vez).
+function ghostScreenPos(S,camD0,camCx,camY,camHw,youS,h,gap,laneSign,minSepFrac){
   const ls=laneSign==null?0:laneSign; // 0 = sin separación extra (fantasma único en vivo)
+  if(!S || S.length<2) return null;
+  // Por diseño: pasados los 2m atrás, el fantasma sale de pantalla — no se dibuja más allá de eso.
+  if(gap<PERSP_KEYFRAMES[0].gap) return null;
+  let p=roadPointAt(S,camD0+gap);
+  if(!p){
+    // El array de bandas de la pista solo se construye hacia ADELANTE de la cámara — por eso un
+    // fantasma apenas detrás (entre 0 y -2m, el rango que calibraste) no encuentra banda real ahí.
+    // Lo extrapolamos linealmente usando la dirección de la pista justo en tu posición (S[0]→S[1]).
+    if(gap>0) return null; // gap=0 exacto sí entra acá (roadPointAt falla justo en el límite S[0].d)
+    const b0=S[0], b1=S[1], dd=(camD0+gap)-b0.d, span=(b1.d-b0.d)||1;
+    const kx=(b1.cx-b0.cx)/span, ky=(b1.y-b0.y)/span, khw=(b1.hw-b0.hw)/span;
+    p={cx:b0.cx+kx*dd, y:b0.y+ky*dd, hw:Math.max(2,b0.hw+khw*dd)};
+  }
   const k=ghostKeyframeAt(gap);
-  const s=Math.max(4,youS*k.sizePct);
+  let s=Math.max(4, youS*k.sizePct); // el tamaño sale de la calibración, no de una estimación cruda
+  ({p,s}=ensureNearSeparation(p,s,h));
   const minSepPx=(minSepFrac||0)*s;
-  const cx=camCx+k.xPct*camHw*(ls||1)+ls*minSepPx;
-  return { cx, y:camY+k.yPct*h, s, alpha:Math.max(0,Math.min(1,k.alpha)) };
+  const cx=p.cx + k.xPct*camHw*(ls||1) + ls*minSepPx; // desplazamiento calibrado, sumado sobre la trayectoria real
+  const y=p.y + k.yPct*h; // ajuste fino vertical, también sumado (no reemplaza la profundidad real)
+  return { cx, y, s, alpha:Math.max(0,Math.min(1,k.alpha)) };
 }
 function laneSignFor(racer){ const idx=repRacers.indexOf(racer); return (idx>=0 && idx%2===0)?-1:1; }
 function ensureNearSeparation(p, s, h, sepFrac){
@@ -1942,7 +1968,7 @@ function drawPerspEditor(){
   const S=roadBands(ctx,w,h,camD0,()=>0,()=>0,null,SCENES.velodromo,{...VELO_GEOM,trackLen:1000000});
   const youS=Math.max(20,h*0.135*youScale);
   const camCx=w/2, camY=h-6, camHw=S[0]?S[0].hw:youS*1.5;
-  const gp=ghostScreenPos(camCx,camY,camHw,youS,h,gap);
+  const gp=ghostScreenPos(S,camD0,camCx,camY,camHw,youS,h,gap);
   drawCyclistRear(ctx,gp.cx,gp.y,gp.s,0,"#f0883e",gp.alpha);
   ctx.font="700 13px system-ui"; ctx.textAlign="center"; ctx.fillStyle="#fff";
   ctx.fillText((gap>=0?"+":"")+gap.toFixed(1)+" m", gp.cx, Math.max(14,gp.y-gp.s*3.5-8));
@@ -2010,10 +2036,11 @@ function drawRoad(){
     const gNow=ghost?ghostDistAt(elapsed+idt):0;
     const S=roadBands(ctx,w,h,dNow,bearingAt,eleAt,fname);
     const youS=Math.max(20,h*0.135);
-    const camCx0=w/2, camY0=h-6, camHw0=S[0]?S[0].hw:youS*1.5;
+    const curveShift1=curveShiftFor(bearingAt,dNow,S[0]?S[0].hw:youS*1.5);
+    const camCx0=w/2+curveShift1, camY0=h-6, camHw0=S[0]?S[0].hw:youS*1.5;
     if(ghost){
       const ghostGap=gNow-dNow; // positivo = fantasma adelante, negativo = fantasma atrás (recién lo pasaste)
-      const gp=ghostScreenPos(camCx0,camY0,camHw0,youS,h,ghostGap);
+      const gp=ghostScreenPos(S,dNow,camCx0,camY0,camHw0,youS,h,ghostGap);
       drawCyclistRear(ctx, gp.cx, gp.y, gp.s, ghostRoadCrank, "#9fb0c0", gp.alpha);
       const gap=Math.round(dNow-gNow), label=(gap>=0?"+":"")+gap+" m";
       ctx.font="700 13px system-ui"; ctx.textAlign="center";
@@ -2022,7 +2049,7 @@ function drawRoad(){
       ctx.fillStyle=gap<0?"#ff6b6b":"#3fb950"; ctx.fillText(label,gp.cx,ly);
       ctx.textAlign="start";
     }
-    drawCyclistRear(ctx, w/2, h-6, youS, roadCrank, "#2f6f9c", 1);
+    drawCyclistRear(ctx, camCx0, h-6, youS, roadCrank, "#2f6f9c", 1);
     // cartel de ventaja/desventaja respecto del fantasma (arriba)
     if(ghost){ const gapNow=Math.round(dNow-gNow), ahead=gapNow>=0;
       const lbl=(ahead?"+":"−")+Math.abs(gapNow)+" m "+(ahead?"adelante":"atrás");
@@ -2047,12 +2074,13 @@ function drawVelodromeRoad(ctx,w,h){
     const bFn=(d)=>velodromeBearingAt(d,velTrackLen);
     const S=roadBands(ctx,w,h,d0,bFn,velodromeEleAt,null,SCENES[velEnv]||SCENES.velodromo,{...VELO_GEOM,trackLen:velTrackLen});
     const youS=Math.max(20,h*0.135);
-    const camCx0=w/2, camY0=h-6, camHw0=S[0]?S[0].hw:youS*1.5;
+    const curveShift2=curveShiftFor(bFn,d0,S[0]?S[0].hw:youS*1.5);
+    const camCx0=w/2+curveShift2, camY0=h-6, camHw0=S[0]?S[0].hw:youS*1.5;
     if(ghost){
       const gNow=ghostDistAt(elapsed+idt);
       const gd0=((gNow%velTrackLen)+velTrackLen)%velTrackLen;
       const ghostGap=((gd0-d0+velTrackLen/2)%velTrackLen+velTrackLen)%velTrackLen - velTrackLen/2; // + adelante, - atrás
-      const gp=ghostScreenPos(camCx0,camY0,camHw0,youS,h,ghostGap);
+      const gp=ghostScreenPos(S,d0,camCx0,camY0,camHw0,youS,h,ghostGap);
       drawCyclistRear(ctx, gp.cx, gp.y, gp.s, ghostRoadCrank, "#9fb0c0", gp.alpha);
       const gapNow=Math.round(dNow-gNow), ahead=gapNow>=0;
       const yourLaps=Math.floor(dNow/velTrackLen), ghostLaps=Math.floor(gNow/velTrackLen);
@@ -2064,7 +2092,7 @@ function drawVelodromeRoad(ctx,w,h){
       ctx.fillStyle=ahead?"#3fb950":"#ff6b6b"; ctx.fillText(lbl,w/2,25);
       ctx.textAlign="start";
     }
-    drawCyclistRear(ctx, w/2, h-6, youS, roadCrank, "#2f6f9c", 1);
+    drawCyclistRear(ctx, camCx0, h-6, youS, roadCrank, "#2f6f9c", 1);
     veloDrawErrLogged=false;
   }catch(e){
     if(!veloDrawErrLogged){ veloDrawErrLogged=true; log("Error dibujando la vista de velódromo: "+e.message,"#f85149"); }
@@ -2799,14 +2827,15 @@ function drawRepVelodrome(st){
   const bFn=(d)=>velodromeBearingAt(d,L);
   const S=roadBands(ctx,w,h,camD0,bFn,velodromeEleAt,null,SCENES[repVeloEnv]||SCENES.velodromo,{...VELO_GEOM,trackLen:L});
   const youS=Math.max(20,h*0.135*PERSP_YOU_SCALE);
-  const camCx=w/2, camY=h-6, camHw=S[0]?S[0].hw:youS*1.5;
+  const curveShift3=curveShiftFor(bFn,camD0,S[0]?S[0].hw:youS*1.5);
+  const camCx=w/2+curveShift3, camY=h-6, camHw=S[0]?S[0].hw:youS*1.5;
   const others=st.filter(x=>x.r!==camRacer).map(x=>{
     const xd0=((x.d%L)+L)%L;
     const gap=((xd0-camD0+L/2)%L+L)%L - L/2; // brecha con signo (positivo=adelante, negativo=atrás), sin el salto de "casi una vuelta"
     return {x, gap};
   }).sort((a,b)=>b.gap-a.gap);
   for(const {x,gap} of others){
-    const pos=ghostScreenPos(camCx,camY,camHw,youS,h,gap,laneSignFor(x.r),0.6); if(!pos)continue;
+    const pos=ghostScreenPos(S,camD0,camCx,camY,camHw,youS,h,gap,laneSignFor(x.r),0.6); if(!pos)continue;
     drawCyclistRear(ctx, pos.cx, pos.y, pos.s, x.r.crank, x.r.color, pos.alpha);
     const lapDiff=Math.floor(x.d/L)-Math.floor(cam.d/L), gapM=Math.round(gap);
     const label=(gapM>=0?"+":"")+gapM+" m"+(lapDiff!==0?" ("+(lapDiff>0?"+":"")+lapDiff+"v)":"");
@@ -2913,11 +2942,13 @@ function drawRepRoad(st){
   const camD=cam.d;
   const S=roadBands(ctx,w,h,camD, d=>bearingRoute(replayRoute,d), d=>eleRoute(replayRoute,d), repRouteName);
   const youS=Math.max(20,h*0.135*PERSP_YOU_SCALE);
-  const camCx=w/2, camY=h-6, camHw=S[0]?S[0].hw:youS*1.5;
+  const bFnRep=d=>bearingRoute(replayRoute,d);
+  const curveShift4=curveShiftFor(bFnRep,camD,S[0]?S[0].hw:youS*1.5);
+  const camCx=w/2+curveShift4, camY=h-6, camHw=S[0]?S[0].hw:youS*1.5;
   // otros corredores (adelante o a rueda de la cámara), de lejos a cerca
   const others=st.filter(x=>x.r!==camRacer).map(x=>({x, gap:x.d-camD})).sort((a,b)=>b.gap-a.gap);
   for(const {x,gap} of others){
-    const pos=ghostScreenPos(camCx,camY,camHw,youS,h,gap,laneSignFor(x.r),0.6); if(!pos)continue;
+    const pos=ghostScreenPos(S,camD,camCx,camY,camHw,youS,h,gap,laneSignFor(x.r),0.6); if(!pos)continue;
     drawCyclistRear(ctx, pos.cx, pos.y, pos.s, x.r.crank, x.r.color, pos.alpha);
     const gapM=Math.round(gap), label=(gapM>=0?"+":"")+gapM+" m";
     ctx.font="700 12px system-ui"; ctx.textAlign="center";
