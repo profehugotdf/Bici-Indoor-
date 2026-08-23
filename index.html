@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v115</title>
+<title>Bici Indoor · v117</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v115</h1>
+  <h1>Bici Indoor · v117</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1856,9 +1856,17 @@ function ghostKeyframeAt(gap){
   return { gap, xPct:a.xPct+(b.xPct-a.xPct)*t, yPct:a.yPct+(b.yPct-a.yPct)*t,
     alpha:a.alpha+(b.alpha-a.alpha)*t, sizePct:a.sizePct+(b.sizePct-a.sizePct)*t };
 }
-function ghostScreenPos(camCx,camY,camHw,youS,h,gap){
+// minSepFrac: separación lateral mínima garantizada entre corredores, como fracción del tamaño
+// renderizado — se suma al desplazamiento calibrado para que dos corredores nunca queden pisados
+// entre sí aunque la tabla diga "sin desplazamiento" en ese tramo de brecha (pasa con un solo
+// fantasma calibrado, pero en el replay puede haber varios corredores a brechas parecidas).
+function ghostScreenPos(camCx,camY,camHw,youS,h,gap,laneSign,minSepFrac){
+  const ls=laneSign==null?0:laneSign; // 0 = sin separación extra (fantasma único en vivo)
   const k=ghostKeyframeAt(gap);
-  return { cx:camCx+k.xPct*camHw, y:camY+k.yPct*h, s:Math.max(4,youS*k.sizePct), alpha:Math.max(0,Math.min(1,k.alpha)) };
+  const s=Math.max(4,youS*k.sizePct);
+  const minSepPx=(minSepFrac||0)*s;
+  const cx=camCx+k.xPct*camHw*(ls||1)+ls*minSepPx;
+  return { cx, y:camY+k.yPct*h, s, alpha:Math.max(0,Math.min(1,k.alpha)) };
 }
 function laneSignFor(racer){ const idx=repRacers.indexOf(racer); return (idx>=0 && idx%2===0)?-1:1; }
 function ensureNearSeparation(p, s, h, sepFrac){
@@ -2798,8 +2806,8 @@ function drawRepVelodrome(st){
     return {x, gap};
   }).sort((a,b)=>b.gap-a.gap);
   for(const {x,gap} of others){
-    const pos=racerScreenPos(S,camD0,gap,camCx,camY,camHw,laneSignFor(x.r),youS,h); if(!pos)continue;
-    drawCyclistRear(ctx, pos.cx, pos.y, pos.s, x.r.crank, x.r.color, 0.9);
+    const pos=ghostScreenPos(camCx,camY,camHw,youS,h,gap,laneSignFor(x.r),0.6); if(!pos)continue;
+    drawCyclistRear(ctx, pos.cx, pos.y, pos.s, x.r.crank, x.r.color, pos.alpha);
     const lapDiff=Math.floor(x.d/L)-Math.floor(cam.d/L), gapM=Math.round(gap);
     const label=(gapM>=0?"+":"")+gapM+" m"+(lapDiff!==0?" ("+(lapDiff>0?"+":"")+lapDiff+"v)":"");
     ctx.font="700 12px system-ui"; ctx.textAlign="center";
@@ -2909,8 +2917,8 @@ function drawRepRoad(st){
   // otros corredores (adelante o a rueda de la cámara), de lejos a cerca
   const others=st.filter(x=>x.r!==camRacer).map(x=>({x, gap:x.d-camD})).sort((a,b)=>b.gap-a.gap);
   for(const {x,gap} of others){
-    const pos=racerScreenPos(S,camD,gap,camCx,camY,camHw,laneSignFor(x.r),youS,h); if(!pos)continue;
-    drawCyclistRear(ctx, pos.cx, pos.y, pos.s, x.r.crank, x.r.color, 0.9);
+    const pos=ghostScreenPos(camCx,camY,camHw,youS,h,gap,laneSignFor(x.r),0.6); if(!pos)continue;
+    drawCyclistRear(ctx, pos.cx, pos.y, pos.s, x.r.crank, x.r.color, pos.alpha);
     const gapM=Math.round(gap), label=(gapM>=0?"+":"")+gapM+" m";
     ctx.font="700 12px system-ui"; ctx.textAlign="center";
     const ly=pos.y-pos.s*3.5, tw=ctx.measureText(label).width;
