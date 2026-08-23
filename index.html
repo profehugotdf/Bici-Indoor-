@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v125</title>
+<title>Bici Indoor · v127</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v125</h1>
+  <h1>Bici Indoor · v127</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1870,24 +1870,25 @@ function ghostKeyframeAt(gap){
 // el TAMAÑO y la TRANSPARENCIA (para eso se armó), y su desplazamiento X/Y queda como un ajuste fino
 // que se SUMA a la posición real, no que la reemplaza — para el efecto de "ir al costado" al sobrepasar.
 // minSepFrac: separación lateral mínima garantizada entre corredores (replay con varios a la vez).
+const NEAR_SAFE_M=3; // por debajo de esto, los primeros puntos de la pista quedan "pegados" a una
+// fórmula de perspectiva que casi divide por cero (da posiciones desproporcionadas) — no sirven
+// como posición de sprite. Se interpola directo desde tu propia posición fija en pantalla.
 function ghostScreenPos(S,camD0,camCx,camY,camHw,youS,h,gap,laneSign,minSepFrac){
   const ls=laneSign==null?0:laneSign; // 0 = sin separación extra (fantasma único en vivo)
-  if(!S || S.length<2) return null;
+  if(!S || S.length<4) return null;
   // Por diseño: pasados los 2m atrás, el fantasma sale de pantalla — no se dibuja más allá de eso.
   if(gap<PERSP_KEYFRAMES[0].gap) return null;
-  let p=roadPointAt(S,camD0+gap);
-  if(!p){
-    // El array de bandas de la pista solo se construye hacia ADELANTE de la cámara — por eso un
-    // fantasma apenas detrás (entre 0 y -2m, el rango que calibraste) no encuentra banda real ahí.
-    // Lo extrapolamos linealmente usando la dirección de la pista justo en tu posición (S[0]→S[1]).
-    if(gap>0) return null; // gap=0 exacto sí entra acá (roadPointAt falla justo en el límite S[0].d)
-    const b0=S[0], b1=S[1], dd=(camD0+gap)-b0.d, span=(b1.d-b0.d)||1;
-    const kx=(b1.cx-b0.cx)/span, ky=(b1.y-b0.y)/span, khw=(b1.hw-b0.hw)/span;
-    p={cx:b0.cx+kx*dd, y:b0.y+ky*dd, hw:Math.max(2,b0.hw+khw*dd)};
+  let iSafe=1; while(iSafe<S.length-1 && (S[iSafe].d-camD0)<NEAR_SAFE_M) iSafe++;
+  const safe=S[iSafe], targetD=camD0+gap;
+  let p;
+  if(targetD<safe.d){
+    const t=gap/((safe.d-camD0)||1); // 0 = tu posición exacta, 1 = el primer punto "sano" de la pista
+    p={cx:camCx+(safe.cx-camCx)*t, y:camY+(safe.y-camY)*t, hw:camHw+(safe.hw-camHw)*t};
+  } else {
+    p=roadPointAt(S,targetD); if(!p) return null;
   }
   const k=ghostKeyframeAt(gap);
-  let s=Math.max(4, youS*k.sizePct); // el tamaño sale de la calibración, no de una estimación cruda
-  ({p,s}=ensureNearSeparation(p,s,h));
+  const s=Math.max(4, youS*k.sizePct); // el tamaño sale ÍNTEGRAMENTE de la calibración, sin ningún ajuste automático encima
   const minSepPx=(minSepFrac||0)*s;
   const cx=p.cx + k.xPct*camHw*(ls||1) + ls*minSepPx; // desplazamiento calibrado, sumado sobre la trayectoria real
   const y=p.y; // la altura sale 100% de la trayectoria real (la calibración es para tamaño, no posición)
