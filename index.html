@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v114</title>
+<title>Bici Indoor · v115</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v114</h1>
+  <h1>Bici Indoor · v115</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -241,7 +241,7 @@
     <div class="row" style="margin-top:10px"><label for="perspX">Desplazamiento X (%, + derecha / − izquierda): <span id="perspXVal">0</span></label></div>
     <input type="range" id="perspX" min="-100" max="100" step="1" value="0" style="width:100%">
     <div class="row" style="margin-top:10px"><label for="perspY">Desplazamiento Y (%, − más arriba/lejos): <span id="perspYVal">0</span></label></div>
-    <input type="range" id="perspY" min="-40" max="15" step="1" value="0" style="width:100%">
+    <input type="range" id="perspY" min="-70" max="15" step="1" value="0" style="width:100%">
     <div class="row" style="margin-top:10px"><label for="perspAlpha">Transparencia (%): <span id="perspAlphaVal">85</span></label></div>
     <input type="range" id="perspAlpha" min="10" max="100" step="1" value="85" style="width:100%">
     <div class="row" style="margin-top:10px"><label for="perspKfSize">Tamaño (% de tu tamaño): <span id="perspKfSizeVal">90</span></label></div>
@@ -252,7 +252,7 @@
     <input type="range" id="perspGap" min="-5" max="25" step="0.1" value="3" style="width:100%">
 
     <div class="row" style="margin-top:10px"><label for="perspYouScale">Tamaño de TU ciclista en pantalla (%): <span id="perspYouScaleVal">100</span></label></div>
-    <input type="range" id="perspYouScale" min="50" max="200" step="5" value="100" style="width:100%">
+    <input type="range" id="perspYouScale" min="50" max="200" step="5" value="80" style="width:100%">
 
     <pre id="perspReadout" style="white-space:pre-wrap;font-size:11px;background:#0a0d12;border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:12px"></pre>
     <div class="row" style="margin-top:8px">
@@ -1829,7 +1829,7 @@ function roadPointAt(S,d){
 // adelante/atrás en la misma línea. Por debajo de DRAFT_ZONE_M se dibuja desplazado lateralmente,
 // mezclando suavemente con la posición de profundidad normal justo en el borde de la zona (sin salto).
 // Estas constantes son las que ajusta el Editor de perspectiva (Parámetros avanzados).
-let DRAFT_ZONE_M=1.5, PERSP_SIDE_FRAC=0.55, PERSP_SEP_FRAC=0.09, PERSP_SIZE_FRAC=0.95, PERSP_YOU_SCALE=1, PERSP_GHOST_SCALE=1;
+let DRAFT_ZONE_M=1.5, PERSP_SIDE_FRAC=0.55, PERSP_SEP_FRAC=0.09, PERSP_SIZE_FRAC=0.95, PERSP_YOU_SCALE=0.80, PERSP_GHOST_SCALE=1;
 
 // ---- Calibración por puntos del fantasma EN VIVO (Recorrido/Velódromo) ----
 // Reemplaza la fórmula de zona/mezcla para el fantasma en vivo: 7 puntos fijos de brecha (m),
@@ -1839,13 +1839,13 @@ let DRAFT_ZONE_M=1.5, PERSP_SIDE_FRAC=0.55, PERSP_SEP_FRAC=0.09, PERSP_SIZE_FRAC
 // yPct: fracción del alto de pantalla, sumada a la posición Y de tu propio avatar (- = más arriba/lejos).
 // alpha: 0 a 1. sizePct: fracción de tu propio tamaño (youS).
 let PERSP_KEYFRAMES=[
-  {gap:-2, xPct:0.45, yPct:0.00,  alpha:0.85, sizePct:0.90},
-  {gap:0,  xPct:0.30, yPct:0.00,  alpha:0.85, sizePct:0.92},
-  {gap:2,  xPct:0.12, yPct:-0.02, alpha:0.80, sizePct:0.80},
-  {gap:5,  xPct:0.00, yPct:-0.06, alpha:0.70, sizePct:0.55},
-  {gap:10, xPct:0.00, yPct:-0.12, alpha:0.60, sizePct:0.32},
-  {gap:15, xPct:0.00, yPct:-0.17, alpha:0.50, sizePct:0.20},
-  {gap:20, xPct:0.00, yPct:-0.21, alpha:0.45, sizePct:0.14},
+  {gap:-2, xPct:-0.02, yPct:0.08,  alpha:0.56, sizePct:1.20},
+  {gap:0,  xPct:-0.02, yPct:-0.01, alpha:0.78, sizePct:0.97},
+  {gap:2,  xPct:0.00,  yPct:-0.14, alpha:0.73, sizePct:0.80},
+  {gap:5,  xPct:0.00,  yPct:-0.25, alpha:0.70, sizePct:0.55},
+  {gap:10, xPct:0.00,  yPct:-0.33, alpha:0.60, sizePct:0.43},
+  {gap:15, xPct:0.00,  yPct:-0.38, alpha:0.50, sizePct:0.37},
+  {gap:20, xPct:0.00,  yPct:-0.40, alpha:0.45, sizePct:0.29},
 ];
 function ghostKeyframeAt(gap){
   const K=PERSP_KEYFRAMES;
@@ -1980,6 +1980,7 @@ $("perspImportFile").onchange=e=>{
 function openPerspEditor(){
   document.querySelectorAll(".card").forEach(c=>{ if(c.id!=="perspCard") c.classList.add("hidden"); });
   $("perspCard").classList.remove("hidden");
+  $("perspYouScale").value=Math.round(PERSP_YOU_SCALE*100);
   loadKfIntoSliders();
   drawPerspEditor();
   scrollTop();
