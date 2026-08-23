@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v127</title>
+<title>Bici Indoor · v129</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v127</h1>
+  <h1>Bici Indoor · v129</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1859,7 +1859,14 @@ let PERSP_KEYFRAMES=[
 function ghostKeyframeAt(gap){
   const K=PERSP_KEYFRAMES;
   if(gap<=K[0].gap) return K[0];
-  if(gap>=K[K.length-1].gap) return K[K.length-1];
+  if(gap>=K[K.length-1].gap){
+    // Más allá del último punto calibrado (20m), el tamaño sigue achicándose con la distancia real
+    // en vez de quedar clavado siempre igual — si no, un corredor a 91m se ve del mismo tamaño que
+    // uno a 21m, y no se nota cuál está más lejos.
+    const last=K[K.length-1];
+    const sizePct=Math.max(0.02, last.sizePct*(last.gap/gap));
+    return {gap, xPct:last.xPct, yPct:last.yPct, alpha:last.alpha, sizePct};
+  }
   let i=0; while(i<K.length-1 && K[i+1].gap<gap) i++;
   const a=K[i], b=K[i+1], t=(gap-a.gap)/((b.gap-a.gap)||1);
   return { gap, xPct:a.xPct+(b.xPct-a.xPct)*t, yPct:a.yPct+(b.yPct-a.yPct)*t,
@@ -1870,15 +1877,16 @@ function ghostKeyframeAt(gap){
 // el TAMAÑO y la TRANSPARENCIA (para eso se armó), y su desplazamiento X/Y queda como un ajuste fino
 // que se SUMA a la posición real, no que la reemplaza — para el efecto de "ir al costado" al sobrepasar.
 // minSepFrac: separación lateral mínima garantizada entre corredores (replay con varios a la vez).
-const NEAR_SAFE_M=3; // por debajo de esto, los primeros puntos de la pista quedan "pegados" a una
-// fórmula de perspectiva que casi divide por cero (da posiciones desproporcionadas) — no sirven
-// como posición de sprite. Se interpola directo desde tu propia posición fija en pantalla.
+// Nada de "por debajo de tantos metros" — eso depende del tamaño de pantalla y podía fallar.
+// Se busca el primer punto de la pista que genuinamente esté "arriba" en la imagen (Y menor que
+// tu propia posición): antes de eso, la fórmula de perspectiva todavía está pegada a la cámara
+// y da valores desproporcionados, que no sirven como posición de sprite.
 function ghostScreenPos(S,camD0,camCx,camY,camHw,youS,h,gap,laneSign,minSepFrac){
   const ls=laneSign==null?0:laneSign; // 0 = sin separación extra (fantasma único en vivo)
   if(!S || S.length<4) return null;
   // Por diseño: pasados los 2m atrás, el fantasma sale de pantalla — no se dibuja más allá de eso.
   if(gap<PERSP_KEYFRAMES[0].gap) return null;
-  let iSafe=1; while(iSafe<S.length-1 && (S[iSafe].d-camD0)<NEAR_SAFE_M) iSafe++;
+  let iSafe=1; while(iSafe<S.length-1 && S[iSafe].y>=camY) iSafe++;
   const safe=S[iSafe], targetD=camD0+gap;
   let p;
   if(targetD<safe.d){
