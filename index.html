@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v124</title>
+<title>Bici Indoor · v125</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v124</h1>
+  <h1>Bici Indoor · v125</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -240,8 +240,7 @@
 
     <div class="row" style="margin-top:10px"><label for="perspX">Desplazamiento X (%, + derecha / − izquierda): <span id="perspXVal">0</span></label></div>
     <input type="range" id="perspX" min="-100" max="100" step="1" value="0" style="width:100%">
-    <div class="row" style="margin-top:10px"><label for="perspY">Desplazamiento Y (%, − más arriba/lejos): <span id="perspYVal">0</span></label></div>
-    <input type="range" id="perspY" min="-70" max="15" step="1" value="0" style="width:100%">
+    <div style="color:var(--dim);font-size:11px;margin-top:8px">La altura (Y) ya no se calibra — sale siempre de la trayectoria real de la pista, para que las curvas se vean bien a cualquier distancia.</div>
     <div class="row" style="margin-top:10px"><label for="perspAlpha">Transparencia (%): <span id="perspAlphaVal">85</span></label></div>
     <input type="range" id="perspAlpha" min="10" max="100" step="1" value="85" style="width:100%">
     <div class="row" style="margin-top:10px"><label for="perspKfSize">Tamaño (% de tu tamaño): <span id="perspKfSizeVal">90</span></label></div>
@@ -1891,7 +1890,7 @@ function ghostScreenPos(S,camD0,camCx,camY,camHw,youS,h,gap,laneSign,minSepFrac)
   ({p,s}=ensureNearSeparation(p,s,h));
   const minSepPx=(minSepFrac||0)*s;
   const cx=p.cx + k.xPct*camHw*(ls||1) + ls*minSepPx; // desplazamiento calibrado, sumado sobre la trayectoria real
-  const y=p.y + k.yPct*h; // ajuste fino vertical, también sumado (no reemplaza la profundidad real)
+  const y=p.y; // la altura sale 100% de la trayectoria real (la calibración es para tamaño, no posición)
   return { cx, y, s, alpha:Math.max(0,Math.min(1,k.alpha)) };
 }
 function laneSignFor(racer){ const idx=repRacers.indexOf(racer); return (idx>=0 && idx%2===0)?-1:1; }
@@ -1940,7 +1939,6 @@ function renderPerspKfBtns(){
 function loadKfIntoSliders(){
   const k=PERSP_KEYFRAMES[perspEditingKf];
   $("perspX").value=Math.round(k.xPct*100);
-  $("perspY").value=Math.round(k.yPct*100);
   $("perspAlpha").value=Math.round(k.alpha*100);
   $("perspKfSize").value=Math.round(k.sizePct*100);
   renderPerspKfBtns();
@@ -1948,14 +1946,13 @@ function loadKfIntoSliders(){
 function drawPerspEditor(){
   const cv=$("perspCv"); if(!cv) return;
   const r=fit(cv), ctx=r.ctx, w=r.w, h=r.h;
-  // Los sliders X/Y/transparencia/tamaño escriben directo sobre el punto que se está editando.
+  // Los sliders X/transparencia/tamaño escriben directo sobre el punto que se está editando.
+  // Y ya no se calibra: la altura sale siempre de la trayectoria real (ver ghostScreenPos).
   const k=PERSP_KEYFRAMES[perspEditingKf];
   k.xPct=parseFloat($("perspX").value)/100;
-  k.yPct=parseFloat($("perspY").value)/100;
   k.alpha=parseFloat($("perspAlpha").value)/100;
   k.sizePct=parseFloat($("perspKfSize").value)/100;
   $("perspXVal").textContent=Math.round(k.xPct*100);
-  $("perspYVal").textContent=Math.round(k.yPct*100);
   $("perspAlphaVal").textContent=Math.round(k.alpha*100);
   $("perspKfSizeVal").textContent=Math.round(k.sizePct*100);
   const gap=parseFloat($("perspGap").value);
@@ -2021,7 +2018,7 @@ function openPerspEditor(){
 }
 $("perspEditBtn").onclick=openPerspEditor;
 $("perspBack").onclick=()=>{ $("perspCard").classList.add("hidden"); $("setup").classList.remove("hidden"); };
-["perspGap","perspX","perspY","perspAlpha","perspKfSize","perspYouScale"].forEach(id=>{ $(id).addEventListener("input",drawPerspEditor); });
+["perspGap","perspX","perspAlpha","perspKfSize","perspYouScale"].forEach(id=>{ $(id).addEventListener("input",drawPerspEditor); });
 window.addEventListener("resize",()=>{ if(!$("perspCard").classList.contains("hidden")) drawPerspEditor(); });
 let velTrackLen=250, velEnv="velodromo";
 let roadDrawErrLogged=false;
