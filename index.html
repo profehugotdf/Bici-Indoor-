@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v129</title>
+<title>Bici Indoor · v131</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v129</h1>
+  <h1>Bici Indoor · v131</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1850,12 +1850,28 @@ let DRAFT_ZONE_M=1.5, PERSP_SIDE_FRAC=0.55, PERSP_SEP_FRAC=0.09, PERSP_SIZE_FRAC
 let PERSP_KEYFRAMES=[
   {gap:-2, xPct:-0.02, yPct:0.08,  alpha:0.56, sizePct:1.20},
   {gap:0,  xPct:-0.02, yPct:-0.01, alpha:0.78, sizePct:0.97},
-  {gap:2,  xPct:0.00,  yPct:-0.14, alpha:0.73, sizePct:0.80},
-  {gap:5,  xPct:0.00,  yPct:-0.25, alpha:0.70, sizePct:0.55},
+  {gap:2,  xPct:0.00,  yPct:-0.14, alpha:0.73, sizePct:0.88},
+  {gap:5,  xPct:0.00,  yPct:-0.25, alpha:0.70, sizePct:0.62},
   {gap:10, xPct:0.00,  yPct:-0.33, alpha:0.60, sizePct:0.43},
   {gap:15, xPct:0.00,  yPct:-0.38, alpha:0.50, sizePct:0.37},
   {gap:20, xPct:0.00,  yPct:-0.40, alpha:0.45, sizePct:0.29},
 ];
+// Guarda/carga la calibración del editor en localStorage — así lo que ajustás queda para siempre,
+// sin necesidad de exportar/importar un archivo cada vez que abrís la app.
+function savePerspToStorage(){
+  try{ localStorage.setItem("bici_persp_calib", JSON.stringify({youScale:PERSP_YOU_SCALE, keyframes:PERSP_KEYFRAMES})); }catch(_){}
+}
+function loadPerspFromStorage(){
+  try{
+    const raw=localStorage.getItem("bici_persp_calib"); if(!raw) return;
+    const b=JSON.parse(raw);
+    if(b.keyframes && Array.isArray(b.keyframes) && b.keyframes.length===PERSP_KEYFRAMES.length){
+      b.keyframes.forEach((nk,i)=>{ PERSP_KEYFRAMES[i]={...PERSP_KEYFRAMES[i], ...nk}; });
+    }
+    if(b.youScale!=null) PERSP_YOU_SCALE=b.youScale;
+  }catch(_){}
+}
+loadPerspFromStorage();
 function ghostKeyframeAt(gap){
   const K=PERSP_KEYFRAMES;
   if(gap<=K[0].gap) return K[0];
@@ -1966,8 +1982,10 @@ function drawPerspEditor(){
   $("perspKfSizeVal").textContent=Math.round(k.sizePct*100);
   const gap=parseFloat($("perspGap").value);
   const youScale=parseFloat($("perspYouScale").value)/100;
+  PERSP_YOU_SCALE=youScale; // antes esto solo se usaba acá adentro, nunca llegaba al juego real
   $("perspGapVal").textContent=gap.toFixed(1);
   $("perspYouScaleVal").textContent=Math.round(youScale*100);
+  savePerspToStorage(); // guarda cualquier ajuste al toque, sin necesidad de exportar/importar
   // Pista sintética recta (sin curva ni peralte) para que el foco esté 100% en la posición del fantasma,
   // no en distorsión de curva. camD0 con margen para poder probar brechas negativas también.
   const camD0=50;
