@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v135</title>
+<title>Bici Indoor · v136</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v135</h1>
+  <h1>Bici Indoor · v136</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -2566,12 +2566,36 @@ $("connType").onchange=()=>{ conn=$("connType").value; saveCfg(); };
 $("hrBleBtn").onclick=connectHrBle;
 
 const CFG_KEY="bici_config", CFG_IDS=["weight","bike","crr","cda","smoothM","diff","connType","ftp","age","hrMax","hrRest","cadPref","crankLen","zoneModel","fitSaddleH"];
+const K_UMBRALES="entrenamiento_umbrales"; // misma clave compartida que Correr, Kayak y Plan de Ciclos
 function hrMaxVal(){ const m=parseInt($("hrMax").value,10); if(m>0)return m; const a=parseInt($("age").value,10)||40; return Math.round(207-0.7*a); }
 function updateHrMaxHint(){ const el=$("hrMaxHint"); if(!el)return; const own=parseInt($("hrMax").value,10)>0;
   el.textContent="FC máx en uso: "+hrMaxVal()+" bpm"+(own?" (propia)":" (estimada por edad)"); }
-function saveCfg(){ const o={}; CFG_IDS.forEach(id=>{const el=$(id);if(el)o[id]=el.value;}); try{localStorage.setItem(CFG_KEY,JSON.stringify(o));}catch(_){} }
+function saveCfg(){
+  const o={}; CFG_IDS.forEach(id=>{const el=$(id);if(el)o[id]=el.value;});
+  let prevFtp=null; try{ prevFtp=JSON.parse(localStorage.getItem(CFG_KEY)||"{}").ftp; }catch(_){}
+  try{localStorage.setItem(CFG_KEY,JSON.stringify(o));}catch(_){}
+  // Solo escribimos al compartido cuando el FTP específicamente cambió — saveCfg() se llama seguido
+  // (cualquier campo dispara un guardado), no hace falta tocar el umbral compartido cada vez.
+  if(o.ftp!=null && String(o.ftp)!==String(prevFtp)){
+    try{
+      const u=JSON.parse(localStorage.getItem(K_UMBRALES)||"{}");
+      u.ftpBici=parseFloat(o.ftp);
+      u.actualizado=new Date().toISOString().slice(0,10);
+      localStorage.setItem(K_UMBRALES,JSON.stringify(u));
+    }catch(_){}
+  }
+}
 function loadCfg(){ let o; try{o=JSON.parse(localStorage.getItem(CFG_KEY)||"{}");}catch(_){o={};}
   CFG_IDS.forEach(id=>{const el=$(id);if(el&&o[id]!=null)el.value=o[id];});
+  // Si el FTP local está vacío o quedó en el valor de fábrica del input (200), pero el umbral
+  // compartido ya tiene uno cargado (de Correr, Kayak o donde sea que se haya definido), lo tomamos.
+  try{
+    const ftpEl=$("ftp");
+    if(ftpEl && (!ftpEl.value || parseFloat(ftpEl.value)===200)){
+      const u=JSON.parse(localStorage.getItem(K_UMBRALES)||"{}");
+      if(u.ftpBici!=null && u.ftpBici>0) ftpEl.value=u.ftpBici;
+    }
+  }catch(_){}
   conn=$("connType").value;
 }
 CFG_IDS.forEach(id=>{const el=$(id);if(el)el.addEventListener("change",saveCfg);});
