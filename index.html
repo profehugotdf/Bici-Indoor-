@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v134</title>
+<title>Bici Indoor · v135</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v134</h1>
+  <h1>Bici Indoor · v135</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -473,7 +473,7 @@
     </div>
     <div id="pmcPanel" class="hidden" style="margin-bottom:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <b style="font-size:13px">Forma (Fitness/Fatiga/TSB) — todas las sesiones con TSS</b>
+        <b style="font-size:13px">Forma (Fitness/Fatiga/TSB) — combinada con Correr y Kayak</b>
         <button id="pmcClose" style="min-height:32px;padding:4px 10px">✕</button>
       </div>
       <div style="color:var(--dim);font-size:11px;margin-bottom:4px"><span style="color:#4cc2ff">■</span> CTL (fitness, 42d) &nbsp; <span style="color:#f85149">■</span> ATL (fatiga, 7d)</div>
@@ -2293,24 +2293,25 @@ function loadSesiones(){try{return JSON.parse(localStorage.getItem("bici_sesione
 
 // ---- Registro compartido de "Forma" entre mis apps (mismo dominio, distinta carpeta) ----
 // Los fantasmas importados (mode:"tcx") no son entrenamiento propio, así que no cuentan acá.
+const K_FORMA_COMPARTIDA="entrenamiento_forma_registro"; // misma clave que usan Correr y Kayak
 function actualizarFormaCompartida(s){
   if(!s || s.mode==="tcx") return;
   try{
-    const reg=JSON.parse(localStorage.getItem("entrenamiento_forma_registro")||"[]");
+    const reg=JSON.parse(localStorage.getItem(K_FORMA_COMPARTIDA)||"[]");
     reg.push({fecha:new Date(s.date).toISOString().slice(0,10), deporte:"bici", tss:s.tss||0, id:s.date});
-    localStorage.setItem("entrenamiento_forma_registro",JSON.stringify(reg));
+    localStorage.setItem(K_FORMA_COMPARTIDA,JSON.stringify(reg));
   }catch(_){}
 }
 function eliminarDeFormaCompartida(id){
   try{
-    const reg=JSON.parse(localStorage.getItem("entrenamiento_forma_registro")||"[]");
-    localStorage.setItem("entrenamiento_forma_registro",JSON.stringify(reg.filter(r=>!(r.deporte==="bici"&&r.id===id))));
+    const reg=JSON.parse(localStorage.getItem(K_FORMA_COMPARTIDA)||"[]");
+    localStorage.setItem(K_FORMA_COMPARTIDA,JSON.stringify(reg.filter(r=>!(r.deporte==="bici"&&r.id===id))));
   }catch(_){}
 }
 function eliminarTodoBiciDeFormaCompartida(){
   try{
-    const reg=JSON.parse(localStorage.getItem("entrenamiento_forma_registro")||"[]");
-    localStorage.setItem("entrenamiento_forma_registro",JSON.stringify(reg.filter(r=>r.deporte!=="bici")));
+    const reg=JSON.parse(localStorage.getItem(K_FORMA_COMPARTIDA)||"[]");
+    localStorage.setItem(K_FORMA_COMPARTIDA,JSON.stringify(reg.filter(r=>r.deporte!=="bici")));
   }catch(_){}
 }
 function populateGhosts(){
@@ -3357,16 +3358,49 @@ function computeDailyTSS(){
   }
   return out;
 }
+// Forma COMBINADA entre apps: lee el registro compartido (bici + Correr + Kayak), no solo lo propio.
+// Portado de Correr (calcularSerieFormaCombinada) para que el cálculo sea idéntico entre las tres apps.
+// computeDailyTSS() de arriba queda como el cálculo solo-bici, por si hace falta para otra cosa interna.
+function pasoEWMA(ctlPrev, atlPrev, tssHoy){
+  const ctl=ctlPrev+(tssHoy-ctlPrev)/42;
+  const atl=atlPrev+(tssHoy-atlPrev)/7;
+  const tsb=ctlPrev-atlPrev; // brecha del día ANTERIOR, no la ya actualizada de hoy
+  return {ctl,atl,tsb};
+}
+function calcularSerieFormaCombinada(){
+  let registro=[]; try{ registro=JSON.parse(localStorage.getItem(K_FORMA_COMPARTIDA)||"[]"); }catch(_){}
+  registro=[...registro].sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
+  if(!registro.length) return {serie:[], ctl:0, atl:0, tsb:0, porDeporte:{}};
+  const porDia={}, porDeporte={};
+  registro.forEach(r=>{
+    porDia[r.fecha]=(porDia[r.fecha]||0)+(r.tss||0);
+    porDeporte[r.deporte]=(porDeporte[r.deporte]||0)+(r.tss||0);
+  });
+  const dias=Object.keys(porDia).sort();
+  const inicio=new Date(dias[0]);
+  const fin=new Date();
+  let ctl=0, atl=0;
+  const serie=[];
+  for(let d=new Date(inicio); d<=fin; d.setDate(d.getDate()+1)){
+    const key=d.toISOString().slice(0,10);
+    const tssHoy=porDia[key]||0;
+    const r=pasoEWMA(ctl,atl,tssHoy);
+    ctl=r.ctl; atl=r.atl;
+    serie.push({fecha:key, ctl, atl, tsb:r.tsb});
+  }
+  const ultimo=serie[serie.length-1]||{ctl:0,atl:0,tsb:0};
+  return {serie, ctl:ultimo.ctl, atl:ultimo.atl, tsb:ultimo.tsb, porDeporte};
+}
 let pmcData=[];
-function renderPMC(){ pmcData=computeDailyTSS(); drawPMCAt(null); }
+function renderPMC(){ pmcData=calcularSerieFormaCombinada().serie; drawPMCAt(null); }
 function drawPMCAt(idx){
   const ctlPts=pmcData.map((d,i)=>({x:i,y:d.ctl})), atlPts=pmcData.map((d,i)=>({x:i,y:d.atl})), tsbPts=pmcData.map((d,i)=>({x:i,y:d.tsb}));
   drawMultiLineChart($("pmcCvCA"),[{pts:ctlPts,color:"#4cc2ff"},{pts:atlPts,color:"#f85149"}],idx);
   drawMultiLineChart($("pmcCvTSB"),[{pts:tsbPts,color:"#3fb950"}],idx);
   if(!pmcData.length){ $("pmcReadout").textContent="No hay sesiones con TSS calculado todavía."; return; }
   const d = idx!=null ? pmcData[idx] : pmcData[pmcData.length-1];
-  const dt=new Date(d.day*86400000);
-  const tag = idx!=null ? (dt.getDate()+"/"+(dt.getMonth()+1)) : "Hoy";
+  const dt=new Date(d.fecha);
+  const tag = idx!=null ? (dt.getUTCDate()+"/"+(dt.getUTCMonth()+1)) : "Hoy";
   $("pmcReadout").innerHTML=`${tag} · CTL (fitness) <b>${d.ctl.toFixed(1)}</b> · ATL (fatiga) <b>${d.atl.toFixed(1)}</b> · TSB (forma) <b>${d.tsb>=0?"+":""}${d.tsb.toFixed(1)}</b>`+(idx==null?" · tocá un punto para otra fecha":"");
 }
 function pmcScrub(ev){
