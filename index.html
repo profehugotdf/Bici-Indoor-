@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v136</title>
+<title>Bici Indoor · v137</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v136</h1>
+  <h1>Bici Indoor · v137</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -647,6 +647,7 @@ let device=null, epIn=0, epOut=0, inPacket=64, ifaceNum=0, connected=false, auto
 let conn="ant", bleDevice=null, bleControl=null;
 let linkLost=false, linkTimer=null, wakeLockRef=null;
 let curPower=0, curCad=0, curHR=0, sawTrainer=false, rxBuf=[];
+let ingestChecksumFailLogged=false, ingestChecksumFailCount=0;
 let lastRxAt=0; // último momento en que llegó un dato real del rodillo (ANT+ o BLE) — para detectar un "canal zombi" que no tira error pero dejó de mandar datos
 let curSpeedReal=null, curSpeedRealAt=0; // velocidad reportada por el propio rodillo (m/s), más frecuente que la potencia
 const SPEED_TELEMETRY_STALE_MS=3000; // si no llega actualización en este lapso, se vuelve al motor de física
@@ -791,8 +792,31 @@ function ingest(bytes){
   for(const b of bytes)rxBuf.push(b);
   while(rxBuf.length>=1){
     if(rxBuf[0]!==ANT_SYNC){rxBuf.shift();continue;}
-    if(rxBuf.length<2)return; const len=rxBuf[1],tot=len+4;
-    if(rxBuf.length<tot)return; const fr=rxBuf.slice(0,tot); rxBuf=rxBuf.slice(tot); frame(fr);
+    if(rxBuf.length<2)return; const len=rxBuf[1];
+    if(len>9){
+      // Un largo tan grande no puede ser una trama ANT+ real (máximo 9 bytes de datos) — el propio
+      // byte de sincronismo era una falsa alarma, o el de largo está corrupto. Si no lo descartamos
+      // acá, el parser se queda esperando bytes que nunca van a llegar.
+      rxBuf.shift();
+      ingestChecksumFailCount++;
+      if(!ingestChecksumFailLogged){ ingestChecksumFailLogged=true; log("Trama ANT+ con checksum inválido, descartada (posible cable/interferencia)","#f0883e"); }
+      continue;
+    }
+    const tot=len+4;
+    if(rxBuf.length<tot)return;
+    const fr=rxBuf.slice(0,tot);
+    let chk=0; for(let i=0;i<tot-1;i++) chk^=fr[i];
+    if(chk!==fr[tot-1]){
+      // El checksum no cierra — puede que el propio byte de "largo" esté corrupto (cable/interferencia),
+      // así que no confiamos en 'tot' para saltar: descartamos solo el byte de sincronismo y reintentamos,
+      // dejando que el bucle re-sincronice solo en la próxima aparición real de ANT_SYNC.
+      rxBuf.shift();
+      ingestChecksumFailCount++;
+      if(!ingestChecksumFailLogged){ ingestChecksumFailLogged=true; log("Trama ANT+ con checksum inválido, descartada (posible cable/interferencia)","#f0883e"); }
+      else if(ingestChecksumFailCount%20===0){ log("Van "+ingestChecksumFailCount+" tramas con checksum inválido en esta sesión","#f0883e"); }
+      continue;
+    }
+    rxBuf=rxBuf.slice(tot); frame(fr);
   }
 }
 function frame(f){
