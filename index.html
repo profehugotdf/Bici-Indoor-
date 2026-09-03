@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v137</title>
+<title>Bici Indoor · v138</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v137</h1>
+  <h1>Bici Indoor · v138</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -514,6 +514,8 @@
       <canvas id="sessCvH" height="90" style="width:100%;display:block"></canvas>
       <div style="color:var(--dim);font-size:11px;margin:6px 0 4px">Velocidad (km/h)</div>
       <canvas id="sessCvV" height="90" style="width:100%;display:block"></canvas>
+      <div style="color:var(--dim);font-size:11px;margin:6px 0 4px">Cadencia (rpm)</div>
+      <canvas id="sessCvC" height="90" style="width:100%;display:block"></canvas>
       <div id="sessDetailReadout" style="color:var(--dim);font-size:12px;margin-top:6px">Deslizá el dedo por cualquier gráfico para ver el detalle</div>
       <div id="sessDecoupling" style="color:var(--dim);font-size:12px;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)"></div>
       <div id="sessLapStats" style="color:var(--dim);font-size:12px;margin-top:6px"></div>
@@ -819,11 +821,27 @@ function ingest(bytes){
     rxBuf=rxBuf.slice(tot); frame(fr);
   }
 }
+// Página común ANT+ de estado de batería (0x52 = 82): la mandan la mayoría de los sensores Garmin,
+// intercalada de vez en cuando con la página de datos normal. Se loguea una sola vez por sensor.
+let battLogged={};
+function battStatusText(code){
+  return {1:"nueva",2:"buena",3:"aceptable",4:"baja",5:"crítica",6:"—",7:"desconocida"}[code]||"desconocida";
+}
+function reportBattery(label,p){
+  if(battLogged[label]) return;
+  const coarseV=p[6]&0x0F, status=(p[6]>>4)&0x07;
+  battLogged[label]=true;
+  if(coarseV===0x0F){ log("Sensor de "+label+": no informa nivel de batería","#8b96a5"); return; }
+  const voltage=coarseV+p[5]/256;
+  log("Batería sensor de "+label+": "+battStatusText(status)+" ("+voltage.toFixed(2)+"V)", status>=4?"#f0883e":"#3fb950");
+}
 function frame(f){
   const id=f[2],d=f.slice(3,3+f[1]);
   if(id===M.BCAST||id===M.ACK){
     lastRxAt=performance.now();
-    const ch=d[0], p=d.slice(1), page=p[0];
+    const ch=d[0], p=d.slice(1), page=p[0]&0x7F; // se enmascara el bit de alternancia de página (bit 7):
+    // varios sensores ANT+ (Garmin entre ellos) lo usan para marcar cambio de página, y si no se saca,
+    // la página 82 (batería) a veces se lee como 210 y nunca coincide con el chequeo.
     if(ch===CH){
       if(!sawTrainer){sawTrainer=true;setState("Rodillo conectado","live");log("¡Rodillo FE-C!","#3fb950");refreshStart();}
       if(page===0x19){const c=p[2],pw=p[5]|((p[6]&0x0F)<<8); if(c!==0xFF && !cadSensorActive)curCad=c; if(pw!==0xFFF)curPower=pw;}
@@ -831,25 +849,32 @@ function frame(f){
         if(!sawSpeedTelemetry){sawSpeedTelemetry=true; log("Velocidad real del rodillo detectada (pág. 0x10)","#3fb950");}}}
     } else if(ch===HRCH){
       const hr=p[7]; if(hr>0){ if(!curHR)log("Pulsómetro OK","#3fb950"); curHR=hr; }
+      if(page===82) reportBattery("pulsómetro", p);
     } else if(ch===CADCH){
       if(!cadSensorActive){cadSensorActive=true; log("Sensor de cadencia dedicado detectado (reemplaza al del rodillo)","#3fb950");}
-      const evt=p[4]|(p[5]<<8), rev=p[6]|(p[7]<<8);
-      if(cadPrevEvt!=null){
-        const dEvt=(evt-cadPrevEvt+65536)%65536, dRev=(rev-cadPrevRev+65536)%65536;
-        if(dEvt>0 && dRev>0 && dEvt<32768){ curCad=Math.round(dRev*60*1024/dEvt); cadLastRealUpdate=performance.now(); }
+      if(page===82){ reportBattery("cadencia", p); }
+      else {
+        const evt=p[4]|(p[5]<<8), rev=p[6]|(p[7]<<8);
+        if(cadPrevEvt!=null){
+          const dEvt=(evt-cadPrevEvt+65536)%65536, dRev=(rev-cadPrevRev+65536)%65536;
+          if(dEvt>0 && dRev>0 && dEvt<32768){ curCad=Math.round(dRev*60*1024/dEvt); cadLastRealUpdate=performance.now(); }
+        }
+        cadPrevEvt=evt; cadPrevRev=rev;
       }
-      cadPrevEvt=evt; cadPrevRev=rev;
     } else if(ch===SPDCH){
       if(!spdSensorActive){spdSensorActive=true; log("Sensor de velocidad dedicado detectado (reemplaza al del rodillo)","#3fb950");}
-      const evt=p[4]|(p[5]<<8), rev=p[6]|(p[7]<<8);
-      if(spdPrevEvt!=null){
-        const dEvt=(evt-spdPrevEvt+65536)%65536, dRev=(rev-spdPrevRev+65536)%65536;
-        if(dEvt>0 && dRev>0 && dEvt<32768){
-          const wheelRpm=dRev*60*1024/dEvt;
-          curSpeedReal=wheelRpm*wheelCircM()/60; curSpeedRealAt=performance.now(); spdLastRealUpdate=performance.now();
+      if(page===82){ reportBattery("velocidad", p); }
+      else {
+        const evt=p[4]|(p[5]<<8), rev=p[6]|(p[7]<<8);
+        if(spdPrevEvt!=null){
+          const dEvt=(evt-spdPrevEvt+65536)%65536, dRev=(rev-spdPrevRev+65536)%65536;
+          if(dEvt>0 && dRev>0 && dEvt<32768){
+            const wheelRpm=dRev*60*1024/dEvt;
+            curSpeedReal=wheelRpm*wheelCircM()/60; curSpeedRealAt=performance.now(); spdLastRealUpdate=performance.now();
+          }
         }
+        spdPrevEvt=evt; spdPrevRev=rev;
       }
-      spdPrevEvt=evt; spdPrevRev=rev;
     }
   }
 }
@@ -3264,10 +3289,10 @@ function drawMultiLineChart(cv,seriesArr,scrubX){
   return {xmin,xmax,pad,cw};
 }
 function seriesFromSamples(samples){
-  const P=[],H=[],V=[];
-  for(let i=0;i<samples.length;i++){ const s=samples[i]; P.push({x:s.t,y:s.p||0}); if(s.hr>0) H.push({x:s.t,y:s.hr}); }
+  const P=[],H=[],V=[],C=[];
+  for(let i=0;i<samples.length;i++){ const s=samples[i]; P.push({x:s.t,y:s.p||0}); if(s.hr>0) H.push({x:s.t,y:s.hr}); if((s.c||0)>0) C.push({x:s.t,y:s.c}); }
   for(let i=1;i<samples.length;i++){ const a=samples[i-1],b=samples[i],dt=b.t-a.t; if(dt>0) V.push({x:b.t,y:Math.max(0,(b.d-a.d)/dt*3.6)}); }
-  return {P,H,V};
+  return {P,H,V,C};
 }
 function computeDecoupling(samples){
   if(!samples || samples.length<20) return null;
@@ -3327,9 +3352,10 @@ function drawSessDetailAt(scrubT){
   drawLineChart($("sessCvP"),sessDetailData.P,"#f0883e",scrubT);
   drawLineChart($("sessCvH"),sessDetailData.H,"#ff6b6b",scrubT);
   drawLineChart($("sessCvV"),sessDetailData.V,"#4cc2ff",scrubT);
+  drawLineChart($("sessCvC"),sessDetailData.C,"#a78bfa",scrubT);
   if(scrubT!=null){
-    const np=nearestPt(sessDetailData.P,scrubT), nh=nearestPt(sessDetailData.H,scrubT), nv=nearestPt(sessDetailData.V,scrubT);
-    $("sessDetailReadout").innerHTML=`t <b>${fmtTime(scrubT)}</b>`+(np?` · Pot <b>${Math.round(np.y)}W</b>`:"")+(nh?` · Pulso <b>${Math.round(nh.y)}</b>`:"")+(nv?` · Vel <b>${nv.y.toFixed(1)}km/h</b>`:"");
+    const np=nearestPt(sessDetailData.P,scrubT), nh=nearestPt(sessDetailData.H,scrubT), nv=nearestPt(sessDetailData.V,scrubT), nc=nearestPt(sessDetailData.C,scrubT);
+    $("sessDetailReadout").innerHTML=`t <b>${fmtTime(scrubT)}</b>`+(np?` · Pot <b>${Math.round(np.y)}W</b>`:"")+(nh?` · Pulso <b>${Math.round(nh.y)}</b>`:"")+(nv?` · Vel <b>${nv.y.toFixed(1)}km/h</b>`:"")+(nc?` · Cad <b>${Math.round(nc.y)}rpm</b>`:"");
   }
 }
 function sessScrub(ev){
@@ -3341,7 +3367,7 @@ function sessScrub(ev){
   const xmin=sessDetailData.P[0].x, xmax=sessDetailData.P[sessDetailData.P.length-1].x;
   drawSessDetailAt(xmin+frac*(xmax-xmin));
 }
-["sessCvP","sessCvH","sessCvV"].forEach(id=>{ const cv=$(id);
+["sessCvP","sessCvH","sessCvV","sessCvC"].forEach(id=>{ const cv=$(id);
   cv.addEventListener("pointerdown",sessScrub); cv.addEventListener("pointermove",(e)=>{ if(e.buttons||e.pointerType==="touch") sessScrub(e); });
 });
 $("sessDetailClose").onclick=()=>{ $("sessDetailPanel").classList.add("hidden"); sessDetailData=null; };
