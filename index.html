@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v141</title>
+<title>Bici Indoor · v142</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v141</h1>
+  <h1>Bici Indoor · v142</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -2732,7 +2732,9 @@ function estimateFtp(){
       if(tramo.length<2) continue;
       const span=tramo[tramo.length-1].t-tramo[0].t;
       if(span>tramoMasLargoDeTodos) tramoMasLargoDeTodos=span;
-      if(span<W) continue;
+      if(span<W-1) continue; // mismo margen de 1s que se usa más abajo al evaluar la ventana: una sesión
+      // de "20:00" real nunca llega a un span de EXACTAMENTE 1200s (la primera muestra tarda ~1s en
+      // dispararse y el corte al terminar cae un poco antes), así que exigir W a secas la rechazaba siempre.
       let lo=0, sum=tramo[0].p||0, n=1;
       for(let hi=1; hi<tramo.length; hi++){
         sum+=tramo[hi].p||0; n++;
@@ -3392,7 +3394,8 @@ function calcularMejorEsfuerzoSostenidoHR(){
     }
     for(const tramo of tramos){
       if(tramo.length<2) continue;
-      if(tramo[tramo.length-1].t-tramo[0].t<VENTANA_UMBRAL_SEG) continue; // el tramo no llega a 20'
+      if(tramo[tramo.length-1].t-tramo[0].t<VENTANA_UMBRAL_SEG-1) continue; // mismo margen que estimateFtp: una
+      // sesión de "20:00" real nunca llega a un span de EXACTAMENTE 1200s (ver comentario en estimateFtp)
       let lo=0, sum=tramo[0].hr, n=1;
       for(let hi=1; hi<tramo.length; hi++){
         sum+=tramo[hi].hr; n++;
