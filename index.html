@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v139</title>
+<title>Bici Indoor · v140</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v139</h1>
+  <h1>Bici Indoor · v140</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -2714,10 +2714,31 @@ function renderZones(){
 }
 function estimateFtp(){
   const all=loadSesiones(), W=1200; let best=0;
-  for(const s of all){ if(!s.samples||s.samples.length<W) continue;
-    const ps=s.samples.map(x=>x.p||0); let sum=0; for(let i=0;i<W;i++)sum+=ps[i]; let mx=sum;
-    for(let i=W;i<ps.length;i++){ sum+=ps[i]-ps[i-W]; if(sum>mx)mx=sum; }
-    const avg=mx/W; if(avg>best)best=avg;
+  for(const s of all){
+    const samples=s.samples||[];
+    if(samples.length<2) continue;
+    // Por tiempo real, no por cantidad de elementos: una sesión de "20:00" en pantalla puede tener
+    // algunas muestras menos de 1200 en el array (el ritmo de grabación no es un cronómetro exacto),
+    // así que exigir samples.length>=1200 rechazaba sesiones que sí duran 20 minutos de verdad.
+    const tramos=[[samples[0]]];
+    for(let i=1;i<samples.length;i++){
+      const prev=samples[i-1], cur=samples[i];
+      if(cur.t-prev.t>3) tramos.push([cur]);
+      else tramos[tramos.length-1].push(cur);
+    }
+    for(const tramo of tramos){
+      if(tramo.length<2) continue;
+      if(tramo[tramo.length-1].t-tramo[0].t<W) continue;
+      let lo=0, sum=tramo[0].p||0, n=1;
+      for(let hi=1; hi<tramo.length; hi++){
+        sum+=tramo[hi].p||0; n++;
+        while(lo<hi-1 && tramo[hi].t-tramo[lo+1].t>=W){ sum-=tramo[lo].p||0; n--; lo++; }
+        if(tramo[hi].t-tramo[lo].t>=W-1){
+          const avg=sum/n;
+          if(avg>best) best=avg;
+        }
+      }
+    }
   }
   if(best<=0){ alert("No hay ningún tramo de 20 min con potencia grabada. Hacé el test de 20 min."); return; }
   const ftp=Math.round(0.95*best);
