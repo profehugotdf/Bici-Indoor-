@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v140</title>
+<title>Bici Indoor · v141</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v140</h1>
+  <h1>Bici Indoor · v141</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -2714,9 +2714,11 @@ function renderZones(){
 }
 function estimateFtp(){
   const all=loadSesiones(), W=1200; let best=0;
+  let mejorTramoSeg=0, mejorTramoAvg=0, sesionesConMuestras=0, tramoMasLargoDeTodos=0;
   for(const s of all){
     const samples=s.samples||[];
     if(samples.length<2) continue;
+    sesionesConMuestras++;
     // Por tiempo real, no por cantidad de elementos: una sesión de "20:00" en pantalla puede tener
     // algunas muestras menos de 1200 en el array (el ritmo de grabación no es un cronómetro exacto),
     // así que exigir samples.length>=1200 rechazaba sesiones que sí duran 20 minutos de verdad.
@@ -2728,19 +2730,24 @@ function estimateFtp(){
     }
     for(const tramo of tramos){
       if(tramo.length<2) continue;
-      if(tramo[tramo.length-1].t-tramo[0].t<W) continue;
+      const span=tramo[tramo.length-1].t-tramo[0].t;
+      if(span>tramoMasLargoDeTodos) tramoMasLargoDeTodos=span;
+      if(span<W) continue;
       let lo=0, sum=tramo[0].p||0, n=1;
       for(let hi=1; hi<tramo.length; hi++){
         sum+=tramo[hi].p||0; n++;
         while(lo<hi-1 && tramo[hi].t-tramo[lo+1].t>=W){ sum-=tramo[lo].p||0; n--; lo++; }
         if(tramo[hi].t-tramo[lo].t>=W-1){
           const avg=sum/n;
-          if(avg>best) best=avg;
+          if(avg>best){ best=avg; mejorTramoSeg=tramo[hi].t-tramo[lo].t; mejorTramoAvg=avg; }
         }
       }
     }
   }
-  if(best<=0){ alert("No hay ningún tramo de 20 min con potencia grabada. Hacé el test de 20 min."); return; }
+  if(best<=0){
+    alert("No hay ningún tramo de 20 min con potencia grabada.\n\nDiagnóstico:\n· Sesiones con muestras: "+sesionesConMuestras+" de "+all.length+"\n· Tramo continuo más largo encontrado: "+Math.round(tramoMasLargoDeTodos)+"s (hacen falta 1200s = 20 min)\n\nHacé el test de 20 min.");
+    return;
+  }
   const ftp=Math.round(0.95*best);
   if(confirm("Mejor 20 min: "+Math.round(best)+" W\nFTP estimado: "+ftp+" W\n¿Usarlo?")){ $("ftp").value=ftp; $("ftp2").value=ftp; saveCfg(); renderZones(); }
 }
