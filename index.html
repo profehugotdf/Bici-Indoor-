@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v142</title>
+<title>Bici Indoor · v143</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v142</h1>
+  <h1>Bici Indoor · v143</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -537,6 +537,7 @@
     <input type="file" id="importTcxFile" accept=".tcx,application/xml,text/xml" style="display:none">
     <button class="full danger" id="clearAll" style="margin-top:10px">Borrar todo</button>
     <button class="full" id="diagBtn" style="margin-top:10px">🔍 Diagnóstico de almacenamiento</button>
+    <button class="full" id="pruneNowBtn" style="margin-top:8px">🧹 Podar muestras de sesiones viejas ahora</button>
     <pre id="diagOut" class="hidden" style="white-space:pre-wrap;word-break:break-all;font-size:11px;background:#0a0d12;border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:8px;max-height:400px;overflow:auto"></pre>
     <button class="primary full" id="histBack" style="margin-top:10px">Volver</button>
   </div>
@@ -2578,7 +2579,42 @@ function finishRide(){
     setTimeout(()=>{ if(confirm("Test de 20 min terminado.\nPotencia media: "+Math.round(avgP)+" W\nFTP estimado (95%): "+ftp+" W\n¿Guardarlo como tu FTP?")){ $("ftp").value=ftp; saveCfg(); } },400); }
   log("Sesión terminada y guardada");
 }
-function saveSesion(s){try{const a=JSON.parse(localStorage.getItem("bici_sesiones")||"[]");
+const PRUNE_DAYS=90, PRUNE_INFO_KEY="bici_prune_info";
+// Vacía samples de sesiones de más de PRUNE_DAYS días, para no seguir creciendo sin límite (localStorage
+// se comparte entre TODAS las apps del mismo origen — si esta clave crece de más, puede hacer fallar el
+// guardado de Correr, Kayak, Fuerza, Plan de Ciclos, etc.). Antes de vaciar, calcula y conserva el mejor
+// 20' de potencia y de pulso de esa sesión, para que estimateFtp() y el umbral de pulso automático sigan
+// pudiendo "ver" un posible mejor esfuerzo histórico aunque ya no tengan el detalle muestra a muestra.
+function pruneOldSamples(){
+  try{
+    const raw=localStorage.getItem("bici_sesiones");
+    if(!raw) return;
+    const antes=raw.length;
+    const arr=JSON.parse(raw);
+    const corte=Date.now()-PRUNE_DAYS*86400000;
+    let podadas=0;
+    arr.forEach(s=>{
+      if((s.samples||[]).length>0 && s.date<corte){
+        const bp=mejorVentanaContinua(s.samples,"p",1200,false);
+        const bh=mejorVentanaContinua(s.samples,"hr",1200,true);
+        if(bp>0) s.best20Power=Math.round(bp);
+        if(bh>0) s.best20HR=Math.round(bh);
+        s.samples=[];
+        podadas++;
+      }
+    });
+    if(podadas>0){
+      const nuevoTexto=JSON.stringify(arr);
+      localStorage.setItem("bici_sesiones",nuevoTexto);
+      const liberado=antes-nuevoTexto.length;
+      try{ localStorage.setItem(PRUNE_INFO_KEY,JSON.stringify({fecha:new Date().toISOString().slice(0,10), sesionesPodadas:podadas, bytesLiberados:liberado})); }catch(_){}
+      log("Se liberaron ~"+(liberado/1024).toFixed(0)+" KB podando "+podadas+" sesión(es) de más de "+PRUNE_DAYS+" días (se conserva el resumen: mejor 20' de potencia y pulso).","#3fb950");
+    }
+  }catch(e){ log("No pude podar sesiones viejas: "+e.message,"#f0883e"); }
+}
+function saveSesion(s){try{
+  pruneOldSamples(); // libera espacio de sesiones viejas ANTES de intentar guardar la nueva
+  const a=JSON.parse(localStorage.getItem("bici_sesiones")||"[]");
   a.push(s);localStorage.setItem("bici_sesiones",JSON.stringify(a));}catch(e){log("No pude guardar: "+e.message,"#f85149");}}
 
 // ================= Wiring =================
@@ -2712,38 +2748,59 @@ function renderZones(){
     html+=`<div class="srow"><div class="info"><span class="badge" style="background:${ZDEF.col[z]};color:#04121c">Z${z}</span>${ZDEF.name[z]}<div class="tag">${lo}–${hi} W</div></div></div>`; }
   $("zonesTable").innerHTML=html;
 }
+// Ventana deslizante O(n) compartida: mejor promedio continuo de 'campo' durante 'segVentana' segundos,
+// dentro de un array de muestras {t, ...}. Corta en "tramos" cuando hay un salto de más de 3s entre
+// muestras consecutivas (hueco/pausa). Con margen de 1s en los dos chequeos de span (ver por qué en
+// el comentario de más abajo). requierePositivo: si se pasa, filtra muestras con ese campo<=0 antes
+// (para pulso, donde 0 significa "sin lectura", no un valor real).
+function mejorVentanaContinua(samples, campo, segVentana, requierePositivo){
+  const W=segVentana;
+  let datos=samples||[];
+  if(requierePositivo) datos=datos.filter(x=>(x[campo]||0)>0);
+  if(datos.length<2) return 0;
+  const tramos=[[datos[0]]];
+  for(let i=1;i<datos.length;i++){
+    const prev=datos[i-1], cur=datos[i];
+    if(cur.t-prev.t>3) tramos.push([cur]);
+    else tramos[tramos.length-1].push(cur);
+  }
+  let best=0;
+  for(const tramo of tramos){
+    if(tramo.length<2) continue;
+    const span=tramo[tramo.length-1].t-tramo[0].t;
+    // Margen de 1s: una sesión de "20:00" real nunca llega a un span de EXACTAMENTE 1200s (la primera
+    // muestra tarda ~1s en dispararse desde que arranca el cronómetro, y el corte al terminar cae un
+    // poco antes), así que exigir W a secas rechazaba sesiones que sí duran 20 minutos de verdad.
+    if(span<W-1) continue;
+    let lo=0, sum=tramo[0][campo]||0, n=1;
+    for(let hi=1; hi<tramo.length; hi++){
+      sum+=tramo[hi][campo]||0; n++;
+      while(lo<hi-1 && tramo[hi].t-tramo[lo+1].t>=W){ sum-=tramo[lo][campo]||0; n--; lo++; }
+      if(tramo[hi].t-tramo[lo].t>=W-1){
+        const avg=sum/n;
+        if(avg>best) best=avg;
+      }
+    }
+  }
+  return best;
+}
 function estimateFtp(){
-  const all=loadSesiones(), W=1200; let best=0;
-  let mejorTramoSeg=0, mejorTramoAvg=0, sesionesConMuestras=0, tramoMasLargoDeTodos=0;
+  const all=loadSesiones(); let best=0, sesionesConMuestras=0, tramoMasLargoDeTodos=0;
   for(const s of all){
     const samples=s.samples||[];
-    if(samples.length<2) continue;
-    sesionesConMuestras++;
-    // Por tiempo real, no por cantidad de elementos: una sesión de "20:00" en pantalla puede tener
-    // algunas muestras menos de 1200 en el array (el ritmo de grabación no es un cronómetro exacto),
-    // así que exigir samples.length>=1200 rechazaba sesiones que sí duran 20 minutos de verdad.
-    const tramos=[[samples[0]]];
-    for(let i=1;i<samples.length;i++){
-      const prev=samples[i-1], cur=samples[i];
-      if(cur.t-prev.t>3) tramos.push([cur]);
-      else tramos[tramos.length-1].push(cur);
-    }
-    for(const tramo of tramos){
-      if(tramo.length<2) continue;
-      const span=tramo[tramo.length-1].t-tramo[0].t;
-      if(span>tramoMasLargoDeTodos) tramoMasLargoDeTodos=span;
-      if(span<W-1) continue; // mismo margen de 1s que se usa más abajo al evaluar la ventana: una sesión
-      // de "20:00" real nunca llega a un span de EXACTAMENTE 1200s (la primera muestra tarda ~1s en
-      // dispararse y el corte al terminar cae un poco antes), así que exigir W a secas la rechazaba siempre.
-      let lo=0, sum=tramo[0].p||0, n=1;
-      for(let hi=1; hi<tramo.length; hi++){
-        sum+=tramo[hi].p||0; n++;
-        while(lo<hi-1 && tramo[hi].t-tramo[lo+1].t>=W){ sum-=tramo[lo].p||0; n--; lo++; }
-        if(tramo[hi].t-tramo[lo].t>=W-1){
-          const avg=sum/n;
-          if(avg>best){ best=avg; mejorTramoSeg=tramo[hi].t-tramo[lo].t; mejorTramoAvg=avg; }
-        }
+    if(samples.length>=2){
+      sesionesConMuestras++;
+      const tramosDiag=[[samples[0]]];
+      for(let i=1;i<samples.length;i++){
+        const prev=samples[i-1], cur=samples[i];
+        if(cur.t-prev.t>3) tramosDiag.push([cur]); else tramosDiag[tramosDiag.length-1].push(cur);
       }
+      for(const tr of tramosDiag){ if(tr.length>=2){ const span=tr[tr.length-1].t-tr[0].t; if(span>tramoMasLargoDeTodos) tramoMasLargoDeTodos=span; } }
+      const m=mejorVentanaContinua(samples,"p",1200,false);
+      if(m>best) best=m;
+    } else if(s.best20Power>0){
+      // samples fue podado para ahorrar espacio (sesión vieja) — usamos el resumen que se calculó antes de podar.
+      if(s.best20Power>best) best=s.best20Power;
     }
   }
   if(best<=0){
@@ -3383,28 +3440,12 @@ function calcularMejorEsfuerzoSostenidoHR(){
   const sesiones=loadSesiones();
   let mejor=null; // {avgHr, date}
   for(const s of sesiones){
-    const samples=(s.samples||[]).filter(x=>(x.hr||0)>0);
-    if(samples.length<2) continue;
-    // Se corta el tramo en cada hueco (más de 3s entre muestras consecutivas, ej. una pausa).
-    const tramos=[[samples[0]]];
-    for(let i=1;i<samples.length;i++){
-      const prev=samples[i-1], cur=samples[i];
-      if(cur.t-prev.t>3) tramos.push([cur]);
-      else tramos[tramos.length-1].push(cur);
-    }
-    for(const tramo of tramos){
-      if(tramo.length<2) continue;
-      if(tramo[tramo.length-1].t-tramo[0].t<VENTANA_UMBRAL_SEG-1) continue; // mismo margen que estimateFtp: una
-      // sesión de "20:00" real nunca llega a un span de EXACTAMENTE 1200s (ver comentario en estimateFtp)
-      let lo=0, sum=tramo[0].hr, n=1;
-      for(let hi=1; hi<tramo.length; hi++){
-        sum+=tramo[hi].hr; n++;
-        while(lo<hi-1 && tramo[hi].t-tramo[lo+1].t>=VENTANA_UMBRAL_SEG){ sum-=tramo[lo].hr; n--; lo++; }
-        if(tramo[hi].t-tramo[lo].t>=VENTANA_UMBRAL_SEG-1){
-          const avg=sum/n;
-          if(!mejor || avg>mejor.avgHr) mejor={avgHr:avg, date:s.date};
-        }
-      }
+    if((s.samples||[]).length>=2){
+      const avg=mejorVentanaContinua(s.samples,"hr",VENTANA_UMBRAL_SEG,true);
+      if(avg>0 && (!mejor || avg>mejor.avgHr)) mejor={avgHr:avg, date:s.date};
+    } else if(s.best20HR>0){
+      // samples fue podado para ahorrar espacio (sesión vieja) — usamos el resumen calculado antes de podar.
+      if(!mejor || s.best20HR>mejor.avgHr) mejor={avgHr:s.best20HR, date:s.date};
     }
   }
   return mejor;
@@ -4217,6 +4258,17 @@ $("exportAll").onclick=exportAll;
 $("importBtn").onclick=()=>$("importFile").click();
 $("importFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>importSesiones(r.result);r.readAsText(f);e.target.value="";};
 $("clearAll").onclick=()=>{ if(confirm("¿Borrar TODAS las sesiones? No se puede deshacer.")){localStorage.removeItem("bici_sesiones");eliminarTodoBiciDeFormaCompartida();renderHistorial();populateGhosts();populateVelGhosts();} };
+$("pruneNowBtn").onclick=()=>{
+  const arr=loadSesiones();
+  const corte=Date.now()-PRUNE_DAYS*86400000;
+  const candidatas=arr.filter(s=>(s.samples||[]).length>0 && s.date<corte).length;
+  if(candidatas===0){ alert("No hay sesiones de más de "+PRUNE_DAYS+" días con muestras completas todavía — nada para podar."); return; }
+  if(!confirm("Se va a vaciar el detalle muestra a muestra de "+candidatas+" sesión(es) de más de "+PRUNE_DAYS+" días.\n\nSe conserva todo lo demás (fecha, duración, distancia, NP, IF, TSS, promedios) y además el mejor 20' de potencia y de pulso de cada una, para que el cálculo automático de FTP y umbral de pulso los siga viendo.\n\n¿Continuar?")) return;
+  const antes=(localStorage.getItem("bici_sesiones")||"").length;
+  pruneOldSamples();
+  const despues=(localStorage.getItem("bici_sesiones")||"").length;
+  alert("Listo. Se liberaron ~"+((antes-despues)/1024).toFixed(0)+" KB podando "+candidatas+" sesión(es).");
+};
 $("diagBtn").onclick=()=>{
   const lines=[];
   lines.push("=== bici_sesiones ===");
@@ -4240,6 +4292,17 @@ $("diagBtn").onclick=()=>{
       }
     }catch(e){ lines.push("❌ EL TEXTO GUARDADO NO SE PUEDE LEER COMO JSON (corrupto): "+e.message); lines.push("Primeros 300 caracteres:"); lines.push(raw.slice(0,300)); lines.push("Últimos 300 caracteres:"); lines.push(raw.slice(-300)); }
   }
+  lines.push("");
+  lines.push("=== Poda automática de muestras viejas (más de "+PRUNE_DAYS+" días) ===");
+  try{
+    const arrPoda=JSON.parse(localStorage.getItem("bici_sesiones")||"[]");
+    const conSamples=arrPoda.filter(s=>(s.samples||[]).length>0).length;
+    const podadasYa=arrPoda.filter(s=>(s.samples||[]).length===0 && (s.best20Power>0||s.best20HR>0)).length;
+    lines.push("Sesiones con muestras completas: "+conSamples+" · ya podadas (con resumen conservado): "+podadasYa);
+    const info=JSON.parse(localStorage.getItem(PRUNE_INFO_KEY)||"null");
+    if(info) lines.push("Última poda: "+info.fecha+" — "+info.sesionesPodadas+" sesión(es), liberó ~"+(info.bytesLiberados/1024).toFixed(0)+" KB.");
+    else lines.push("Todavía no corrió ninguna poda (recién se agregó esta versión, o no hay sesiones de más de "+PRUNE_DAYS+" días).");
+  }catch(e){ lines.push("No pude calcular este resumen: "+e.message); }
   lines.push("");
   lines.push("=== bici_inprogress (sesión en curso sin terminar) ===");
   const rawIp=localStorage.getItem("bici_inprogress");
