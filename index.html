@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v143</title>
+<title>Bici Indoor · v144</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v143</h1>
+  <h1>Bici Indoor · v144</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -513,6 +513,7 @@
         <b id="sessDetailTitle" style="font-size:13px"></b>
         <button id="sessDetailClose" style="min-height:32px;padding:4px 10px">✕</button>
       </div>
+      <div class="hud hud4" id="sessDetailHud" style="margin-bottom:10px"></div>
       <div style="color:var(--dim);font-size:11px;margin-bottom:4px">Potencia (W)</div>
       <canvas id="sessCvP" height="90" style="width:100%;display:block"></canvas>
       <div style="color:var(--dim);font-size:11px;margin:6px 0 4px">Pulso (bpm)</div>
@@ -3492,6 +3493,28 @@ function openSessDetail(s){
   $("sessDetailTitle").textContent=fmtDate(s.date)+" · "+fmtTime(s.dur||0);
   $("sessDetailPanel").classList.remove("hidden");
   $("sessDetailReadout").textContent="Deslizá el dedo por cualquier gráfico para ver el detalle";
+  // Promedios de la prueba, en cajitas tipo HUD — igual que en vivo. Potencia/cadencia media se
+  // calculan de samples cuando están disponibles; en sesiones podadas (más de 90 días, sin detalle
+  // muestra a muestra) esas dos quedan en "—", pero NP/pulso/distancia/velocidad siguen mostrándose
+  // igual (esos ya se guardan como resumen, no dependen de samples).
+  const dur=s.dur||0, dist=s.dist||0, avgSpeed=dur>0?(dist/dur*3.6):0;
+  let avgP=null, avgCad=null;
+  if((s.samples||[]).length>0){
+    const ps=s.samples.map(x=>x.p||0).filter(x=>x>0), cs=s.samples.map(x=>x.c||0).filter(x=>x>0);
+    if(ps.length) avgP=ps.reduce((a,b)=>a+b,0)/ps.length;
+    if(cs.length) avgCad=cs.reduce((a,b)=>a+b,0)/cs.length;
+  }
+  const tile=(l,v,u)=>`<div class="tile"><div class="l">${l}</div><div class="v">${v}</div>${u?`<div class="u">${u}</div>`:""}</div>`;
+  $("sessDetailHud").innerHTML=
+    tile("Distancia", dist?(dist/1000).toFixed(2):"—", "km")+
+    tile("Vel. media", avgSpeed?avgSpeed.toFixed(1):"—", "km/h")+
+    tile("Potencia media", avgP!=null?Math.round(avgP):"—", "W")+
+    tile("NP", s.np!=null?s.np:"—", "W")+
+    tile("IF", s.if!=null?s.if.toFixed(2):"—", "")+
+    tile("TSS", s.tss!=null?s.tss:"—", "")+
+    tile("Pulso medio", s.hrAvg?Math.round(s.hrAvg):"—", "bpm")+
+    tile("Pulso máx", s.hrMax?Math.round(s.hrMax):"—", "bpm")+
+    tile("Cadencia media", avgCad!=null?Math.round(avgCad):"—", "rpm");
   const dec=computeDecoupling(s.samples);
   $("sessDecoupling").innerHTML = dec
     ? `Desacople Pw:Hr <b>${dec.pct>=0?"+":""}${dec.pct.toFixed(1)}%</b> — ${Math.abs(dec.pct)<5?"buena base aeróbica para esta duración":Math.abs(dec.pct)<10?"aceptable, al límite":"posible falta de base aeróbica para este ritmo/duración"}`
