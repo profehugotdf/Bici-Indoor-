@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v144</title>
+<title>Bici Indoor · v145</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v144</h1>
+  <h1>Bici Indoor · v145</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -502,8 +502,9 @@
       <canvas id="trendCvEF" height="90" style="width:100%;display:block"></canvas>
       <div id="trendReadout" style="color:var(--dim);font-size:12px;margin-top:6px">Tocá un punto para ver el detalle</div>
     </div>
-    <div id="selBar" class="hidden" style="display:flex;gap:8px;margin-bottom:10px">
+    <div id="selBar" class="hidden" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
       <button id="selAll" style="flex:1">Todas</button>
+      <button id="pruneSel" style="flex:1.4">🧹 Podar (0)</button>
       <button class="danger" id="delSel" style="flex:1.4">Borrar (0)</button>
       <button id="selCancel" style="flex:1">Cancelar</button>
     </div>
@@ -2581,11 +2582,22 @@ function finishRide(){
   log("Sesión terminada y guardada");
 }
 const PRUNE_DAYS=90, PRUNE_INFO_KEY="bici_prune_info";
-// Vacía samples de sesiones de más de PRUNE_DAYS días, para no seguir creciendo sin límite (localStorage
-// se comparte entre TODAS las apps del mismo origen — si esta clave crece de más, puede hacer fallar el
-// guardado de Correr, Kayak, Fuerza, Plan de Ciclos, etc.). Antes de vaciar, calcula y conserva el mejor
-// 20' de potencia y de pulso de esa sesión, para que estimateFtp() y el umbral de pulso automático sigan
-// pudiendo "ver" un posible mejor esfuerzo histórico aunque ya no tengan el detalle muestra a muestra.
+// Vacía el array samples de UNA sesión, conservando antes su mejor 20' de potencia y de pulso —
+// así estimateFtp() y el umbral de pulso automático siguen pudiendo "ver" un posible mejor esfuerzo
+// histórico, aunque ya no tengan el detalle muestra a muestra. Se usa tanto para la poda automática
+// por antigüedad como para podar sesiones elegidas a mano. Devuelve true si había algo para podar.
+function podarSesion(s){
+  if(!(s.samples||[]).length) return false;
+  const bp=mejorVentanaContinua(s.samples,"p",1200,false);
+  const bh=mejorVentanaContinua(s.samples,"hr",1200,true);
+  if(bp>0) s.best20Power=Math.round(bp);
+  if(bh>0) s.best20HR=Math.round(bh);
+  s.samples=[];
+  return true;
+}
+// Poda automática por antigüedad — localStorage se comparte entre TODAS las apps del mismo origen
+// (Correr, Kayak, Fuerza, Plan de Ciclos), así que si esta clave crece de más puede hacer fallar el
+// guardado de cualquiera de ellas, no solo de Bici.
 function pruneOldSamples(){
   try{
     const raw=localStorage.getItem("bici_sesiones");
@@ -2594,16 +2606,7 @@ function pruneOldSamples(){
     const arr=JSON.parse(raw);
     const corte=Date.now()-PRUNE_DAYS*86400000;
     let podadas=0;
-    arr.forEach(s=>{
-      if((s.samples||[]).length>0 && s.date<corte){
-        const bp=mejorVentanaContinua(s.samples,"p",1200,false);
-        const bh=mejorVentanaContinua(s.samples,"hr",1200,true);
-        if(bp>0) s.best20Power=Math.round(bp);
-        if(bh>0) s.best20HR=Math.round(bh);
-        s.samples=[];
-        podadas++;
-      }
-    });
+    arr.forEach(s=>{ if(s.date<corte && podarSesion(s)) podadas++; });
     if(podadas>0){
       const nuevoTexto=JSON.stringify(arr);
       localStorage.setItem("bici_sesiones",nuevoTexto);
@@ -3295,7 +3298,8 @@ function fmtDate(ms){const d=new Date(ms);
   return d.getDate()+"/"+(d.getMonth()+1)+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");}
 let selMode=false, selected=new Set();
 function deleteByDate(date){const a=loadSesiones().filter(s=>s.date!==date);localStorage.setItem("bici_sesiones",JSON.stringify(a));}
-function updateDelCount(){ const b=$("delSel"); if(b)b.textContent="Borrar ("+selected.size+")"; }
+function updateDelCount(){ const b=$("delSel"); if(b)b.textContent="Borrar ("+selected.size+")";
+  const p=$("pruneSel"); if(p)p.textContent="🧹 Podar ("+selected.size+")"; }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 let histFilterMode="all";
 function saveSessionNotes(date,text){
@@ -3355,6 +3359,18 @@ function renderHistorial(){
         gr.style.minHeight="40px";gr.style.padding="8px 10px";
         gr.onclick=()=>openSessDetail(s);
         row.appendChild(gr);
+      }
+      if((s.samples||[]).length>0){
+        const pr=document.createElement("button");pr.textContent="🧹";pr.title="Podar el detalle muestra a muestra de esta sesión (libera espacio, conserva los resúmenes)";
+        pr.style.minHeight="40px";pr.style.padding="8px 10px";
+        pr.onclick=()=>{
+          if(!confirm("¿Podar el detalle de esta sesión?\n\nSe vacía el registro muestra a muestra (para liberar espacio), pero se conserva todo lo demás: fecha, duración, distancia, NP, IF, TSS, promedios, y el mejor 20' de potencia y de pulso.\n\nLos gráficos de esta sesión ya no se van a poder ver.")) return;
+          const a=loadSesiones();
+          const target=a.find(x=>x.date===s.date);
+          if(target && podarSesion(target)){ localStorage.setItem("bici_sesiones",JSON.stringify(a)); }
+          renderHistorial();
+        };
+        row.appendChild(pr);
       }
       const del=document.createElement("button");del.className="del";del.textContent="✕";
       del.onclick=()=>{ if(confirm("¿Borrar esta sesión?")){deleteByDate(s.date);eliminarDeFormaCompartida(s.date);renderHistorial();populateGhosts();populateVelGhosts();} };
@@ -4390,6 +4406,17 @@ $("selCancel").onclick=()=>setSelMode(false);
 $("selAll").onclick=()=>{ const list=loadSesiones();
   if(selected.size>=list.length) selected.clear(); else list.forEach(s=>selected.add(s.date));
   updateDelCount(); renderHistorial(); };
+$("pruneSel").onclick=()=>{ if(!selected.size){return;}
+  if(confirm("¿Podar el detalle de "+selected.size+" sesión(es) seleccionadas?\n\nSe vacía el registro muestra a muestra (para liberar espacio), pero se conserva todo lo demás. Los gráficos de esas sesiones ya no se van a poder ver.")){
+    const a=loadSesiones();
+    const antes=JSON.stringify(a).length;
+    let podadas=0;
+    a.forEach(s=>{ if(selected.has(s.date) && podarSesion(s)) podadas++; });
+    localStorage.setItem("bici_sesiones",JSON.stringify(a));
+    const despues=JSON.stringify(a).length;
+    setSelMode(false);
+    alert("Se podaron "+podadas+" sesión(es), liberando ~"+((antes-despues)/1024).toFixed(0)+" KB.");
+  } };
 $("delSel").onclick=()=>{ if(!selected.size){return;}
   if(confirm("¿Borrar "+selected.size+" sesiones?")){
     const a=loadSesiones().filter(s=>!selected.has(s.date));
