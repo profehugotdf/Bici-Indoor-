@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v145</title>
+<title>Bici Indoor · v146</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v145</h1>
+  <h1>Bici Indoor · v146</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -2372,7 +2372,7 @@ function eliminarTodoBiciDeFormaCompartida(){
   }catch(_){}
 }
 function populateGhosts(){
-  ghostList=loadSesiones().filter(s=>s.mode==="libre"||s.mode==="tcx"||s.mode==="velodromo");
+  ghostList=loadSesiones().filter(s=>(s.mode==="libre"||s.mode==="tcx"||s.mode==="velodromo")&&(s.samples||[]).length>1);
   const sel=$("ghostSel"); if(!sel)return;
   sel.innerHTML='<option value="-1">Ninguno (marca base)</option>';
   ghostList.forEach((s,i)=>{const d=new Date(s.date);
@@ -2384,7 +2384,7 @@ function populateGhosts(){
 }
 let velGhostList=[];
 function populateVelGhosts(){
-  velGhostList=loadSesiones().filter(s=>s.mode==="libre"||s.mode==="tcx"||s.mode==="velodromo");
+  velGhostList=loadSesiones().filter(s=>(s.mode==="libre"||s.mode==="tcx"||s.mode==="velodromo")&&(s.samples||[]).length>1);
   const sel=$("velGhostSel"); if(!sel)return;
   sel.innerHTML='<option value="-1">Ninguno (marca base)</option>';
   velGhostList.forEach((s,i)=>{const d=new Date(s.date);
@@ -3328,7 +3328,8 @@ function renderHistorial(){
     }
     const info=document.createElement("div");info.className="info";
     const notePreview = s.notes ? `<div style="color:var(--acc);font-size:12px;margin-top:2px">📝 ${escapeHtml(s.notes.length>60?s.notes.slice(0,60)+"…":s.notes)}</div>` : "";
-    info.innerHTML=`<span class="badge">${modo}</span>${fmtDate(s.date)}<div class="tag">${fmtTime(s.dur||0)} · ${dist} km${hr}</div>${notePreview}`;
+    const podadaTag = ((s.samples||[]).length===0 && (s.best20Power>0||s.best20HR>0)) ? ' <span style="color:var(--dim);font-size:11px">· 🧹 podada</span>' : "";
+    info.innerHTML=`<span class="badge">${modo}</span>${fmtDate(s.date)}${podadaTag}<div class="tag">${fmtTime(s.dur||0)} · ${dist} km${hr}</div>${notePreview}`;
     row.appendChild(info);
     if(selMode){ row.style.cursor="pointer"; info.onclick=()=>{ cb.checked=!cb.checked; cb.onchange(); }; }
     else{
