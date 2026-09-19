@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v146</title>
+<title>Bici Indoor · v147</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v146</h1>
+  <h1>Bici Indoor · v147</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -460,6 +460,24 @@
   <!-- HISTORIAL -->
   <div class="card hidden" id="historial">
     <h2>Historial de sesiones</h2>
+    <button class="full" id="manualAddBtn" style="margin-bottom:10px">✍️ Agregar sesión manual (sin grabar)</button>
+    <div class="card hidden" id="manualAddPanel" style="margin-bottom:10px">
+      <div style="color:var(--dim);font-size:12px;margin-bottom:8px">Para cargar una sesión que se hizo pero no quedó guardada. Se guardan los resúmenes que pongas acá — no va a tener el detalle muestra a muestra, así que no se va a poder ver como gráfico ni usar como fantasma.</div>
+      <div class="row"><label for="maMode">Modo</label>
+        <select id="maMode"><option value="velodromo">Velódromo</option><option value="libre">Recorrido/Libre</option></select>
+      </div>
+      <div class="row"><label for="maDate">Fecha y hora</label><input type="datetime-local" id="maDate"></div>
+      <div class="row"><label for="maDur">Duración (min)</label><input type="number" id="maDur" min="1" max="600" step="1" placeholder="ej. 20"></div>
+      <div class="row"><label for="maDist">Distancia (km)</label><input type="number" id="maDist" min="0" step="0.01" placeholder="opcional"></div>
+      <div class="row"><label for="maPow">Potencia media (W)</label><input type="number" id="maPow" min="0" step="1" placeholder="opcional"></div>
+      <div class="row"><label for="maHr">Pulso medio (bpm)</label><input type="number" id="maHr" min="0" step="1" placeholder="opcional"></div>
+      <div class="row"><label for="maHrMax">Pulso máx (bpm)</label><input type="number" id="maHrMax" min="0" step="1" placeholder="opcional"></div>
+      <div class="row"><label for="maNote">Nota</label><input type="text" id="maNote" placeholder="ej. Le gané a la fantasma por 10m"></div>
+      <div class="row" style="gap:8px;margin-top:6px">
+        <button id="manualAddSaveBtn" style="flex:1">Guardar</button>
+        <button id="manualAddCancelBtn" style="flex:1">Cancelar</button>
+      </div>
+    </div>
     <div class="row" style="margin-bottom:10px">
       <label for="histFilterSel" style="color:var(--dim);font-size:13px">Filtrar</label>
       <select id="histFilterSel" style="flex:1">
@@ -3329,7 +3347,8 @@ function renderHistorial(){
     const info=document.createElement("div");info.className="info";
     const notePreview = s.notes ? `<div style="color:var(--acc);font-size:12px;margin-top:2px">📝 ${escapeHtml(s.notes.length>60?s.notes.slice(0,60)+"…":s.notes)}</div>` : "";
     const podadaTag = ((s.samples||[]).length===0 && (s.best20Power>0||s.best20HR>0)) ? ' <span style="color:var(--dim);font-size:11px">· 🧹 podada</span>' : "";
-    info.innerHTML=`<span class="badge">${modo}</span>${fmtDate(s.date)}${podadaTag}<div class="tag">${fmtTime(s.dur||0)} · ${dist} km${hr}</div>${notePreview}`;
+    const manualTag = s.manual ? ' <span style="color:var(--acc);font-size:11px">· ✍️ manual</span>' : "";
+    info.innerHTML=`<span class="badge">${modo}</span>${fmtDate(s.date)}${podadaTag}${manualTag}<div class="tag">${fmtTime(s.dur||0)} · ${dist} km${hr}</div>${notePreview}`;
     row.appendChild(info);
     if(selMode){ row.style.cursor="pointer"; info.onclick=()=>{ cb.checked=!cb.checked; cb.onchange(); }; }
     else{
@@ -4179,6 +4198,39 @@ $("fitUndo").onclick=()=>{ if(fitPoints.length) fitPoints.pop(); fitDrawCanvas()
 $("fitRestart").onclick=()=>{ fitPoints=[]; fitDrawCanvas(); updateFitPrompt(); $(fitPhase===1?"fitResult":"fitResult2").classList.add("hidden"); };
 $("routesBack").onclick=()=>{ $("routesCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); scrollTop(); };
 $("routesToHistBtn").onclick=()=>{ $("routesCard").classList.add("hidden"); $("historial").classList.remove("hidden"); setSelMode(false); renderHistorial(); scrollTop(); };
+$("manualAddBtn").onclick=()=>{
+  $("manualAddPanel").classList.remove("hidden");
+  const now=new Date(Date.now()-Date.now()%60000-new Date().getTimezoneOffset()*60000);
+  $("maDate").value=now.toISOString().slice(0,16);
+  $("maDur").value=""; $("maDist").value=""; $("maPow").value=""; $("maHr").value=""; $("maHrMax").value=""; $("maNote").value="";
+};
+$("manualAddCancelBtn").onclick=()=>{ $("manualAddPanel").classList.add("hidden"); };
+$("manualAddSaveBtn").onclick=()=>{
+  const durMin=parseFloat($("maDur").value);
+  if(!(durMin>0)){ alert("Poné la duración en minutos (es el único dato obligatorio)."); return; }
+  const dateVal=$("maDate").value;
+  const date = dateVal ? new Date(dateVal).getTime() : Date.now();
+  const dur = Math.round(durMin*60);
+  const distKm=parseFloat($("maDist").value);
+  const pow=parseFloat($("maPow").value);
+  const hrAvg=parseFloat($("maHr").value);
+  const hrMax=parseFloat($("maHrMax").value);
+  const s={ date, mode:$("maMode").value, dur, dist: distKm>0?Math.round(distKm*1000):0, samples:[], manual:true };
+  if(hrAvg>0) s.hrAvg=hrAvg;
+  if(hrMax>0) s.hrMax=hrMax;
+  if(pow>0){
+    s.np=Math.round(pow); // aproximado: sin el detalle muestra a muestra, se usa la potencia media como estimación de NP
+    const ftp=ftpVal();
+    if(ftp>0){ s.if=+(pow/ftp).toFixed(2); s.tss=Math.round((durMin/60)*s.if*s.if*100); }
+  }
+  const nota=$("maNote").value.trim();
+  if(nota) s.notes=nota;
+  saveSesion(s);
+  if(s.tss) actualizarFormaCompartida(s);
+  $("manualAddPanel").classList.add("hidden");
+  renderHistorial();
+  alert("Sesión cargada.");
+};
 $("routesCompressBtn").onclick=()=>{
   const before=storageUsageKB();
   const map=loadRoutesMap(); let changed=0;
