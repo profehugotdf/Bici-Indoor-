@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v147</title>
+<title>Bici Indoor · v148</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v147</h1>
+  <h1>Bici Indoor · v148</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -2160,7 +2160,7 @@ function drawRoad(){
         ctx.textAlign="start";
       }
     }
-    drawCyclistRear(ctx, camCx0, h-6, youS, roadCrank, "#2f6f9c", 1);
+    drawCyclistRear(ctx, camCx0, h-6, youS, roadCrank, "#2f6f9c", 1, {stand:updateLiveStand()});
     // cartel de ventaja/desventaja respecto del fantasma (arriba)
     if(ghost){ const gapNow=Math.round(dNow-gNow), ahead=gapNow>=0;
       const lbl=(ahead?"+":"−")+Math.abs(gapNow)+" m "+(ahead?"adelante":"atrás");
@@ -2204,7 +2204,7 @@ function drawVelodromeRoad(ctx,w,h){
       ctx.fillStyle=ahead?"#3fb950":"#ff6b6b"; ctx.fillText(lbl,w/2,25);
       ctx.textAlign="start";
     }
-    drawCyclistRear(ctx, camCx0, h-6, youS, roadCrank, "#2f6f9c", 1);
+    drawCyclistRear(ctx, camCx0, h-6, youS, roadCrank, "#2f6f9c", 1, {stand:updateLiveStand()});
     veloDrawErrLogged=false;
   }catch(e){
     if(!veloDrawErrLogged){ veloDrawErrLogged=true; log("Error dibujando la vista de velódromo: "+e.message,"#f85149"); }
@@ -2216,62 +2216,107 @@ function bearingRoute(route,d){ const {pts,dist}=route; let i=0; while(i<dist.le
   const x=Math.cos(a.lat*toR)*Math.sin(b.lat*toR)-Math.sin(a.lat*toR)*Math.cos(b.lat*toR)*Math.cos((b.lon-a.lon)*toR);
   return Math.atan2(y,x); }
 function eleRoute(route,d){ return posAtDistance(route,d).ele; }
-function drawCyclistRear(ctx,cx,gy,s,crank,jersey,alpha){
+// Ciclista + bici vistos de atrás (v148). La rueda trasera se ve DE CANTO (franja vertical, como en
+// la realidad desde atrás), igual que piñones y plato. Rodillas flexionan en altura pero sin abrirse
+// hacia afuera. opts.stand (0..1): grado de "de pie" (se levanta del sillín, la bici se balancea).
+function rrPath(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();}
+const WHEEL_H_SCALE=1.3; // rueda 30% más alta que el dibujo base
+function drawBikeRear(ctx,cx,gy,s,wheelPh,frameCol,showSaddle,detail){
+  const barY=gy-1.5*s, seatY=gy-1.48*s, pedalCY=gy-0.5*s;
+  const wh=0.52*s*WHEEL_H_SCALE, top=gy-wh, bot=gy+wh, tw=s*0.1;
+  ctx.fillStyle="#1b1e23"; rrPath(ctx,cx-tw/2,top,tw,bot-top,tw/2); ctx.fill();
+  if(detail){
+    ctx.fillStyle="#2f343b";
+    const step=s*0.09, off=((wheelPh*s*0.15)%step+step)%step;
+    for(let y=top+off;y<bot-s*0.02;y+=step) ctx.fillRect(cx-tw*0.32,y,tw*0.64,s*0.018);
+    ctx.fillStyle="rgba(255,255,255,.08)"; ctx.fillRect(cx-tw*0.18,top+s*0.06,tw*0.12,bot-top-s*0.12);
+  }
+  ctx.fillStyle="#7d848d"; rrPath(ctx,cx-s*0.13,gy-s*0.035,s*0.26,s*0.07,s*0.03); ctx.fill();
+  ctx.strokeStyle=frameCol; ctx.lineWidth=s*0.075;
+  ctx.beginPath();ctx.moveTo(cx-s*0.12,gy);ctx.lineTo(cx-s*0.03,seatY+s*0.2);ctx.moveTo(cx+s*0.12,gy);ctx.lineTo(cx+s*0.03,seatY+s*0.2);ctx.stroke();
+  ctx.lineWidth=s*0.09; ctx.beginPath();ctx.moveTo(cx,seatY+s*0.12);ctx.lineTo(cx,pedalCY);ctx.stroke();
+  ctx.strokeStyle="#9ca2aa"; ctx.lineWidth=s*0.06; ctx.beginPath();ctx.moveTo(cx,seatY);ctx.lineTo(cx,seatY+s*0.14);ctx.stroke();
+  if(detail){
+    const on=(performance.now()%1000)<500;
+    ctx.fillStyle=on?"#ff3b3b":"#5a1717"; ctx.fillRect(cx-s*0.05,seatY+s*0.2,s*0.1,s*0.12);
+    if(on){ctx.fillStyle="rgba(255,59,59,.22)";ctx.beginPath();ctx.arc(cx,seatY+s*0.26,s*0.16,0,7);ctx.fill();}
+    ctx.fillStyle="#b9bfc7"; for(let k=0;k<6;k++){const hh=s*(0.2-k*0.024);ctx.fillRect(cx+s*(0.115+k*0.016),gy-hh,s*0.01,hh*2);}
+    const dy=Math.sin(wheelPh*3)*s*0.01;
+    ctx.strokeStyle="#3d4148"; ctx.lineWidth=s*0.05; ctx.beginPath();ctx.moveTo(cx+s*0.2,gy+s*0.02);ctx.lineTo(cx+s*0.24,gy+s*0.3);ctx.stroke();
+    ctx.fillStyle="#2c3037"; ctx.beginPath();ctx.arc(cx+s*0.22,gy+s*0.1+dy,s*0.045,0,7);ctx.fill(); ctx.beginPath();ctx.arc(cx+s*0.24,gy+s*0.3+dy,s*0.045,0,7);ctx.fill();
+    ctx.strokeStyle="#7b8088"; ctx.lineWidth=s*0.025; ctx.setLineDash([s*0.03,s*0.02]); ctx.lineDashOffset=-wheelPh*s*0.4;
+    ctx.beginPath();ctx.moveTo(cx+s*0.13,gy-s*0.2);ctx.lineTo(cx+s*0.17,pedalCY-s*0.24);ctx.moveTo(cx+s*0.24,gy+s*0.3);ctx.lineTo(cx+s*0.19,pedalCY+s*0.24);ctx.stroke();
+    ctx.setLineDash([]); ctx.lineDashOffset=0;
+    ctx.fillStyle="#50555d"; rrPath(ctx,cx+s*0.15,pedalCY-s*0.25,s*0.04,s*0.5,s*0.02); ctx.fill();
+  }
+  ctx.strokeStyle=frameCol; ctx.lineWidth=s*0.08; ctx.beginPath();ctx.moveTo(cx,barY+s*0.14);ctx.lineTo(cx,barY);ctx.stroke();
+  ctx.strokeStyle="#23262c"; ctx.lineWidth=s*0.09; ctx.beginPath();ctx.moveTo(cx-s*0.36,barY);ctx.lineTo(cx+s*0.36,barY);ctx.stroke();
+  for(const sd of [-1,1]){ ctx.beginPath();ctx.moveTo(cx+sd*s*0.36,barY);ctx.quadraticCurveTo(cx+sd*s*0.46,barY+s*0.02,cx+sd*s*0.44,barY+s*0.2);ctx.stroke();
+    ctx.fillStyle="#1b1e23"; ctx.beginPath();ctx.ellipse(cx+sd*s*0.4,barY-s*0.05,s*0.05,s*0.08,0,0,7);ctx.fill(); }
+  if(showSaddle){ ctx.fillStyle="#15171b"; ctx.beginPath();ctx.moveTo(cx-s*0.17,seatY);ctx.quadraticCurveTo(cx,seatY-s*0.1,cx+s*0.17,seatY);ctx.lineTo(cx+s*0.12,seatY+s*0.05);ctx.lineTo(cx-s*0.12,seatY+s*0.05);ctx.closePath();ctx.fill(); }
+}
+function drawCyclistRear(ctx,cx,gy,s,crank,jersey,alpha,opts){
   ctx.save(); ctx.globalAlpha=alpha==null?1:alpha; ctx.lineJoin="round"; ctx.lineCap="round";
-  const skin="#c98d5e", shorts="#1e2c4a", helmet="#3a3f47", bike="#565b63", hand="#242830";
-  const hipY=gy-1.45*s, shY=gy-2.5*s, headY=gy-2.82*s, barY=gy-1.5*s;
-  // sombra en el piso
-  ctx.fillStyle="rgba(0,0,0,.28)";
-  ctx.beginPath();ctx.ellipse(cx,gy+s*0.18,s*0.62,s*0.16,0,0,7);ctx.fill();
-  // --- bicicleta ---
-  ctx.strokeStyle=bike; ctx.lineWidth=s*0.12;
-  ctx.beginPath();ctx.ellipse(cx,gy,s*0.24,s*0.5,0,0,7);ctx.stroke();           // rueda trasera
-  ctx.lineWidth=s*0.09;
-  ctx.beginPath();ctx.moveTo(cx,hipY-s*0.05);ctx.lineTo(cx,gy-s*0.45);ctx.stroke(); // tija+tubo asiento
-  ctx.beginPath();ctx.moveTo(cx,hipY);ctx.lineTo(cx,barY);ctx.stroke();          // tubo hacia manubrio
-  ctx.lineWidth=s*0.1;
-  ctx.beginPath();ctx.moveTo(cx-s*0.42,barY-s*0.02);ctx.lineTo(cx+s*0.42,barY-s*0.02);ctx.stroke(); // manubrio
-  // --- piernas (rodillas alineadas; la de pie más alto primero) ---
-  const pedalCY=gy-0.5*s, rc=s*0.34;
+  const skin="#c98d5e", shorts="#1e2c4a", helmet="#3a3f47";
+  const st=Math.max(0,Math.min(1,(opts&&opts.stand)||0));
+  const detail=s>=14; // de lejos (fantasmas chiquitos) se omiten los detalles finos
+  const wheelPh=crank*2.6;
+  const groundY=gy+0.52*s*WHEEL_H_SCALE;
+  const lean=Math.sin(crank)*(0.015+0.085*st), sway=Math.sin(crank)*s*(0.03+0.07*st);
+  const bob=Math.abs(Math.sin(crank))*s*(0.025+0.075*st), lift=s*0.28*st, eff=0.35+0.65*st;
+  ctx.fillStyle="rgba(0,0,0,.3)"; ctx.beginPath();ctx.ellipse(cx,groundY,s*0.5,s*0.09,0,0,7);ctx.fill();
+  ctx.translate(cx,groundY); ctx.rotate(lean); ctx.translate(-cx,-groundY);
+  const hipY=gy-1.45*s-lift+bob, shY=gy-2.5*s-lift*0.7+bob, headY=gy-2.82*s-lift*0.7+bob*1.2, barY=gy-1.5*s;
+  const hipX=cx+sway, shX=cx+sway*0.4;
+  drawBikeRear(ctx,cx,gy,s,wheelPh,jersey,st>0.5,detail);
+  const pedalCY=gy-0.5*s, rc=s*0.34, L1=s*0.62, L2=s*0.6;
   const leg=(side,ph)=>{
-    const py=pedalCY - Math.cos(ph)*rc*0.95, px=cx+side*s*0.23;
-    const hipX=cx+side*s*0.23, kneeX=cx+side*s*0.23, kneeY=(hipY+py)/2+s*0.05;
-    ctx.strokeStyle=skin; ctx.lineWidth=s*0.30;
-    ctx.beginPath();ctx.moveTo(hipX,hipY);ctx.lineTo(kneeX,kneeY);ctx.stroke();
-    ctx.lineWidth=s*0.20; ctx.beginPath();ctx.moveTo(kneeX,kneeY);ctx.lineTo(px,py);ctx.stroke();
-    ctx.fillStyle="#20242b"; ctx.beginPath();ctx.ellipse(px,py+s*0.05,s*0.15,s*0.1,0,0,7);ctx.fill();
-    ctx.fillStyle="#33383f"; ctx.beginPath();ctx.ellipse(px,py+s*0.11,s*0.15,s*0.04,0,0,7);ctx.fill();
+    const py=pedalCY-Math.cos(ph)*rc*0.95, px=cx+side*s*0.23;
+    const hx=hipX+side*s*0.2, d=Math.max(0.01,Math.hypot(px-hx,py-hipY)), bend=Math.max(0,Math.min(1,1-d/(L1+L2)));
+    const kx=(hx+px)/2, ky=hipY+(py-hipY)*0.46-bend*s*0.18; // rodilla sube al flexionar, sin abrirse hacia afuera
+    if(detail){ ctx.strokeStyle="#9ca2aa"; ctx.lineWidth=s*0.05; ctx.beginPath();ctx.moveTo(cx+side*s*0.08,pedalCY);ctx.lineTo(cx+side*s*0.1,py);ctx.stroke(); }
+    ctx.strokeStyle=shorts; ctx.lineWidth=s*0.32; ctx.beginPath();ctx.moveTo(hx,hipY);ctx.lineTo((hx+kx)/2,(hipY+ky)/2);ctx.stroke();
+    ctx.strokeStyle=skin; ctx.lineWidth=s*(0.28+bend*0.06); ctx.beginPath();ctx.moveTo((hx+kx)/2,(hipY+ky)/2);ctx.lineTo(kx,ky);ctx.stroke();
+    ctx.lineWidth=s*0.19; ctx.beginPath();ctx.moveTo(kx,ky);ctx.lineTo(px,py-s*0.04);ctx.stroke();
+    if(detail){ ctx.strokeStyle="#b97d52"; ctx.lineWidth=s*0.1; ctx.beginPath();ctx.moveTo(kx,ky+s*0.1);ctx.lineTo(px,py-s*0.18);ctx.stroke(); }
+    ctx.fillStyle="#20242b"; ctx.beginPath();ctx.ellipse(px,py+s*0.05,s*0.15,s*0.09,0,0,7);ctx.fill();
+    if(detail){ ctx.fillStyle="#f2f2f2"; ctx.fillRect(px-s*0.06,py+s*0.01,s*0.12,s*0.03); }
   };
   const lPh=crank, rPh=crank+Math.PI;
   if(Math.cos(lPh)>Math.cos(rPh)){ leg(1,rPh); leg(-1,lPh); } else { leg(-1,lPh); leg(1,rPh); }
-  // --- short ---
-  ctx.fillStyle=shorts;
-  ctx.beginPath();ctx.moveTo(cx-s*0.4,hipY-s*0.18);ctx.lineTo(cx+s*0.4,hipY-s*0.18);ctx.lineTo(cx+s*0.33,hipY+s*0.42);ctx.lineTo(cx-s*0.33,hipY+s*0.42);ctx.closePath();ctx.fill();
-  // --- cuello (detrás del tronco) ---
-  ctx.fillStyle=skin; ctx.beginPath();ctx.arc(cx,shY-s*0.02,s*0.15,0,7);ctx.fill();
-  // --- torso jersey (rectangular, ancho de caderas), color del corredor ---
-  ctx.fillStyle=jersey;
-  ctx.beginPath();ctx.moveTo(cx-s*0.38,hipY-s*0.08);ctx.lineTo(cx+s*0.38,hipY-s*0.08);ctx.lineTo(cx+s*0.4,shY);ctx.lineTo(cx-s*0.4,shY);ctx.closePath();ctx.fill();
-  ctx.strokeStyle="rgba(0,0,0,.18)";ctx.lineWidth=s*0.05;ctx.beginPath();ctx.moveTo(cx,shY+s*0.12);ctx.lineTo(cx,hipY-s*0.08);ctx.stroke();
-  // --- brazos con codo (hombro→codo→muñeca→manubrio) ---
-  const elbow=(side)=>({x:cx+side*s*0.55, y:shY+s*0.42});
-  const wrist=(side)=>({x:cx+side*s*0.42, y:barY});
-  for(const side of [-1,1]){ const sh0={x:cx+side*s*0.38,y:shY+s*0.04}, el=elbow(side), wr=wrist(side);
-    ctx.strokeStyle=jersey; ctx.lineWidth=s*0.17;
-    ctx.beginPath();ctx.moveTo(sh0.x,sh0.y);ctx.lineTo(el.x,el.y);ctx.stroke();
-    ctx.strokeStyle=skin; ctx.lineWidth=s*0.15;
-    ctx.beginPath();ctx.moveTo(el.x,el.y);ctx.lineTo(wr.x,wr.y);ctx.stroke();
-  }
-  // manos/guantes en el manubrio
-  ctx.fillStyle=hand;
-  ctx.beginPath();ctx.ellipse(cx-s*0.42,barY,s*0.1,s*0.08,0,0,7);ctx.fill();
-  ctx.beginPath();ctx.ellipse(cx+s*0.42,barY,s*0.1,s*0.08,0,0,7);ctx.fill();
-  // --- cabeza + casco ---
-  ctx.fillStyle=helmet;
-  ctx.beginPath();ctx.ellipse(cx,headY,s*0.27,s*0.24,0,0,7);ctx.fill();
-  ctx.fillStyle="#4a5058";
-  ctx.beginPath();ctx.ellipse(cx,headY-s*0.03,s*0.25,s*0.17,0,Math.PI,2*Math.PI);ctx.fill();
+  const tilt=Math.sin(crank)*(0.04+0.08*st);
+  ctx.save(); ctx.translate(hipX,hipY); ctx.rotate(-tilt*0.5); ctx.translate(-hipX,-hipY);
+  ctx.fillStyle=shorts; ctx.beginPath();ctx.moveTo(hipX-s*0.4,hipY-s*0.18);ctx.lineTo(hipX+s*0.4,hipY-s*0.18);ctx.lineTo(hipX+s*0.33,hipY+s*0.3);ctx.lineTo(hipX-s*0.33,hipY+s*0.3);ctx.closePath();ctx.fill();
   ctx.restore();
+  ctx.save(); ctx.translate(hipX,hipY); ctx.rotate(tilt); ctx.translate(-hipX,-hipY);
+  ctx.fillStyle=skin; ctx.beginPath();ctx.arc(shX,shY-s*0.02,s*0.15,0,7);ctx.fill();
+  ctx.fillStyle=jersey; ctx.beginPath();ctx.moveTo(hipX-s*0.36,hipY-s*0.08);ctx.lineTo(hipX+s*0.36,hipY-s*0.08);ctx.lineTo(shX+s*0.42,shY);ctx.quadraticCurveTo(shX,shY-s*0.1,shX-s*0.42,shY);ctx.closePath();ctx.fill();
+  ctx.fillStyle="rgba(0,0,0,.25)"; ctx.fillRect(hipX-s*0.3,hipY-s*0.2,s*0.6,s*0.1);
+  ctx.restore();
+  for(const side of [-1,1]){
+    const sh={x:shX+side*s*0.38,y:shY+s*0.04+side*tilt*s*0.4}, wr={x:cx+side*s*0.4,y:barY-s*0.03};
+    const pull=Math.sin(crank)*side*s*0.06*st, el={x:(sh.x+wr.x)/2+side*s*(0.14+eff*0.06)+pull,y:(sh.y+wr.y)/2+s*0.05};
+    ctx.strokeStyle=jersey; ctx.lineWidth=s*0.17; ctx.beginPath();ctx.moveTo(sh.x,sh.y);ctx.lineTo(el.x,el.y);ctx.stroke();
+    ctx.strokeStyle=skin; ctx.lineWidth=s*0.14; ctx.beginPath();ctx.moveTo(el.x,el.y);ctx.lineTo(wr.x,wr.y);ctx.stroke();
+    ctx.fillStyle="#242830"; ctx.beginPath();ctx.arc(wr.x,wr.y,s*0.08,0,7);ctx.fill();
+  }
+  ctx.fillStyle=helmet; ctx.beginPath();ctx.ellipse(shX,headY,s*0.27,s*0.24,tilt*0.5,0,7);ctx.fill();
+  if(detail){ ctx.strokeStyle="rgba(255,255,255,.35)"; ctx.lineWidth=s*0.04;
+    for(const o of [-0.1,0,0.1]){ ctx.beginPath();ctx.moveTo(shX+o*s,headY-s*0.2);ctx.lineTo(shX+o*s*1.4,headY+s*0.05);ctx.stroke(); } }
+  ctx.restore();
+}
+// Grado de "de pie" del propio ciclista en vivo: se para cuando la potencia supera el 106% del FTP
+// (inicio de Z5) y vuelve a sentarse por debajo del 95% (histéresis, para que no parpadee). La
+// transición es gradual, no de golpe.
+let liveStandTarget=0, liveStandAmt=0, liveStandLast=0;
+function updateLiveStand(){
+  const now=performance.now(), dt=liveStandLast?Math.min(0.1,(now-liveStandLast)/1000):0; liveStandLast=now;
+  const ftp=ftpVal(), p=(typeof curPower==="number")?curPower:0;
+  if(state!=="riding"){ liveStandTarget=0; }
+  else if(p>ftp*1.06) liveStandTarget=1;
+  else if(p<ftp*0.95) liveStandTarget=0;
+  liveStandAmt+=(liveStandTarget-liveStandAmt)*Math.min(1,dt*3);
+  return liveStandAmt;
 }
 function applyGpxView(){
   const gpx=mode==="gpx", velo=mode==="velodromo", on = velo ? true : (road3d && gpx);
