@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v149</title>
+<title>Bici Indoor · v150</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v149</h1>
+  <h1>Bici Indoor · v150</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -448,6 +448,12 @@
       <div class="tile"><div class="l">Pulso med</div><div class="v" id="sHr">—</div><div class="u">bpm</div></div>
       <div class="tile"><div class="l">Pulso máx</div><div class="v" id="sHrMax">—</div><div class="u">bpm</div></div>
     </div>
+    <div id="sRecov" class="hidden" style="margin:10px 0;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--panel)">
+      <div style="font-size:13px;font-weight:600;margin-bottom:4px">Recuperación de la frecuencia cardíaca</div>
+      <div id="sRecovMsg" style="font-size:13px;color:var(--dim)"></div>
+      <div id="sRecovLive" style="font-size:22px;font-weight:700;text-align:center;margin:6px 0"></div>
+      <button class="full" id="sRecovBtn" style="margin-top:4px">Medir recuperación igual</button>
+    </div>
     <div id="sVerdict" class="verdict hidden"></div>
     <div id="sRival" class="hidden" style="margin:8px 0"></div>
     <div id="sMetrics" style="margin:8px 0;font-size:14px;text-align:center;color:var(--dim)"></div>
@@ -518,6 +524,9 @@
       <canvas id="trendCvV" height="90" style="width:100%;display:block"></canvas>
       <div style="color:var(--dim);font-size:11px;margin:6px 0 4px">Eficiencia aeróbica (W/bpm)</div>
       <canvas id="trendCvEF" height="90" style="width:100%;display:block"></canvas>
+      <div style="color:var(--dim);font-size:11px;margin:6px 0 4px">Recuperación FC a 60 s (bpm que bajás · solo mediciones comparables)</div>
+      <canvas id="trendCvHRR" height="90" style="width:100%;display:block"></canvas>
+      <div id="trendHrrNote" style="color:var(--dim);font-size:12px;margin-top:4px"></div>
       <div id="trendReadout" style="color:var(--dim);font-size:12px;margin-top:6px">Tocá un punto para ver el detalle</div>
     </div>
     <div id="selBar" class="hidden" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
@@ -2600,7 +2609,7 @@ function updateWoHud(){
   $("woLeft").textContent=fmtTime(left);
   $("woBar").style.width=(100*woStepT/step.dur)+"%";
 }
-function startRide(){
+function startRide(){ cancelRecovery();
   mode = pendingWorkout ? "entreno" : $("modeSel").value;
   distanceM=0;v=0;elapsed=0;lastRec=0;lastAutosaveT=0;sumP=0;nP=0;hrSum=0;hrN=0;hrMax=0;lastSentGrade=999;lastSentAt=0;
   pwBuf=[]; pw30=[]; npSum=0; npCount=0; npVal=0; ifVal=0; tssVal=0;
@@ -2687,6 +2696,58 @@ function pauseRide(){
     autoPaused=false;state="riding";lastTs=performance.now();$("pause").textContent="Pausar";
   }
 }
+// ================= Recuperación de FC (v150) =================
+// Arranca SOLA al tocar "Terminar" (si hay pulsómetro): así el minuto se cuenta exacto desde que cortás
+// el esfuerzo. Se guarda si la sesión terminó intensa (pulso de los últimos 30 s >= 85% de la FC máx)
+// o si tocás "Medir recuperación igual". Protocolo fijo: dejar de pedalear y quedarse quieto.
+// "Comparable" (entra en la tendencia): arrancó >= 85% FC máx y, si ya hay 3+ mediciones comparables,
+// dentro de ±8 bpm de la mediana de sus pulsos de arranque (para no mezclar recuperaciones desde 150 y desde 135).
+const HRR_DUR=120, HRR_INTENSE_FRAC=0.85, HRR_BAND=8;
+let recov=null;
+function avgHrWindow(samples,t0,t1){ let s=0,n=0; for(const x of (samples||[])) if(x.t>=t0&&x.t<=t1&&x.hr>0){s+=x.hr;n++;} return n?s/n:0; }
+function cancelRecovery(){ if(recov&&recov.timer) clearInterval(recov.timer); recov=null; }
+function hrrPrevStarts(excludeDate){ return loadSesiones().filter(s=>s.hrr&&s.hrr.comparable&&s.date!==excludeDate).map(s=>s.hrr.start); }
+function hrrIsComparable(start,hrmax,prevStarts){
+  if(start<HRR_INTENSE_FRAC*hrmax) return false;
+  if(prevStarts.length<3) return true;
+  const a=[...prevStarts].sort((x,y)=>x-y), med=a[Math.floor(a.length/2)];
+  return Math.abs(start-med)<=HRR_BAND;
+}
+function startRecovery(sess){
+  cancelRecovery();
+  const dur=sess.dur||0, end30=avgHrWindow(sess.samples,dur-30,dur+1), start=avgHrWindow(sess.samples,dur-10,dur+1)||curHR||0;
+  const panel=$("sRecov");
+  if(!(start>0)){ panel.classList.add("hidden"); return; }
+  const hrmax=hrMaxVal(), intense=end30>=HRR_INTENSE_FRAC*hrmax;
+  recov={date:sess.date,start:Math.round(start),intense,keep:intense,hrmax,t0:performance.now(),pts:[],timer:null,done:false};
+  panel.classList.remove("hidden");
+  $("sRecovBtn").classList.toggle("hidden",intense);
+  $("sRecovMsg").textContent=intense
+    ? "Terminaste con el pulso alto ("+Math.round(end30)+" bpm, "+Math.round(100*end30/hrmax)+"% de tu FC máx). Dejá de pedalear y quedate quieto 2 minutos: se está midiendo."
+    : "Tu pulso terminó en "+Math.round(end30)+" bpm ("+Math.round(100*end30/hrmax)+"% de tu FC máx, hace falta 85% para una medición comparable). Se está grabando igual: si querés guardarla, tocá el botón. No va a entrar en la tendencia.";
+  recov.timer=setInterval(()=>{
+    if(!recov) return;
+    const t=(performance.now()-recov.t0)/1000;
+    if(curHR>0) recov.pts.push({t,hr:curHR});
+    const left=Math.max(0,Math.ceil(HRR_DUR-t));
+    $("sRecovLive").textContent=(curHR>0?curHR+" bpm":"sin pulso")+" · "+Math.floor(left/60)+":"+String(left%60).padStart(2,"0");
+    if(t>=HRR_DUR) finishRecovery();
+  },1000);
+}
+function finishRecovery(){
+  if(!recov||recov.done) return; recov.done=true; clearInterval(recov.timer);
+  const r=recov, hr60=avgHrWindow(r.pts,55,65), hr120=avgHrWindow(r.pts,114,HRR_DUR+1);
+  if(!r.keep){ $("sRecovLive").textContent=""; $("sRecovMsg").textContent="Medición no guardada."; $("sRecovBtn").classList.add("hidden"); recov=null; return; }
+  if(!(hr60>0)){ $("sRecovLive").textContent=""; $("sRecovMsg").textContent="No se pudo medir: se perdió la señal del pulsómetro."; recov=null; return; }
+  const comparable=hrrIsComparable(r.start,r.hrmax,hrrPrevStarts(r.date));
+  const hrr={start:r.start, hr60:Math.round(hr60), hr120:hr120>0?Math.round(hr120):null, drop60:Math.round(r.start-hr60),
+    drop120:hr120>0?Math.round(r.start-hr120):null, comparable, protocolo:"quieto"};
+  try{ const a=loadSesiones(), s=a.find(x=>x.date===r.date); if(s){ s.hrr=hrr; localStorage.setItem("bici_sesiones",JSON.stringify(a)); } }catch(e){ log("No pude guardar la recuperación: "+e.message,"#f85149"); }
+  $("sRecovLive").textContent="−"+hrr.drop60+" bpm en 60 s"+(hrr.drop120!=null?" · −"+hrr.drop120+" en 2 min":"");
+  $("sRecovMsg").textContent="Desde "+hrr.start+" bpm. "+(comparable?"Entra en la tendencia de Evolución.":"Guardada, pero no comparable: no entra en la tendencia.");
+  $("sRecovBtn").classList.add("hidden");
+  recov=null;
+}
 function finishRide(){
   state="finished";
   stopRoad();
@@ -2697,6 +2758,7 @@ function finishRide(){
   session.np=Math.round(npVal); session.if=+ifVal.toFixed(2); session.tss=Math.round(tssVal);
   saveSesion(session); actualizarFormaCompartida(session); populateGhosts(); populateVelGhosts();
   calcularYOfrecerUmbralAuto(true);
+  startRecovery(session);
   $("sTime").textContent=fmtTime(elapsed);
   $("sDist").textContent=(distanceM/1000).toFixed(2);
   $("sSpd").textContent=avgV.toFixed(1);
@@ -3691,7 +3753,8 @@ function openSessDetail(s){
     tile("TSS", s.tss!=null?s.tss:"—", "")+
     tile("Pulso medio", s.hrAvg?Math.round(s.hrAvg):"—", "bpm")+
     tile("Pulso máx", s.hrMax?Math.round(s.hrMax):"—", "bpm")+
-    tile("Cadencia media", avgCad!=null?Math.round(avgCad):"—", "rpm");
+    tile("Cadencia media", avgCad!=null?Math.round(avgCad):"—", "rpm")+
+    tile("Recup. 60 s", s.hrr?("−"+s.hrr.drop60):"—", s.hrr?("desde "+s.hrr.start+(s.hrr.comparable?"":" · no comp.")):"bpm");
   const dec=computeDecoupling(s.samples);
   $("sessDecoupling").innerHTML = dec
     ? `Desacople Pw:Hr <b>${dec.pct>=0?"+":""}${dec.pct.toFixed(1)}%</b> — ${Math.abs(dec.pct)<5?"buena base aeróbica para esta duración":Math.abs(dec.pct)<10?"aceptable, al límite":"posible falta de base aeróbica para este ritmo/duración"}`
@@ -3749,6 +3812,11 @@ function drawTrendAt(idx){
   drawLineChart($("trendCvH"),ptsFor("avgHr").filter(p=>p.y>0),"#ff6b6b",idx);
   drawLineChart($("trendCvV"),ptsFor("avgV"),"#4cc2ff",idx);
   drawLineChart($("trendCvEF"),ptsFor("ef").filter(p=>p.y>0),"#b46bd6",idx);
+  // Recuperación: serie propia (no depende de samples, así sobrevive a la poda de sesiones viejas)
+  const hrrList=loadSesiones().filter(s=>s.hrr&&s.hrr.comparable&&(histFilterMode==="all"||s.mode===histFilterMode)).sort((a,b)=>a.date-b.date);
+  drawLineChart($("trendCvHRR"),hrrList.map((s,i)=>({x:i,y:s.hrr.drop60})),"#3fb950",null);
+  const last=hrrList[hrrList.length-1];
+  $("trendHrrNote").textContent=hrrList.length?(hrrList.length+" medición(es) comparables · última: −"+last.hrr.drop60+" bpm desde "+last.hrr.start+" ("+fmtDate(last.date)+")"):"Todavía no hay mediciones comparables: se toman al terminar una sesión con el pulso alto.";
   if(idx!=null && trendData[idx]){
     const d=trendData[idx];
     $("trendReadout").innerHTML=`${fmtDate(d.date)} · Pot media <b>${Math.round(d.avgP)}W</b> · Pulso medio <b>${d.avgHr||"—"}</b> · Vel media <b>${d.avgV.toFixed(1)}km/h</b> · EF <b>${d.ef?d.ef.toFixed(2):"—"}</b>`;
@@ -4339,6 +4407,7 @@ $("fitUndo").onclick=()=>{ if(fitPoints.length) fitPoints.pop(); fitDrawCanvas()
 $("fitRestart").onclick=()=>{ fitPoints=[]; fitDrawCanvas(); updateFitPrompt(); $(fitPhase===1?"fitResult":"fitResult2").classList.add("hidden"); };
 $("routesBack").onclick=()=>{ $("routesCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); scrollTop(); };
 $("routesToHistBtn").onclick=()=>{ $("routesCard").classList.add("hidden"); $("historial").classList.remove("hidden"); setSelMode(false); renderHistorial(); scrollTop(); };
+$("sRecovBtn").onclick=()=>{ if(recov){ recov.keep=true; $("sRecovBtn").classList.add("hidden"); $("sRecovMsg").textContent="Se va a guardar al completar los 2 minutos (no entra en la tendencia si no llega al 85% de tu FC máx). Quedate quieto."; } };
 $("manualAddBtn").onclick=()=>{
   $("manualAddPanel").classList.remove("hidden");
   const now=new Date(Date.now()-Date.now()%60000-new Date().getTimezoneOffset()*60000);
