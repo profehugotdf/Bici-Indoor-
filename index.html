@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v157</title>
+<title>Bici Indoor · v158</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v157</h1>
+  <h1>Bici Indoor · v158</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -685,6 +685,57 @@
 <script>
 "use strict";
 const $=id=>document.getElementById(id);
+// ================= Base interna IndexedDB para lo pesado (v158) =================
+// Sesiones y rutas se guardan en IndexedDB en vez del almacenamiento común (localStorage), que tiene ~5 MB y es
+// COMPARTIDO por todas las apps de profehugotdf.github.io: así Bici no lo llena y deja lugar para las demás.
+// Se trabaja con una copia en memoria (lecturas instantáneas, mismo código de siempre) y cada cambio se escribe
+// a la base en segundo plano. Hasta que la base abre (milisegundos al arrancar) se usa localStorage como antes;
+// lo que se haya escrito ahí en ese instante se combina después con la base, sin perder nada.
+const BIG_KEYS=["bici_sesiones","bici_routes"];
+let bigMem={}, bigReady=false, bigMode="ls", bigDB=null, bigWriteErrLogged=false;
+function bigGet(k){ if(bigReady&&bigMode==="idb") return bigMem[k]!=null?bigMem[k]:null; try{ return localStorage.getItem(k); }catch(_){ return null; } }
+function bigSet(k,v){ if(bigReady&&bigMode==="idb"){ bigMem[k]=v; bigPersist(k,v); return; } localStorage.setItem(k,v); }
+function bigRemove(k){ if(bigReady&&bigMode==="idb"){ delete bigMem[k]; bigPersist(k,null); return; } try{ localStorage.removeItem(k); }catch(_){} }
+function bigPersist(k,v){
+  try{ const tx=bigDB.transaction("kv","readwrite"), st=tx.objectStore("kv"); if(v==null) st.delete(k); else st.put(v,k);
+    tx.onerror=tx.onabort=()=>{ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+((tx.error&&tx.error.message)||"error"),"#f85149"); } };
+  }catch(e){ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+e.message,"#f85149"); } }
+}
+function idbReq(r){ return new Promise((res,rej)=>{ r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+function bigMerge(k,idbVal,lsVal){
+  if(idbVal==null) return lsVal; if(lsVal==null) return idbVal;
+  try{ if(k==="bici_sesiones"){ const m=new Map(); for(const s of (JSON.parse(idbVal)||[])) m.set(s.date,s); for(const s of (JSON.parse(lsVal)||[])) m.set(s.date,s);
+      return JSON.stringify([...m.values()].sort((x,y)=>x.date-y.date)); }
+    return JSON.stringify(Object.assign(JSON.parse(idbVal)||{},JSON.parse(lsVal)||{}));
+  }catch(_){ return idbVal; }
+}
+async function initBigStore(){
+  try{
+    if(!window.indexedDB) throw new Error("el navegador no la ofrece");
+    const open=indexedDB.open("bici_indoor",1); open.onupgradeneeded=()=>open.result.createObjectStore("kv");
+    bigDB=await idbReq(open);
+    for(const k of BIG_KEYS){
+      const idbVal=await idbReq(bigDB.transaction("kv","readonly").objectStore("kv").get(k));
+      let lsVal=null; try{ lsVal=localStorage.getItem(k); }catch(_){}
+      const val=bigMerge(k,idbVal==null?null:idbVal,lsVal);
+      if(val!=null) bigMem[k]=val;
+      if(lsVal!=null){ // migrar: escribir, verificar leyendo de vuelta, y recién ahí liberar el almacenamiento común
+        const tw=bigDB.transaction("kv","readwrite"); tw.objectStore("kv").put(val,k);
+        await new Promise((res,rej)=>{ tw.oncomplete=res; tw.onerror=tw.onabort=()=>rej(tw.error||new Error("escritura abortada")); });
+        const back=await idbReq(bigDB.transaction("kv","readonly").objectStore("kv").get(k));
+        if(back===val){ localStorage.removeItem(k); log((k==="bici_sesiones"?"Sesiones":"Rutas")+" movidas a la base interna: ~"+Math.round(lsVal.length/1024)+" KB liberados del espacio compartido","#3fb950"); }
+        else log("La copia de "+k+" no coincidió: la dejo también en el almacenamiento común, por seguridad","#f0883e");
+      }
+    }
+    bigMode="idb";
+    try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(_){}
+  }catch(e){ bigMode="ls"; log("Base interna no disponible ("+e.message+"): sigo con el almacenamiento común","#f0883e"); }
+  bigReady=true;
+  try{ populateGhosts(); populateVelGhosts(); }catch(_){}
+  try{ if(!$("historial").classList.contains("hidden")) renderHistorial(); }catch(_){}
+  try{ if(!$("routesCard").classList.contains("hidden")) renderRoutesList(); }catch(_){}
+}
+
 const STEP=10, G=9.81, RHO=1.225;
 let peRawArr=[];
 let pvScrub=-1, pvMapT=null, gpxText="";
@@ -2772,7 +2823,7 @@ function refreshStart(){
   const m=$("modeSel").value;
   $("start").disabled=!(connected&&sawTrainer&&(pendingWorkout?true:(m==="gpx"?pd.length>0:true)));
 }
-function loadSesiones(){try{return JSON.parse(localStorage.getItem("bici_sesiones")||"[]");}catch{return[];}}
+function loadSesiones(){try{return JSON.parse(bigGet("bici_sesiones")||"[]");}catch{return[];}}
 
 // ---- Registro compartido de "Forma" entre mis apps (mismo dominio, distinta carpeta) ----
 // Los fantasmas importados (mode:"tcx") no son entrenamiento propio, así que no cuentan acá.
@@ -3059,7 +3110,7 @@ function finishRecovery(){
   const comparable=hrrIsComparable(r.start,r.hrmax,hrrPrevStarts(r.date));
   const hrr={start:r.start, hr60:Math.round(hr60), hr120:hr120>0?Math.round(hr120):null, drop60:Math.round(r.start-hr60),
     drop120:hr120>0?Math.round(r.start-hr120):null, comparable, protocolo:"quieto"};
-  try{ const a=loadSesiones(), s=a.find(x=>x.date===r.date); if(s){ s.hrr=hrr; localStorage.setItem("bici_sesiones",JSON.stringify(a)); } }catch(e){ log("No pude guardar la recuperación: "+e.message,"#f85149"); }
+  try{ const a=loadSesiones(), s=a.find(x=>x.date===r.date); if(s){ s.hrr=hrr; bigSet("bici_sesiones",JSON.stringify(a)); } }catch(e){ log("No pude guardar la recuperación: "+e.message,"#f85149"); }
   $("sRecovLive").textContent="−"+hrr.drop60+" bpm en 60 s"+(hrr.drop120!=null?" · −"+hrr.drop120+" en 2 min":"");
   $("sRecovMsg").textContent="Desde "+hrr.start+" bpm. "+(comparable?"Entra en la tendencia de Evolución.":"Guardada, pero no comparable: no entra en la tendencia.");
   $("sRecovBtn").classList.add("hidden");
@@ -3141,7 +3192,7 @@ function podarSesion(s){
 // guardado de cualquiera de ellas, no solo de Bici.
 function pruneOldSamples(){
   try{
-    const raw=localStorage.getItem("bici_sesiones");
+    const raw=bigGet("bici_sesiones");
     if(!raw) return;
     const antes=raw.length;
     const arr=JSON.parse(raw);
@@ -3150,7 +3201,7 @@ function pruneOldSamples(){
     arr.forEach(s=>{ if(s.date<corte && podarSesion(s)) podadas++; });
     if(podadas>0){
       const nuevoTexto=JSON.stringify(arr);
-      localStorage.setItem("bici_sesiones",nuevoTexto);
+      bigSet("bici_sesiones",nuevoTexto);
       const liberado=antes-nuevoTexto.length;
       try{ localStorage.setItem(PRUNE_INFO_KEY,JSON.stringify({fecha:new Date().toISOString().slice(0,10), sesionesPodadas:podadas, bytesLiberados:liberado})); }catch(_){}
       log("Se liberaron ~"+(liberado/1024).toFixed(0)+" KB podando "+podadas+" sesión(es) de más de "+PRUNE_DAYS+" días (se conserva el resumen: mejor 20' de potencia y pulso).","#3fb950");
@@ -3159,8 +3210,8 @@ function pruneOldSamples(){
 }
 function saveSesion(s){try{
   pruneOldSamples(); // libera espacio de sesiones viejas ANTES de intentar guardar la nueva
-  const a=JSON.parse(localStorage.getItem("bici_sesiones")||"[]");
-  a.push(s);localStorage.setItem("bici_sesiones",JSON.stringify(a));}catch(e){log("No pude guardar: "+e.message,"#f85149");}}
+  const a=JSON.parse(bigGet("bici_sesiones")||"[]");
+  a.push(s);bigSet("bici_sesiones",JSON.stringify(a));}catch(e){log("No pude guardar: "+e.message,"#f85149");}}
 
 // ================= Wiring =================
 $("connect").onclick=connect;
@@ -3788,7 +3839,7 @@ toggleMode();
     s.dur=last.t||0; s.dist=last.d||0;
     const cur=loadSesiones();
     let added=false;
-    if(!cur.some(x=>x.date===s.date)){ cur.push(s); cur.sort((a,b)=>a.date-b.date); localStorage.setItem("bici_sesiones",JSON.stringify(cur)); added=true; actualizarFormaCompartida(s); }
+    if(!cur.some(x=>x.date===s.date)){ cur.push(s); cur.sort((a,b)=>a.date-b.date); bigSet("bici_sesiones",JSON.stringify(cur)); added=true; actualizarFormaCompartida(s); }
     localStorage.removeItem("bici_inprogress");
     if(added) alert("Recuperé una sesión que se había cortado sin terminar ("+mins+":"+String(secs).padStart(2,"0")+" · "+km+" km) y la guardé en el historial.");
   }catch(_){ try{localStorage.removeItem("bici_inprogress");}catch(_2){} }
@@ -3828,7 +3879,7 @@ if("usb" in navigator){
 function fmtDate(ms){const d=new Date(ms);
   return d.getDate()+"/"+(d.getMonth()+1)+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");}
 let selMode=false, selected=new Set();
-function deleteByDate(date){const a=loadSesiones().filter(s=>s.date!==date);localStorage.setItem("bici_sesiones",JSON.stringify(a));}
+function deleteByDate(date){const a=loadSesiones().filter(s=>s.date!==date);bigSet("bici_sesiones",JSON.stringify(a));}
 function updateDelCount(){ const b=$("delSel"); if(b)b.textContent="Borrar ("+selected.size+")";
   const p=$("pruneSel"); if(p)p.textContent="🧹 Podar ("+selected.size+")"; }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
@@ -3837,7 +3888,7 @@ function saveSessionNotes(date,text){
   const all=loadSesiones(); const s=all.find(x=>x.date===date);
   if(!s) return false;
   s.notes=text;
-  try{ localStorage.setItem("bici_sesiones",JSON.stringify(all)); return true; }catch(e){ return false; }
+  try{ bigSet("bici_sesiones",JSON.stringify(all)); return true; }catch(e){ return false; }
 }
 function renderHistorial(){
   const listAll=loadSesiones();
@@ -3900,7 +3951,7 @@ function renderHistorial(){
           if(!confirm("¿Podar el detalle de esta sesión?\n\nSe vacía el registro muestra a muestra (para liberar espacio), pero se conserva todo lo demás: fecha, duración, distancia, NP, IF, TSS, promedios, y el mejor 20' de potencia y de pulso.\n\nLos gráficos de esta sesión ya no se van a poder ver.")) return;
           const a=loadSesiones();
           const target=a.find(x=>x.date===s.date);
-          if(target && podarSesion(target)){ localStorage.setItem("bici_sesiones",JSON.stringify(a)); }
+          if(target && podarSesion(target)){ bigSet("bici_sesiones",JSON.stringify(a)); }
           renderHistorial();
         };
         row.appendChild(pr);
@@ -4226,7 +4277,7 @@ $("pmcClose").onclick=()=>{ $("pmcPanel").classList.add("hidden"); };
 window.addEventListener("resize",()=>{ if(!$("sessDetailPanel").classList.contains("hidden")) drawSessDetailAt(null); if(!$("trendPanel").classList.contains("hidden")) drawTrendAt(null); if(!$("pmcPanel").classList.contains("hidden")) drawPMCAt(null); });
 function exportAll(){
   let cfg={}; try{cfg=JSON.parse(localStorage.getItem("bici_config")||"{}");}catch(_){}
-  let routes={}; try{routes=JSON.parse(localStorage.getItem("bici_routes")||"{}");}catch(_){}
+  let routes={}; try{routes=JSON.parse(bigGet("bici_routes")||"{}");}catch(_){}
   let scenes={}; try{scenes=JSON.parse(localStorage.getItem("bici_scenes")||"{}");}catch(_){}
   let entrenos=[]; try{entrenos=JSON.parse(localStorage.getItem("bici_entrenos")||"[]");}catch(_){}
   let bridges={}; try{bridges=JSON.parse(localStorage.getItem("bici_bridges")||"{}");}catch(_){}
@@ -4246,10 +4297,10 @@ function importSesiones(text){
   let added=0, nuevas=[];
   for(const s of arr){ if(s&&s.date&&!seen.has(s.date)){cur.push(s);seen.add(s.date);added++;nuevas.push(s);} }
   cur.sort((a,b)=>a.date-b.date);
-  localStorage.setItem("bici_sesiones",JSON.stringify(cur));
+  bigSet("bici_sesiones",JSON.stringify(cur));
   nuevas.forEach(actualizarFormaCompartida);
   if(cfg){ try{localStorage.setItem("bici_config",JSON.stringify(cfg));}catch(_){} loadCfg(); }
-  if(routes){ try{const r=loadRoutesMap(); for(const name in routes) r[name]=minifyGpxForStorage(routes[name]); localStorage.setItem("bici_routes",JSON.stringify(r)); }catch(_){} }
+  if(routes){ try{const r=loadRoutesMap(); for(const name in routes) r[name]=minifyGpxForStorage(routes[name]); bigSet("bici_routes",JSON.stringify(r)); }catch(_){} }
   if(scenes){ try{const s2=loadScenes(); Object.assign(s2,scenes); saveScenes(s2); }catch(_){} }
   if(bridges){ try{const b2=loadBridges(); Object.assign(b2,bridges); saveBridges(b2); }catch(_){} }
   let addedWo=0;
@@ -4276,15 +4327,16 @@ function minifyGpxForStorage(text){
     return out.length<text.length ? out : text;
   }catch(e){ return text; }
 }
-function saveRouteText(name,text){ if(!name)return false; try{const r=JSON.parse(localStorage.getItem("bici_routes")||"{}"); r[name]=minifyGpxForStorage(text); localStorage.setItem("bici_routes",JSON.stringify(r)); return true; }catch(e){ return false; } }
+function saveRouteText(name,text){ if(!name)return false; try{const r=JSON.parse(bigGet("bici_routes")||"{}"); r[name]=minifyGpxForStorage(text); bigSet("bici_routes",JSON.stringify(r)); return true; }catch(e){ return false; } }
 function storageUsageKB(){ let bytes=0; try{ for(const k in localStorage){ if(localStorage.hasOwnProperty(k)) bytes += (k.length+(localStorage.getItem(k)||"").length); } }catch(_){} return Math.round(bytes/1024); }
-function getRouteText(name){ try{const r=JSON.parse(localStorage.getItem("bici_routes")||"{}"); return r[name]||null; }catch(_){ return null; } }
-function loadRoutesMap(){ try{return JSON.parse(localStorage.getItem("bici_routes")||"{}");}catch(_){ return {}; } }
+function getRouteText(name){ try{const r=JSON.parse(bigGet("bici_routes")||"{}"); return r[name]||null; }catch(_){ return null; } }
+function loadRoutesMap(){ try{return JSON.parse(bigGet("bici_routes")||"{}");}catch(_){ return {}; } }
 function storageBreakdown(){
   const keys=["bici_sesiones","bici_config","bici_routes","bici_scenes","bici_entrenos"];
   const labels={bici_sesiones:"Sesiones",bici_config:"Configuración",bici_routes:"Rutas",bici_scenes:"Escenarios",bici_entrenos:"Entrenamientos"};
   const out=[];
-  for(const k of keys){ const v=localStorage.getItem(k)||""; out.push({key:k,label:labels[k],kb:Math.round((k.length+v.length)/1024)}); }
+  for(const k of keys){ const big=BIG_KEYS.includes(k)&&bigMode==="idb", v=(big?bigGet(k):localStorage.getItem(k))||"";
+    out.push({key:k,label:labels[k]+(big?" (base interna, no ocupa el espacio compartido)":""),kb:Math.round((k.length+v.length)/1024)}); }
   let otherBytes=0; try{ for(const k in localStorage){ if(localStorage.hasOwnProperty(k) && !keys.includes(k)) otherBytes+=(k.length+(localStorage.getItem(k)||"").length); } }catch(_){}
   if(otherBytes>0) out.push({key:"_other",label:"Otros",kb:Math.round(otherBytes/1024)});
   return out.sort((a,b)=>b.kb-a.kb);
@@ -4313,7 +4365,7 @@ function renderRoutesList(){
     const dlBtn=document.createElement("button"); dlBtn.textContent="⬇ GPX"; dlBtn.style.minHeight="40px"; dlBtn.style.padding="8px 12px";
     dlBtn.onclick=()=>{ const blob=new Blob([text],{type:"application/gpx+xml"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name.endsWith(".gpx")?name:name+".gpx"; a.click(); };
     const delBtn=document.createElement("button"); delBtn.className="del"; delBtn.textContent="✕";
-    delBtn.onclick=()=>{ if(confirm('¿Borrar la ruta guardada "'+name+'"? (no borra las sesiones que la usaron)')){ const m=loadRoutesMap(); delete m[name]; localStorage.setItem("bici_routes",JSON.stringify(m)); renderRoutesList(); } };
+    delBtn.onclick=()=>{ if(confirm('¿Borrar la ruta guardada "'+name+'"? (no borra las sesiones que la usaron)')){ const m=loadRoutesMap(); delete m[name]; bigSet("bici_routes",JSON.stringify(m)); renderRoutesList(); } };
     row.appendChild(editBtn); row.appendChild(dlBtn); row.appendChild(delBtn);
     wrap.appendChild(row);
   });
@@ -4759,7 +4811,7 @@ $("routesCompressBtn").onclick=()=>{
   const map=loadRoutesMap(); let changed=0;
   for(const name in map){ const mini=minifyGpxForStorage(map[name]); if(mini.length<map[name].length){ map[name]=mini; changed++; } }
   try{
-    localStorage.setItem("bici_routes",JSON.stringify(map));
+    bigSet("bici_routes",JSON.stringify(map));
     const after=storageUsageKB();
     alert("Comprimidas "+changed+" rutas.\nEspacio: "+before+" KB → "+after+" KB.");
   }catch(e){
@@ -4872,22 +4924,22 @@ $("histBack").onclick=()=>{ $("historial").classList.add("hidden");$("setup").cl
 $("exportAll").onclick=exportAll;
 $("importBtn").onclick=()=>$("importFile").click();
 $("importFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>importSesiones(r.result);r.readAsText(f);e.target.value="";};
-$("clearAll").onclick=()=>{ if(confirm("¿Borrar TODAS las sesiones? No se puede deshacer.")){localStorage.removeItem("bici_sesiones");eliminarTodoBiciDeFormaCompartida();renderHistorial();populateGhosts();populateVelGhosts();} };
+$("clearAll").onclick=()=>{ if(confirm("¿Borrar TODAS las sesiones? No se puede deshacer.")){bigRemove("bici_sesiones");eliminarTodoBiciDeFormaCompartida();renderHistorial();populateGhosts();populateVelGhosts();} };
 $("pruneNowBtn").onclick=()=>{
   const arr=loadSesiones();
   const corte=Date.now()-PRUNE_DAYS*86400000;
   const candidatas=arr.filter(s=>(s.samples||[]).length>0 && s.date<corte).length;
   if(candidatas===0){ alert("No hay sesiones de más de "+PRUNE_DAYS+" días con muestras completas todavía — nada para podar."); return; }
   if(!confirm("Se va a vaciar el detalle muestra a muestra de "+candidatas+" sesión(es) de más de "+PRUNE_DAYS+" días.\n\nSe conserva todo lo demás (fecha, duración, distancia, NP, IF, TSS, promedios) y además el mejor 20' de potencia y de pulso de cada una, para que el cálculo automático de FTP y umbral de pulso los siga viendo.\n\n¿Continuar?")) return;
-  const antes=(localStorage.getItem("bici_sesiones")||"").length;
+  const antes=(bigGet("bici_sesiones")||"").length;
   pruneOldSamples();
-  const despues=(localStorage.getItem("bici_sesiones")||"").length;
+  const despues=(bigGet("bici_sesiones")||"").length;
   alert("Listo. Se liberaron ~"+((antes-despues)/1024).toFixed(0)+" KB podando "+candidatas+" sesión(es).");
 };
 $("diagBtn").onclick=()=>{
   const lines=[];
   lines.push("=== bici_sesiones ===");
-  const raw=localStorage.getItem("bici_sesiones");
+  const raw=bigGet("bici_sesiones");
   if(raw===null){ lines.push("La clave NO EXISTE en localStorage (nunca se guardó nada, o algo la borró por completo)."); }
   else {
     lines.push("Largo del texto guardado: "+raw.length+" caracteres.");
@@ -4910,7 +4962,7 @@ $("diagBtn").onclick=()=>{
   lines.push("");
   lines.push("=== Poda automática de muestras viejas (más de "+PRUNE_DAYS+" días) ===");
   try{
-    const arrPoda=JSON.parse(localStorage.getItem("bici_sesiones")||"[]");
+    const arrPoda=JSON.parse(bigGet("bici_sesiones")||"[]");
     const conSamples=arrPoda.filter(s=>(s.samples||[]).length>0).length;
     const podadasYa=arrPoda.filter(s=>(s.samples||[]).length===0 && (s.best20Power>0||s.best20HR>0)).length;
     lines.push("Sesiones con muestras completas: "+conSamples+" · ya podadas (con resumen conservado): "+podadasYa);
@@ -4988,7 +5040,7 @@ $("pruneSel").onclick=()=>{ if(!selected.size){return;}
     const antes=JSON.stringify(a).length;
     let podadas=0;
     a.forEach(s=>{ if(selected.has(s.date) && podarSesion(s)) podadas++; });
-    localStorage.setItem("bici_sesiones",JSON.stringify(a));
+    bigSet("bici_sesiones",JSON.stringify(a));
     const despues=JSON.stringify(a).length;
     setSelMode(false);
     alert("Se podaron "+podadas+" sesión(es), liberando ~"+((antes-despues)/1024).toFixed(0)+" KB.");
@@ -4996,12 +5048,13 @@ $("pruneSel").onclick=()=>{ if(!selected.size){return;}
 $("delSel").onclick=()=>{ if(!selected.size){return;}
   if(confirm("¿Borrar "+selected.size+" sesiones?")){
     const a=loadSesiones().filter(s=>!selected.has(s.date));
-    localStorage.setItem("bici_sesiones",JSON.stringify(a));
+    bigSet("bici_sesiones",JSON.stringify(a));
     selected.forEach(eliminarDeFormaCompartida);
     setSelMode(false); populateGhosts(); populateVelGhosts(); } };
 
 window.addEventListener("resize",()=>{ if(state==="riding"||state==="paused"){drawRide(); if(raceActive()){fitLane();drawLane();}} if(fitImg) fitDrawCanvas(); });
 if(!("usb" in navigator))msg("WebUSB no disponible en este navegador.");
+initBigStore();
 </script>
 </body>
 </html>
