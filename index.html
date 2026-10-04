@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v155</title>
+<title>Bici Indoor · v157</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v155</h1>
+  <h1>Bici Indoor · v157</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -354,6 +354,9 @@
     <div class="card hidden" id="sceneCard">
       <h2>Escenario de la ruta</h2>
       <div id="sceneRouteInfo" style="color:var(--dim);font-size:13px;margin-bottom:8px"></div>
+      <label style="display:flex;align-items:flex-start;gap:8px;margin:0 0 4px;font-size:13px"><input type="checkbox" id="sceneOutBack" style="margin-top:2px">
+        <span>↔ <b>Ida y vuelta</b>: editá solo la ida; la vuelta copia los tramos al revés, con agua y pared del lado opuesto.</span></label>
+      <div id="sceneOutBackInfo" style="color:var(--dim);font-size:12px;margin:0 0 10px 24px"></div>
       <div id="scenePrevWrap">
         <canvas id="scenePrev" height="200" style="width:100%;display:block;border-radius:10px;background:#0a0d12"></canvas>
         <div style="display:flex;align-items:center;gap:8px;margin:6px 0 10px">
@@ -1042,7 +1045,7 @@ function parseGpx(text){
 function recomputeProfile(){
   if(!peRawArr.length) return;
   const sm=Math.max(0,parseInt($("smoothM").value,10)||100);
-  pe=smooth(peRawArr,sm); pg=[]; uphillCache={};
+  pe=smooth(peRawArr,sm); pg=[]; uphillCache={}; turnCache={};
   for(let i=0;i<pe.length;i++){const a=Math.max(0,i-1),b=Math.min(pe.length-1,i+1),run=(b-a)*STEP;
     pg.push(Math.max(-30,Math.min(30,run>0?(pe[b]-pe[a])/run*100:0)));}
   let up=0; for(let i=1;i<pe.length;i++){const dv=pe[i]-pe[i-1];if(dv>0)up+=dv;}
@@ -1504,7 +1507,7 @@ function loadSceneRouteGeo(routeName){
 let scenePrevRAF=null, scenePrevLast=0, scenePrevPlaying=false, scenePrevCrank=0, scenePrevFrame=0;
 const SCENE_PREV_SPEED=25/3.6;
 function sceneEditSegsNormalized(){
-  const segs=sceneEditRows.map(s=>({km:+(+s.km||0).toFixed(2),scene:s.scene,water:s.water||null,wall:s.wall||null})).sort((a,b)=>a.km-b.km);
+  const segs=sceneEditRows.map(s=>({km:+(+s.km||0).toFixed(2),scene:s.scene,water:s.water||null,waterKind:s.waterKind||"mar",wall:s.wall||null})).sort((a,b)=>a.km-b.km);
   if(!segs.length||segs[0].km!==0) segs.unshift({km:0,scene:"rural",water:null,wall:null});
   return segs; }
 function drawScenePreview(){
@@ -1541,7 +1544,8 @@ function openSceneEditor(routeName,totalM,returnTo){
   routeName = routeName || fname; totalM = totalM || total; returnTo = returnTo || "gpx";
   if(!routeName || !totalM){ alert("Cargá primero un recorrido (GPX)."); return; }
   sceneEditRoute=routeName; sceneEditTotal=totalM; sceneReturnTo=returnTo;
-  sceneEditRows=getRouteScenes(routeName).map(s=>({km:s.km,scene:s.scene,water:s.water||null,wall:s.wall||null}));
+  sceneEditRows=getRouteScenes(routeName).map(s=>({km:s.km,scene:s.scene,water:s.water||null,waterKind:s.waterKind||"mar",wall:s.wall||null}));
+  sceneEditOutBack=!!((loadSceneOpts()[routeName]||{}).outBack); $("sceneOutBack").checked=sceneEditOutBack;
   bridgeEditRows=getRouteBridges(routeName).map(b=>({fromKm:b.fromKm,toKm:b.toKm,peakPct:b.peakPct}));
   $("sceneRouteInfo").textContent=routeName+" · "+(totalM/1000).toFixed(2)+" km";
   const gotGeo=loadSceneRouteGeo(routeName);
@@ -1552,6 +1556,7 @@ function openSceneEditor(routeName,totalM,returnTo){
   $("sceneZoomFrom").value=sceneZoomFromKm.toFixed(1); $("sceneZoomTo").value=sceneZoomToKm.toFixed(1);
   renderSceneRows();
   renderBridgeRows();
+  updateOutBackInfo();
   // Oculto TODAS las tarjetas de nivel superior (no solo la de origen) para evitar que quede
   // alguna otra pantalla (p.ej. la del rodillo en vivo con la vista 3D) pisada detrás del editor.
   document.querySelectorAll(".card").forEach(c=>{ if(c.id!=="sceneCard") c.classList.add("hidden"); });
@@ -1593,8 +1598,12 @@ function renderSceneRows(){
     const wLbl=document.createElement("span"); wLbl.style.cssText="font-size:12px;color:var(--dim)"; wLbl.textContent="💧 Agua";
     const wSel=document.createElement("select"); wSel.style.flex="1";
     [["","Sin agua"],["left","A la izquierda"],["right","A la derecha"]].forEach(([v,t])=>{ const o=document.createElement("option"); o.value=v; o.textContent=t; if((row.water||"")===v)o.selected=true; wSel.appendChild(o); });
-    wSel.onchange=()=>{ row.water=wSel.value||null; };
-    waterRow.appendChild(wLbl); waterRow.appendChild(wSel);
+    const kSel=document.createElement("select"); kSel.style.flex="1";
+    [["mar","Mar / canal"],["rio","Río"],["laguna","Laguna"]].forEach(([v,t])=>{ const o=document.createElement("option"); o.value=v; o.textContent=t; if((row.waterKind||"mar")===v)o.selected=true; kSel.appendChild(o); });
+    kSel.style.display=row.water?"":"none";
+    kSel.onchange=()=>{ row.waterKind=kSel.value; };
+    wSel.onchange=()=>{ row.water=wSel.value||null; kSel.style.display=row.water?"":"none"; };
+    waterRow.appendChild(wLbl); waterRow.appendChild(wSel); waterRow.appendChild(kSel);
     block.appendChild(waterRow);
     const wallRow=document.createElement("div");
     wallRow.style.cssText="display:flex;align-items:center;gap:8px;margin-top:6px";
@@ -1608,16 +1617,12 @@ function renderSceneRows(){
   });
   drawSceneStrip();
 }
-function drawSceneStrip(){
-  const cv=$("sceneStrip"); if(!cv||!sceneEditTotal)return;
-  const r=fit(cv), ctx=r.ctx, w=r.w, h=r.h; if(w<10)return;
-  ctx.clearRect(0,0,w,h);
-  const segs=[...sceneEditRows].sort((a,b)=>a.km-b.km), totKm=sceneEditTotal/1000;
-  for(let i=0;i<segs.length;i++){
-    const x0=w*(segs[i].km/totKm), x1= i+1<segs.length? w*(segs[i+1].km/totKm) : w;
-    ctx.fillStyle=(SCENES[segs[i].scene]||SCENES.rural).sky[0];
-    ctx.fillRect(x0,0,Math.max(1,x1-x0),h);
-  }
+function updateOutBackInfo(){
+  const el=$("sceneOutBackInfo"); if(!el) return; const t=turnPointFor(sceneEditRoute);
+  if(!t){ el.textContent=sceneEditOutBack?"Sin el trazado guardado no puedo ubicar el giro: se toma la mitad de la ruta.":""; return; }
+  if(sceneEditOutBack){ const extra=sceneEditRows.some(r=>(+r.km)>t.turn/1000+0.01);
+    el.textContent="Vuelta en el km "+(t.turn/1000).toFixed(2)+" (el punto más alejado de la largada)."+(extra?" Los tramos que empiezan después de ese km no se usan.":""); }
+  else el.textContent=t.looksOutBack?"Esta ruta parece de ida y vuelta (giro en el km "+(t.turn/1000).toFixed(2)+"): marcá la casilla para no cargar la vuelta.":"";
 }
 function drawSceneStrip(){
   const cv=$("sceneStrip"); if(!cv||!sceneEditTotal)return;
@@ -1628,6 +1633,14 @@ function drawSceneStrip(){
     const x0=w*(segs[i].km/totKm), x1= i+1<segs.length? w*(segs[i+1].km/totKm) : w;
     ctx.fillStyle=(SCENES[segs[i].scene]||SCENES.rural).sky[0];
     ctx.fillRect(x0,0,Math.max(1,x1-x0),h);
+  }
+  const tp=sceneEditOutBack?turnPointFor(sceneEditRoute):null;
+  if(tp&&tp.total>tp.turn){ // la vuelta, en espejo: se pinta columna por columna con el tramo que le toca
+    const xt=w*(tp.turn/1000/totKm);
+    for(let x=Math.floor(xt);x<w;x+=2){ const d=x/w*sceneEditTotal, frac=Math.min(1,(d-tp.turn)/(tp.total-tp.turn)), km=tp.turn*(1-frac)/1000;
+      let cur=segs[0]; for(const s of segs){ if(s.km<=km+1e-6) cur=s; else break; }
+      ctx.fillStyle=(SCENES[cur&&cur.scene]||SCENES.rural).sky[0]; ctx.fillRect(x,0,2,h); }
+    ctx.fillStyle="#e6edf3"; ctx.fillRect(xt-1,0,2,h);
   }
   if(totKm>0 && (sceneZoomFromKm>0.001 || sceneZoomToKm<totKm-0.001)){
     const zx0=w*(sceneZoomFromKm/totKm), zx1=w*(sceneZoomToKm/totKm);
@@ -1775,14 +1788,15 @@ $("sceneEditBtn").onclick=()=>openSceneEditor(fname,total,"gpx");
 $("sceneAddBtn").onclick=()=>{
   const lastKm=sceneEditRows.length?Math.max(...sceneEditRows.map(s=>s.km)):0;
   const nextKm=Math.min(sceneEditTotal/1000, +(lastKm+1).toFixed(1));
-  sceneEditRows.push({km:nextKm, scene:"rural", water:null, wall:null}); renderSceneRows();
+  sceneEditRows.push({km:nextKm, scene:"rural", water:null, waterKind:"mar", wall:null}); renderSceneRows();
 };
 $("sceneCancel").onclick=closeSceneEditor;
 $("sceneSave").onclick=()=>{
-  const segs=sceneEditRows.map(s=>({km:+s.km.toFixed(2),scene:s.scene,water:s.water||null,wall:s.wall||null})).sort((a,b)=>a.km-b.km);
+  const segs=sceneEditRows.map(s=>({km:+s.km.toFixed(2),scene:s.scene,water:s.water||null,waterKind:s.waterKind||"mar",wall:s.wall||null})).sort((a,b)=>a.km-b.km);
   if(!segs.length||segs[0].km!==0) segs.unshift({km:0,scene:"rural",water:null,wall:null});
   const bridges=bridgeEditRows.map(b=>({fromKm:+b.fromKm.toFixed(3),toKm:+b.toKm.toFixed(3),peakPct:+b.peakPct.toFixed(1)}))
     .filter(b=>b.toKm>b.fromKm).sort((a,b)=>a.fromKm-b.fromKm);
+  const opts=loadSceneOpts(); opts[sceneEditRoute]=Object.assign({},opts[sceneEditRoute]||{},{outBack:sceneEditOutBack}); saveSceneOpts(opts);
   const ok=setRouteScenes(sceneEditRoute,segs);
   const ok2=setRouteBridges(sceneEditRoute,bridges);
   if(!ok||!ok2){
@@ -1834,13 +1848,60 @@ function uphillSideAt(routeName,d){
   if(!c||!c.length) return "left";
   return c[Math.max(0,Math.min(c.length-1,Math.round(d/UPHILL_STEP)))];
 }
+// ---------- Ida y vuelta (v156) ----------
+// La vuelta reusa los tramos de la ida en espejo: d en la vuelta -> el punto equivalente de la ida (proporcional,
+// por si ida y vuelta no miden exactamente lo mismo con el GPS). Agua/pared manuales se invierten de lado.
+let sceneOptsCache=null, turnCache={}, sceneEditOutBack=false;
+function loadSceneOpts(){ if(!sceneOptsCache){ try{sceneOptsCache=JSON.parse(localStorage.getItem("bici_scene_opts")||"{}");}catch(_){sceneOptsCache={};} } return sceneOptsCache; }
+function saveSceneOpts(o){ sceneOptsCache=o; try{localStorage.setItem("bici_scene_opts",JSON.stringify(o)); return true;}catch(e){ return false; } }
+function outBackFor(routeName){
+  if(scenePreviewSegs&&routeName===sceneEditRoute) return sceneEditOutBack;
+  const o=loadSceneOpts()[routeName]; return !!(o&&o.outBack);
+}
+// Punto de giro = el punto de la ruta más alejado de la largada.
+function turnPointFor(routeName){
+  let c=turnCache[routeName]; if(c!==undefined) return c;
+  const r=routeGeoFor(routeName); c=null;
+  if(r&&r.pts.length>1){ const p0=r.pts[0], mLon=111320*Math.cos(p0.lat*Math.PI/180); let best=-1,bi=0;
+    for(let i=0;i<r.pts.length;i++){ const dx=(r.pts[i].lon-p0.lon)*mLon, dy=(r.pts[i].lat-p0.lat)*111320, d2=dx*dx+dy*dy; if(d2>best){best=d2;bi=i;} }
+    const total=r.dist[r.dist.length-1]; c={turn:r.dist[bi], total};
+    // ¿parece ida y vuelta? puntos de la ida y de la vuelta a la misma "altura" del recorrido, cerca entre sí
+    let near=0,n=0; for(const f of [0.15,0.3,0.45,0.6,0.75,0.9]){ const a=posAtDistance(r,c.turn*f), b=posAtDistance(r,c.turn+(total-c.turn)*(1-f));
+      const dx=(a.lon-b.lon)*mLon, dy=(a.lat-b.lat)*111320; n++; if(Math.hypot(dx,dy)<80) near++; }
+    c.looksOutBack = c.turn>0.3*total && c.turn<0.7*total && near>=5; }
+  turnCache[routeName]=c; return c;
+}
+function mirrorD(routeName,d){
+  if(!outBackFor(routeName)) return {d,back:false};
+  const t=turnPointFor(routeName); if(!t||!(t.total>t.turn)||d<=t.turn) return {d,back:false};
+  const frac=Math.min(1,(d-t.turn)/(t.total-t.turn)); return {d:t.turn*(1-frac), back:true};
+}
+const flipSide=s=>s==="left"?"right":(s==="right"?"left":s);
+// ---------- Puentes visibles y tipos de agua (v157) ----------
+function bridgesFor(routeName){
+  if(!routeName) return [];
+  if(scenePreviewSegs&&routeName===sceneEditRoute) return bridgeEditRows.filter(b=>b.toKm>b.fromKm);
+  if(routeName===fname) return curRouteBridges;
+  return getRouteBridges(routeName);
+}
+function onBridgeAt(routeName,bridges,d){
+  if(!bridges.length) return false; const km=mirrorD(routeName,d).d/1000;
+  for(const b of bridges) if(km>=b.fromKm&&km<=b.toKm) return true; return false;
+}
+const WATER_LOOK={
+  mar:{top:"#4f8fb0",mid:"#2f6a8c",bot:"#173d54"},
+  rio:{top:"#5f8f86",mid:"#3e6b62",bot:"#24433d"},
+  laguna:{top:"#6f9fb8",mid:"#2e5d73",bot:"#16323f"}
+};
 function sceneAt(routeName,d){
-  const segs=getRouteScenes(routeName), km=d/1000;
+  const mir=mirrorD(routeName,d);
+  const segs=getRouteScenes(routeName), km=mir.d/1000;
   let cur=segs[0]||{scene:"rural",water:null,wall:null};
   for(const s of segs){ if(s.km<=km+1e-6) cur=s; else break; }
   const base=SCENES[cur.scene]||SCENES.rural;
-  const wall=cur.wall==="auto"?uphillSideAt(routeName,d):(cur.wall||null);
-  return Object.assign({},base,{waterSide:cur.water||base.defaultWater||null, wallSide:wall});
+  const wall=cur.wall==="auto"?uphillSideAt(routeName,d):(mir.back?flipSide(cur.wall||null):(cur.wall||null)); // la automática ya usa la geometría real
+  const water=cur.water||base.defaultWater||null;
+  return Object.assign({},base,{waterSide:mir.back?flipSide(water):water, waterKind:cur.waterKind||"mar", wallSide:wall});
 }
 // ---------- Puentes / rampas manuales (para tramos que el DEM no capta, ej. puentes de autopista) ----------
 function loadBridges(){ try{return JSON.parse(localStorage.getItem("bici_bridges")||"{}");}catch(_){ return {}; } }
@@ -1851,6 +1912,11 @@ let curRouteBridges=[];
 function refreshRouteBridges(routeName){ curRouteBridges=getRouteBridges(routeName); }
 function bridgeGradeAt(routeName,d){
   if(!routeName || !curRouteBridges.length) return null;
+  const mir=mirrorD(routeName,d);
+  if(mir.back){ const g=bridgeGradeRaw(mir.d); return g==null?null:-g; } // mismo puente recorrido al revés
+  return bridgeGradeRaw(d);
+}
+function bridgeGradeRaw(d){
   const CURVE_FRAC=0.25; // fracción del puente dedicada a la transición suave, centrada en la cresta
   for(const b of curRouteBridges){
     const fromM=b.fromKm*1000, toM=b.toKm*1000;
@@ -1931,6 +1997,11 @@ function drawSideDecor(ctx,decor,tx,ty,th,seed,side){
     ctx.lineWidth=Math.max(0.5,th*0.015); ctx.beginPath(); ctx.moveTo(tx-th*0.8,ty-th*0.45); ctx.lineTo(tx+th*0.8,ty-th*0.45); ctx.moveTo(tx-th*0.8,ty-th*0.25); ctx.lineTo(tx+th*0.8,ty-th*0.25); ctx.stroke();
     if(seed>0.1){ ctx.fillStyle="#f2efe6"; ctx.beginPath(); ctx.ellipse(tx+side*th*1.2,ty-th*0.2,th*0.3,th*0.18,0,0,7); ctx.fill();
       ctx.fillStyle="#3a3a3a"; ctx.beginPath(); ctx.arc(tx+side*th*1.2+side*th*0.3,ty-th*0.25,th*0.09,0,7); ctx.fill(); }
+  } else if(decor==="none"){ /* orilla del río: sin decorado */
+  } else if(decor==="juncos"){
+    ctx.strokeStyle="#6b7a3e"; ctx.lineWidth=Math.max(1,th*0.05);
+    for(let j=0;j<5;j++){ const xx=tx+(j-2)*th*0.12, hh=th*(0.5+0.35*Math.abs(Math.sin(seed*9+j)));
+      ctx.beginPath(); ctx.moveTo(xx,ty); ctx.quadraticCurveTo(xx+side*th*0.05,ty-hh*0.6,xx+side*th*0.1,ty-hh); ctx.stroke(); }
   } else if(decor==="rail"){ // guardarraíl del lado del valle
     ctx.fillStyle="#8f959c"; ctx.fillRect(tx-th*0.03,ty-th*0.32,th*0.06,th*0.32);
     ctx.fillStyle="#c8ccd1"; ctx.fillRect(tx-th*0.7,ty-th*0.3,th*1.4,th*0.08);
@@ -1960,8 +2031,8 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
   const leftType = sc.wallSide==="left"?"wall":(sc.waterSide==="left"?"water":(sc.wallSide==="right"?"valley":"normal"));
   const rightType = sc.wallSide==="right"?"wall":(sc.waterSide==="right"?"water":(sc.wallSide==="left"?"valley":"normal"));
   const sideFill=(type)=>{
-    if(type==="water"){ const g=ctx.createLinearGradient(0,horizon,0,h);
-      g.addColorStop(0,"#4f8fb0"); g.addColorStop(0.4,"#2f6a8c"); g.addColorStop(1,"#173d54"); return g; }
+    if(type==="water"){ const L=WATER_LOOK[sc.waterKind]||WATER_LOOK.mar, g=ctx.createLinearGradient(0,horizon,0,h);
+      g.addColorStop(0,L.top); g.addColorStop(0.4,L.mid); g.addColorStop(1,L.bot); return g; }
     if(type==="valley"){ const g=ctx.createLinearGradient(0,horizon,0,h); // valle: el terreno cae y se ve lejos, con bruma
       g.addColorStop(0,hexRgba(sc.sky[1],1)); g.addColorStop(0.25,"#7f98a6"); g.addColorStop(0.6,"#4f6b55"); g.addColorStop(1,"#3a5240"); return g; }
     if(type==="wall"){ const g=ctx.createLinearGradient(0,horizon,0,h);
@@ -1973,10 +2044,24 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
     ctx.fillStyle=sideFill(rightType); ctx.fillRect(w/2,horizon,w/2,h-horizon);
     // brillos horizontales sutiles sobre el agua (efecto espejo), del lado que corresponda
     if(leftType==="water"||rightType==="water"){
-      const wx0=leftType==="water"?0:w/2, wx1=leftType==="water"?w/2:w;
-      ctx.strokeStyle="rgba(255,255,255,.22)"; ctx.lineWidth=1;
-      for(let k=0;k<5;k++){ const yy=horizon+8+k*k*4; if(yy>h)break;
-        ctx.beginPath();ctx.moveTo(wx0+(wx1-wx0)*0.15,yy);ctx.lineTo(wx0+(wx1-wx0)*0.85,yy);ctx.stroke(); }
+      const wx0=leftType==="water"?0:w/2, wx1=leftType==="water"?w/2:w, kind=sc.waterKind||"mar";
+      if(kind==="laguna"){ // espejo: las montañas reflejadas, agua quieta
+        ctx.save(); ctx.beginPath(); ctx.rect(wx0,horizon,wx1-wx0,h-horizon); ctx.clip();
+        ctx.globalAlpha=0.38; ctx.translate(0,2*horizon); ctx.scale(1,-1); drawMountains(ctx,w,horizon,camB,sc,f); ctx.restore();
+        ctx.strokeStyle="rgba(255,255,255,.10)"; ctx.lineWidth=1;
+        for(let k=1;k<5;k++){ const yy=horizon+6+k*k*6; if(yy>h)break; ctx.beginPath();ctx.moveTo(wx0+(wx1-wx0)*0.2,yy);ctx.lineTo(wx0+(wx1-wx0)*0.8,yy);ctx.stroke(); }
+      } else if(kind==="rio"){ // la otra orilla a la vista, con árboles, y ondas que corren
+        const bankH=Math.max(6,(h-horizon)*0.10); ctx.fillStyle=shadeHex(sc.ground,0.9); ctx.fillRect(wx0,horizon,wx1-wx0,bankH);
+        ctx.fillStyle=shadeHex("#2f6b39",0.85); for(let x=wx0;x<wx1;x+=7){ const az=camB+Math.atan((x-w/2)/f), th=bankH*(0.6+0.5*Math.abs(Math.sin(az*23)));
+          ctx.beginPath(); ctx.ellipse(x,horizon+bankH*0.35,4,th*0.6,0,0,7); ctx.fill(); }
+        ctx.strokeStyle="rgba(230,240,235,.28)"; ctx.lineWidth=1.2; const run=d0*1.4+performance.now()/90;
+        for(let k=0;k<9;k++){ const yy=horizon+bankH+4+k*k*2.6; if(yy>h)break; const len=8+k*3, span=wx1-wx0, xx=wx0+((k*61+run)%span+span)%span;
+          ctx.beginPath(); ctx.moveTo(xx,yy); ctx.lineTo(Math.min(wx1,xx+len),yy); ctx.stroke(); }
+      } else { // mar / canal
+        ctx.strokeStyle="rgba(255,255,255,.22)"; ctx.lineWidth=1;
+        for(let k=0;k<5;k++){ const yy=horizon+8+k*k*4; if(yy>h)break;
+          ctx.beginPath();ctx.moveTo(wx0+(wx1-wx0)*0.15,yy);ctx.lineTo(wx0+(wx1-wx0)*0.85,yy);ctx.stroke(); }
+      }
     }
   } else {
     ctx.fillStyle=sc.ground; ctx.fillRect(0,horizon,w,h-horizon);
@@ -1984,6 +2069,7 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
   const gShade=Math.max(0.72,Math.min(1.15,1-gAhead*0.02)); // luz según pendiente (sube=oscuro)
   const asphaltL=shadeHex(sc.asphalt,gShade*1.1), asphaltD=shadeHex(sc.asphalt,gShade*0.96);
   const BANK_K=0.5;
+  const bridges=bridgesFor(routeName);
   const S=[]; let x=0, prevSeg=0, cum=0;
   for(let i=0;i<=N;i++){
     const dd=d0+cum; let rel=bFn(dd)-camB; rel=Math.atan2(Math.sin(rel),Math.cos(rel));
@@ -1998,14 +2084,27 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
     const bo=b.bank*b.hw*BANK_K, ao=a.bank*a.hw*BANK_K;   // peralte: desnivel de bordes
     const bLY=b.y-bo, bRY=b.y+bo, aLY=a.y-ao, aRY=a.y+ao;
     const rb=Math.max(1.5,b.hw*0.26), ra=Math.max(1,a.hw*0.26);
+    const onBr=onBridgeAt(routeName,bridges,b.d);
+    if(onBr){ // río cruzando por debajo del puente, a los dos lados
+      const L=WATER_LOOK.rio; ctx.fillStyle=L.mid;
+      ctx.beginPath();ctx.moveTo(-w,bLY);ctx.lineTo(b.cx-b.hw,bLY);ctx.lineTo(a.cx-a.hw,aLY);ctx.lineTo(-w,aLY);ctx.closePath();ctx.fill();
+      ctx.beginPath();ctx.moveTo(2*w,bRY);ctx.lineTo(b.cx+b.hw,bRY);ctx.lineTo(a.cx+a.hw,aRY);ctx.lineTo(2*w,aRY);ctx.closePath();ctx.fill();
+    } else {
     ctx.fillStyle=light?"#eeeeee":"#d8452f";
     ctx.beginPath();ctx.moveTo(b.cx-b.hw-rb,bLY);ctx.lineTo(b.cx-b.hw,bLY);ctx.lineTo(a.cx-a.hw,aLY);ctx.lineTo(a.cx-a.hw-ra,aLY);ctx.closePath();ctx.fill();
     ctx.beginPath();ctx.moveTo(b.cx+b.hw+rb,bRY);ctx.lineTo(b.cx+b.hw,bRY);ctx.lineTo(a.cx+a.hw,aRY);ctx.lineTo(a.cx+a.hw+ra,aRY);ctx.closePath();ctx.fill();
-    ctx.fillStyle=light?asphaltL:asphaltD;
+    }
+    ctx.fillStyle=onBr?(light?"#8a8e94":"#80848a"):(light?asphaltL:asphaltD);
     ctx.beginPath();ctx.moveTo(b.cx-b.hw,bLY);ctx.lineTo(b.cx+b.hw,bRY);ctx.lineTo(a.cx+a.hw,aRY);ctx.lineTo(a.cx-a.hw,aLY);ctx.closePath();ctx.fill();
     if(light){ const cb=Math.max(1,b.hw*0.06), ca=Math.max(0.7,a.hw*0.06);
       ctx.fillStyle="#efe7c8";
       ctx.beginPath();ctx.moveTo(b.cx-cb,b.y);ctx.lineTo(b.cx+cb,b.y);ctx.lineTo(a.cx+ca,a.y);ctx.lineTo(a.cx-ca,a.y);ctx.closePath();ctx.fill(); }
+    if(onBr){ // barandas de hormigón (1 m) a los dos lados, con juntas cada 2,5 m
+      const sb=b.hw/wRoad, sa=a.hw/wRoad;
+      for(const sd of [-1,1]){ const bx=b.cx+sd*b.hw, ax=a.cx+sd*a.hw, by=sd<0?bLY:bRY, ay=sd<0?aLY:aRY;
+        ctx.fillStyle=sd<0?"#c9ccd1":"#b9bcc1"; ctx.beginPath(); ctx.moveTo(bx,by); ctx.lineTo(ax,ay); ctx.lineTo(ax,ay-1.0*sa); ctx.lineTo(bx,by-1.0*sb); ctx.closePath(); ctx.fill();
+        if(Math.floor(b.d/2.5)!==Math.floor(a.d/2.5)){ ctx.strokeStyle="rgba(60,64,70,.45)"; ctx.lineWidth=Math.max(0.6,sb*0.06); ctx.beginPath(); ctx.moveTo(bx,by); ctx.lineTo(bx,by-1.0*sb); ctx.stroke(); } }
+    }
     // línea de llegada real (velódromo): franja a cuadros blanco/rojo cruzando todo el ancho de la pista
     if(geom && geom.trackLen && Math.floor(b.d/geom.trackLen)!==Math.floor(a.d/geom.trackLen)){
       const nCheck=8;
@@ -2022,7 +2121,7 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
     const bsc0=sceneOverride||sceneAt(routeName,b.d);
     const wallSide0=bsc0.wallSide;
     const spacing = wallSide0 ? wallSpacing : decorSpacing;
-    if(Math.floor(b.d/spacing)!==Math.floor(a.d/spacing) && b.hw>6){
+    if(!onBr && Math.floor(b.d/spacing)!==Math.floor(a.d/spacing) && b.hw>6){
       const bsc=sceneOverride||sceneAt(routeName,b.d);
       for(const side of [-1,1]){
         const seed=Math.sin(Math.floor(b.d/spacing)*7.3 + side*2.1);
@@ -2032,7 +2131,7 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
         if(bsc.decor==="stands" && side===-1 && !isWaterSide && !isWallSide) continue; // sin tribunas en el interior (infield) del velódromo
         const off=b.hw*(isWallSide?0.15:(0.45+0.5*Math.abs(seed)));
         const tx=b.cx+side*(b.hw+off), ty=b.y, th=b.hw*(isWallSide?(0.9+0.4*Math.abs(seed)):(0.45+0.3*Math.abs(seed)));
-        drawSideDecor(ctx,isWaterSide?"waves":(isWallSide?"rocks":(isValleySide?"rail":bsc.decor)),isValleySide?b.cx+side*b.hw*1.08:tx,ty,isValleySide?b.hw*0.55:th,seed,side);
+        drawSideDecor(ctx,isWaterSide?({rio:"none",laguna:"juncos"}[bsc.waterKind]||"waves"):(isWallSide?"rocks":(isValleySide?"rail":bsc.decor)),isValleySide?b.cx+side*b.hw*1.08:tx,ty,isValleySide?b.hw*0.55:th,seed,side);
       }
     }
     // cartel de kilómetro (solo rutas)
@@ -4620,6 +4719,7 @@ $("fitRestart").onclick=()=>{ fitPoints=[]; fitDrawCanvas(); updateFitPrompt(); 
 $("routesBack").onclick=()=>{ $("routesCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); scrollTop(); };
 $("routesToHistBtn").onclick=()=>{ $("routesCard").classList.add("hidden"); $("historial").classList.remove("hidden"); setSelMode(false); renderHistorial(); scrollTop(); };
 $("sRecovBtn").onclick=()=>{ if(recov){ recov.keep=true; $("sRecovBtn").classList.add("hidden"); $("sRecovMsg").textContent="Se va a guardar al completar los 2 minutos (no entra en la tendencia si no llega al 85% de tu FC máx). Quedate quieto."; } };
+$("sceneOutBack").onchange=()=>{ sceneEditOutBack=$("sceneOutBack").checked; updateOutBackInfo(); drawSceneStrip(); };
 $("scenePrevPlay").onclick=()=>{ scenePrevPlaying=!scenePrevPlaying; $("scenePrevPlay").textContent=scenePrevPlaying?"⏸ Pausar":"▶ Recorrer desde acá"; };
 $("manualAddBtn").onclick=()=>{
   $("manualAddPanel").classList.remove("hidden");
