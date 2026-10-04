@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v162</title>
+<title>Bici Indoor · v164</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v162</h1>
+  <h1>Bici Indoor · v164</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -694,17 +694,29 @@ const $=id=>document.getElementById(id);
 const BIG_KEYS=["bici_sesiones","bici_routes"];
 let bigMem={}, bigReady=false, bigMode="ls", bigDB=null, bigWriteErrLogged=false;
 function bigGet(k){ if(bigReady&&bigMode==="idb") return bigMem[k]!=null?bigMem[k]:null; try{ return localStorage.getItem(k); }catch(_){ return null; } }
-function bigSet(k,v){ if(bigReady&&bigMode==="idb"){ bigMem[k]=v; bigPersist(k,v); return; } localStorage.setItem(k,v); }
-function bigRemove(k){ if(bigReady&&bigMode==="idb"){ delete bigMem[k]; bigPersist(k,null); return; } try{ localStorage.removeItem(k); }catch(_){} }
+function bigSet(k,v){ if(bigReady&&bigMode==="idb"){ bigMem[k]=v; bigPersist(k,v); if(k==="bici_sesiones") writeSesionesMirror(); return; } localStorage.setItem(k,v); }
+function bigRemove(k){ if(bigReady&&bigMode==="idb"){ delete bigMem[k]; bigPersist(k,null); if(k==="bici_sesiones"){ try{ localStorage.removeItem(k); }catch(_){} } return; } try{ localStorage.removeItem(k); }catch(_){} }
 function bigPersist(k,v){
   try{ const tx=bigDB.transaction("kv","readwrite"), st=tx.objectStore("kv"); if(v==null) st.delete(k); else st.put(v,k);
     tx.onerror=tx.onabort=()=>{ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+((tx.error&&tx.error.message)||"error"),"#f85149"); } };
   }catch(e){ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+e.message,"#f85149"); } }
 }
+// v164: copia RESUMIDA de las sesiones en el almacenamiento común, con la misma clave de siempre ("bici_sesiones"),
+// para las otras apps que la leen (Mi plan): todos los datos de cada sesión menos el detalle muestra a muestra.
+// Cada sesión lleva _resumen:true para que Bici nunca la confunda con datos reales al arrancar.
+let mirrorErrLogged=false;
+function writeSesionesMirror(){
+  try{ const arr=JSON.parse(bigMem.bici_sesiones||"[]");
+    const slim=arr.map(s=>{ const o={}; for(const k in s) if(k!=="samples") o[k]=s[k]; o._resumen=true; return o; });
+    localStorage.setItem("bici_sesiones",JSON.stringify(slim));
+  }catch(e){ if(!mirrorErrLogged){ mirrorErrLogged=true; log("No pude actualizar el resumen de sesiones para las otras apps: "+e.message,"#f0883e"); } }
+}
 function idbReq(r){ return new Promise((res,rej)=>{ r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
 function bigMerge(k,idbVal,lsVal){
+  if(lsVal!=null && k==="bici_sesiones"){ try{ const a=JSON.parse(lsVal)||[]; if(a.length && a.every(s=>s._resumen)) return idbVal!=null?idbVal:lsVal; }catch(_){} } // solo resumen: no hay nada nuevo que combinar
   if(idbVal==null) return lsVal; if(lsVal==null) return idbVal;
-  try{ if(k==="bici_sesiones"){ const m=new Map(); for(const s of (JSON.parse(idbVal)||[])) m.set(s.date,s); for(const s of (JSON.parse(lsVal)||[])) m.set(s.date,s);
+  try{ if(k==="bici_sesiones"){ const m=new Map(); for(const s of (JSON.parse(idbVal)||[])) m.set(s.date,s);
+      for(const s of (JSON.parse(lsVal)||[])) if(!s._resumen) m.set(s.date,s); // el resumen para otras apps NO es un dato real: nunca pisa la sesión completa
       return JSON.stringify([...m.values()].sort((x,y)=>x.date-y.date)); }
     return JSON.stringify(Object.assign(JSON.parse(idbVal)||{},JSON.parse(lsVal)||{}));
   }catch(_){ return idbVal; }
@@ -723,11 +735,12 @@ async function initBigStore(){
         const tw=bigDB.transaction("kv","readwrite"); tw.objectStore("kv").put(val,k);
         await new Promise((res,rej)=>{ tw.oncomplete=res; tw.onerror=tw.onabort=()=>rej(tw.error||new Error("escritura abortada")); });
         const back=await idbReq(bigDB.transaction("kv","readonly").objectStore("kv").get(k));
-        if(back===val){ localStorage.removeItem(k); log((k==="bici_sesiones"?"Sesiones":"Rutas")+" movidas a la base interna: ~"+Math.round(lsVal.length/1024)+" KB liberados del espacio compartido","#3fb950"); }
+        if(back===val){ localStorage.removeItem(k); if(lsVal.indexOf('"_resumen":true')<0) log((k==="bici_sesiones"?"Sesiones":"Rutas")+" movidas a la base interna: ~"+Math.round(lsVal.length/1024)+" KB liberados del espacio compartido","#3fb950"); }
         else log("La copia de "+k+" no coincidió: la dejo también en el almacenamiento común, por seguridad","#f0883e");
       }
     }
     bigMode="idb";
+    writeSesionesMirror(); // resumen para Mi plan y las demás apps
     try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(_){}
   }catch(e){ bigMode="ls"; log("Base interna no disponible ("+e.message+"): sigo con el almacenamiento común","#f0883e"); }
   bigReady=true;
@@ -1515,8 +1528,11 @@ const SCENES={
   velodromo:{ label:"Velódromo cubierto", sky:["#171b22","#2a323d"], ground:"#2e4a2f", asphalt:"#c9a768", mtnCol:["#333a44","#242931"], mtnAmp:0.6, decor:"stands" },
   velodromo_open:{ label:"Velódromo al aire libre", sky:["#5bb0e6","#bfe6f5"], ground:"#3a6b3d", asphalt:"#b8956a", mtnCol:["#7492ad","#54718d"], mtnAmp:0.5, decor:"stands" },
 };
-function loadScenes(){ try{return JSON.parse(localStorage.getItem("bici_scenes")||"{}");}catch(_){ return {}; } }
-function saveScenes(o){ try{localStorage.setItem("bici_scenes",JSON.stringify(o)); return true;}catch(e){ return false; } }
+// Copia en memoria: el escenario se consulta en cada franja de cada cuadro (pared continua), no se puede decodificar
+// todo lo guardado cada vez. Se renueva al guardar.
+let scenesCache=null;
+function loadScenes(){ if(!scenesCache){ try{ scenesCache=JSON.parse(localStorage.getItem("bici_scenes")||"{}"); }catch(_){ scenesCache={}; } } return scenesCache; }
+function saveScenes(o){ scenesCache=o; try{localStorage.setItem("bici_scenes",JSON.stringify(o)); return true;}catch(e){ return false; } }
 let scenePreviewSegs=null; // mientras se dibuja la vista previa del editor: tramos editados, todavía sin guardar
 function getRouteScenes(routeName){ if(scenePreviewSegs&&routeName===sceneEditRoute) return scenePreviewSegs;
   const all=loadScenes(); return (routeName&&all[routeName])||[{km:0,scene:"rural"}]; }
@@ -2131,7 +2147,7 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
   // (de lejos a cerca) siga siendo válido.
   // El peralte sale de la CURVATURA en ese punto (no de cuánto difiere su dirección de la tuya, como antes, que
   // exageraba curvas suaves): casi nada en curvas abiertas, tope realista en las cerradas.
-  const BANK_CURV=25, BANK_MAX=0.16, ROAD_TURN_CUT=Math.cos(75*Math.PI/180);
+  const WALL_H=3.5, BANK_CURV=25, BANK_MAX=0.16, ROAD_TURN_CUT=Math.cos(75*Math.PI/180);
   // v162: el GPX es una serie de puntos unidos por rectas, así que su rumbo cambia a saltos (recta-quiebre-recta).
   // El peralte sale de la curvatura, y con esos saltos alternaba 0° / máximo de una franja a otra: los bordes hacían
   // serrucho. Por eso primero se toma el rumbo y la altura de cada franja, después se SUAVIZAN a lo largo de unos
@@ -2205,6 +2221,19 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
     if(light){ const cb=Math.max(1,b.hw*0.06), ca=Math.max(0.7,a.hw*0.06);
       ctx.fillStyle="#efe7c8";
       ctx.beginPath();ctx.moveTo(b.cx-cb,b.y);ctx.lineTo(b.cx+cb,b.y);ctx.lineTo(a.cx+ca,a.y);ctx.lineTo(a.cx-ca,a.y);ctx.closePath();ctx.fill(); }
+    if(routeName && !onBr && !isVelo){ // v163: pared de roca y baranda del valle CONTINUAS (antes: picos y postes sueltos)
+      const bsc=sceneAt(routeName,b.d), asc=sceneAt(routeName,a.d);
+      const sb=b.hw/wRoad, sa=a.hw/wRoad;
+      const edge=(S0,LY,RY,sd)=>({x:S0.cx+sd*S0.hw*1.12, y:sd<0?LY:RY});
+      if(bsc.wallSide && bsc.wallSide===asc.wallSide){ const sd=bsc.wallSide==="left"?-1:1, eb=edge(b,bLY,bRY,sd), ea=edge(a,aLY,aRY,sd);
+        ctx.fillStyle=sd<0?"#6f6558":"#655b4e"; ctx.strokeStyle=ctx.fillStyle; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(eb.x,eb.y); ctx.lineTo(ea.x,ea.y); ctx.lineTo(ea.x+sd*sa*0.4,ea.y-WALL_H*sa); ctx.lineTo(eb.x+sd*sb*0.4,eb.y-WALL_H*sb); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.strokeStyle="rgba(255,255,255,.12)"; ctx.lineWidth=Math.max(0.5,sb*0.06); ctx.beginPath(); ctx.moveTo(ea.x+sd*sa*0.4,ea.y-WALL_H*sa); ctx.lineTo(eb.x+sd*sb*0.4,eb.y-WALL_H*sb); ctx.stroke(); // borde de arriba
+      }
+      const valley=bsc.wallSide&&!bsc.waterSide?(bsc.wallSide==="left"?1:-1):0;
+      if(valley && asc.wallSide===bsc.wallSide){ const sd=valley, eb=edge(b,bLY,bRY,sd), ea=edge(a,aLY,aRY,sd);
+        ctx.fillStyle="#c8ccd1"; ctx.beginPath(); ctx.moveTo(eb.x,eb.y-0.55*sb); ctx.lineTo(ea.x,ea.y-0.55*sa); ctx.lineTo(ea.x,ea.y-0.8*sa); ctx.lineTo(eb.x,eb.y-0.8*sb); ctx.closePath(); ctx.fill(); }
+    }
     if(onBr){ // barandas de hormigón (1 m) a los dos lados, con juntas cada 2,5 m
       const sb=b.hw/wRoad, sa=a.hw/wRoad;
       for(const sd of [-1,1]){ const bx=b.cx+sd*b.hw, ax=a.cx+sd*a.hw, by=sd<0?bLY:bRY, ay=sd<0?aLY:aRY;
