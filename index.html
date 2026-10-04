@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v153</title>
+<title>Bici Indoor · v154</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v153</h1>
+  <h1>Bici Indoor · v154</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -354,6 +354,13 @@
     <div class="card hidden" id="sceneCard">
       <h2>Escenario de la ruta</h2>
       <div id="sceneRouteInfo" style="color:var(--dim);font-size:13px;margin-bottom:8px"></div>
+      <div id="scenePrevWrap">
+        <canvas id="scenePrev" height="200" style="width:100%;display:block;border-radius:10px;background:#0a0d12"></canvas>
+        <div style="display:flex;align-items:center;gap:8px;margin:6px 0 10px">
+          <button id="scenePrevPlay" style="min-height:36px;padding:6px 12px;font-size:13px">▶ Recorrer desde acá</button>
+          <span id="scenePrevInfo" style="font-size:12px;color:var(--dim);flex:1">Vista previa con lo que estás editando (sin guardar). Deslizá por el perfil o el mapa para elegir el punto.</span>
+        </div>
+      </div>
       <canvas id="sceneStrip" height="26" style="width:100%;display:block;border-radius:6px;margin-bottom:10px"></canvas>
 
       <canvas id="sceneProf" height="130" style="width:100%;display:block;border-radius:8px;background:#0a0d12"></canvas>
@@ -1451,7 +1458,9 @@ const SCENES={
 };
 function loadScenes(){ try{return JSON.parse(localStorage.getItem("bici_scenes")||"{}");}catch(_){ return {}; } }
 function saveScenes(o){ try{localStorage.setItem("bici_scenes",JSON.stringify(o)); return true;}catch(e){ return false; } }
-function getRouteScenes(routeName){ const all=loadScenes(); return (routeName&&all[routeName])||[{km:0,scene:"rural"}]; }
+let scenePreviewSegs=null; // mientras se dibuja la vista previa del editor: tramos editados, todavía sin guardar
+function getRouteScenes(routeName){ if(scenePreviewSegs&&routeName===sceneEditRoute) return scenePreviewSegs;
+  const all=loadScenes(); return (routeName&&all[routeName])||[{km:0,scene:"rural"}]; }
 function setRouteScenes(routeName,segs){ if(!routeName)return false; const all=loadScenes(); all[routeName]=segs; return saveScenes(all); }
 
 // ---------- Editor de escenario ----------
@@ -1484,6 +1493,45 @@ function loadSceneRouteGeo(routeName){
   sceneRouteGeo=route; sceneProfData=buildSceneProfile(route); sceneMapProj=sceneMapProject(route);
   return true;
 }
+// ---------- Vista previa del editor de escenario (v154) ----------
+// Dibuja el punto marcado en el perfil/mapa con el MISMO motor que se ve al pedalear (roadBands), usando los
+// tramos tal como están en el editor (sin guardar). "Recorrer desde acá" avanza a 25 km/h y mueve el marcador.
+let scenePrevRAF=null, scenePrevLast=0, scenePrevPlaying=false, scenePrevCrank=0, scenePrevFrame=0;
+const SCENE_PREV_SPEED=25/3.6;
+function sceneEditSegsNormalized(){
+  const segs=sceneEditRows.map(s=>({km:+(+s.km||0).toFixed(2),scene:s.scene,water:s.water||null,wall:s.wall||null})).sort((a,b)=>a.km-b.km);
+  if(!segs.length||segs[0].km!==0) segs.unshift({km:0,scene:"rural",water:null,wall:null});
+  return segs; }
+function drawScenePreview(){
+  const cv=$("scenePrev"); if(!cv||!sceneRouteGeo) return;
+  const r=fit(cv); if(!r||r.w<10) return; const {ctx,w,h}=r;
+  const d=Math.max(0,Math.min(sceneEditTotal-1,(sceneScrubKm||0)*1000));
+  scenePreviewSegs=sceneEditSegsNormalized();
+  try{
+    roadBands(ctx,w,h,d,dd=>bearingRoute(sceneRouteGeo,dd),dd=>sceneEleAt(dd),sceneEditRoute);
+    drawCyclistRear(ctx,w/2,h-6,Math.max(18,h*0.135),scenePrevCrank,"#2f6f9c",1);
+    const sc=sceneAt(sceneEditRoute,d);
+    $("scenePrevInfo").textContent="Km "+(d/1000).toFixed(2)+" · "+(sc.label||"")+(sc.wallSide?(" · pared "+(sc.wallSide==="left"?"izquierda":"derecha")):"")+(sc.waterSide?(" · agua "+(sc.waterSide==="left"?"izquierda":"derecha")):"");
+  }catch(e){ $("scenePrevInfo").textContent="No pude dibujar la vista previa: "+e.message; }
+  finally{ scenePreviewSegs=null; }
+}
+function scenePrevLoop(ts){
+  if($("sceneCard").classList.contains("hidden")){ scenePrevRAF=null; scenePrevPlaying=false; $("scenePrevPlay").textContent="▶ Recorrer desde acá"; return; }
+  const dt=scenePrevLast?Math.min(0.1,(ts-scenePrevLast)/1000):0; scenePrevLast=ts;
+  if(scenePrevPlaying){
+    sceneScrubKm=(sceneScrubKm||0)+SCENE_PREV_SPEED*dt/1000;
+    scenePrevCrank+=2*Math.PI*(85/60)*dt;
+    if(sceneScrubKm*1000>=sceneEditTotal-1){ sceneScrubKm=(sceneEditTotal-1)/1000; scenePrevPlaying=false; $("scenePrevPlay").textContent="▶ Recorrer desde acá"; }
+    if(scenePrevFrame++%12===0){ drawSceneProfile(); drawSceneMap(); updateSceneReadout(); }
+  }
+  drawScenePreview();
+  scenePrevRAF=requestAnimationFrame(scenePrevLoop);
+}
+function startScenePreview(){
+  $("scenePrevWrap").classList.toggle("hidden",!sceneRouteGeo);
+  if(!sceneRouteGeo) return;
+  scenePrevLast=0; if(!scenePrevRAF) scenePrevRAF=requestAnimationFrame(scenePrevLoop);
+}
 function openSceneEditor(routeName,totalM,returnTo){
   routeName = routeName || fname; totalM = totalM || total; returnTo = returnTo || "gpx";
   if(!routeName || !totalM){ alert("Cargá primero un recorrido (GPX)."); return; }
@@ -1503,6 +1551,8 @@ function openSceneEditor(routeName,totalM,returnTo){
   // alguna otra pantalla (p.ej. la del rodillo en vivo con la vista 3D) pisada detrás del editor.
   document.querySelectorAll(".card").forEach(c=>{ if(c.id!=="sceneCard") c.classList.add("hidden"); });
   $("sceneCard").classList.remove("hidden");
+  scenePrevPlaying=false; $("scenePrevPlay").textContent="▶ Recorrer desde acá";
+  startScenePreview();
   scrollTop();
 }
 function closeSceneEditor(){
@@ -4565,6 +4615,7 @@ $("fitRestart").onclick=()=>{ fitPoints=[]; fitDrawCanvas(); updateFitPrompt(); 
 $("routesBack").onclick=()=>{ $("routesCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); scrollTop(); };
 $("routesToHistBtn").onclick=()=>{ $("routesCard").classList.add("hidden"); $("historial").classList.remove("hidden"); setSelMode(false); renderHistorial(); scrollTop(); };
 $("sRecovBtn").onclick=()=>{ if(recov){ recov.keep=true; $("sRecovBtn").classList.add("hidden"); $("sRecovMsg").textContent="Se va a guardar al completar los 2 minutos (no entra en la tendencia si no llega al 85% de tu FC máx). Quedate quieto."; } };
+$("scenePrevPlay").onclick=()=>{ scenePrevPlaying=!scenePrevPlaying; $("scenePrevPlay").textContent=scenePrevPlaying?"⏸ Pausar":"▶ Recorrer desde acá"; };
 $("manualAddBtn").onclick=()=>{
   $("manualAddPanel").classList.remove("hidden");
   const now=new Date(Date.now()-Date.now()%60000-new Date().getTimezoneOffset()*60000);
