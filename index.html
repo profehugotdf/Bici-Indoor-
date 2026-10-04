@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v160</title>
+<title>Bici Indoor · v162</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v160</h1>
+  <h1>Bici Indoor · v162</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -2131,21 +2131,47 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
   // (de lejos a cerca) siga siendo válido.
   // El peralte sale de la CURVATURA en ese punto (no de cuánto difiere su dirección de la tuya, como antes, que
   // exageraba curvas suaves): casi nada en curvas abiertas, tope realista en las cerradas.
-  const BANK_CURV=25, BANK_MAX=0.16;
-  const S=[]; let x=0, z=0, prevSeg=0, cum=0, prevRel=0, Zlast=0;
-  for(let i=0;i<=N;i++){
-    const dd=d0+cum; let rel=bFn(dd)-camB; rel=Math.atan2(Math.sin(rel),Math.cos(rel));
-    if(i>0){ x += Math.sin(rel)*prevSeg; z += Math.cos(rel)*prevSeg; }
+  const BANK_CURV=25, BANK_MAX=0.16, ROAD_TURN_CUT=Math.cos(75*Math.PI/180);
+  // v162: el GPX es una serie de puntos unidos por rectas, así que su rumbo cambia a saltos (recta-quiebre-recta).
+  // El peralte sale de la curvatura, y con esos saltos alternaba 0° / máximo de una franja a otra: los bordes hacían
+  // serrucho. Por eso primero se toma el rumbo y la altura de cada franja, después se SUAVIZAN a lo largo de unos
+  // metros (como una ruta real, que no tiene quiebres), y recién ahí se calculan la posición, la curva y el peralte.
+  const SMOOTH_HEAD_M=14, SMOOTH_ELE_M=16, CURV_BASE_M=6;
+  // Rumbo y altura se muestrean en una grilla PAREJA de 1 m (desde unos metros detrás tuyo hasta el fondo), se
+  // suavizan ahí y recién después se lee el valor de cada franja. Las franjas lejanas están más separadas (2 m cerca,
+  // 7 m al fondo): suavizar directamente sobre ellas promediaba pocas muestras desparejas y dejaba ondulaciones.
+  const bandCum=[]; { let c=0; for(let i=0;i<=N;i++){ bandCum.push(c); c+=NEAR+i*GROW; } }
+  const G0=-(SMOOTH_HEAD_M+CURV_BASE_M+2), G1=bandCum[bandCum.length-1]+SMOOTH_HEAD_M+CURV_BASE_M+2, GN=Math.ceil(G1-G0)+1;
+  const gRel=new Float64Array(GN), gEle=new Float64Array(GN);
+  { let prevRel=null; for(let k=0;k<GN;k++){ const dd=d0+G0+k; let rel=bFn(dd)-camB; rel=Math.atan2(Math.sin(rel),Math.cos(rel));
+      if(prevRel!=null){ while(rel-prevRel>Math.PI) rel-=2*Math.PI; while(rel-prevRel<-Math.PI) rel+=2*Math.PI; } // continuo, sin saltos de ±180°
+      prevRel=rel; gRel[k]=rel; gEle[k]=eFn(dd); } }
+  // promedio móvil aplicado dos veces (una sola pasada sobre un escalonado deja una ondulación leve)
+  const box=(arr,half)=>{ const out=new Float64Array(arr.length); let sum=0,lo=0,hi=-1;
+    for(let k=0;k<arr.length;k++){ const L=Math.max(0,k-half), H=Math.min(arr.length-1,k+half);
+      while(hi<H){ hi++; sum+=arr[hi]; } while(lo<L){ sum-=arr[lo]; lo++; } out[k]=sum/(hi-lo+1); } return out; };
+  const hH=Math.round(SMOOTH_HEAD_M/2), hE=Math.round(SMOOTH_ELE_M/2);
+  const gRelS=box(box(gRel,hH),hH), gEleS=box(box(gEle,hE),hE);
+  // curvatura medida sobre 12 m centrados (entre franjas vecinas amplificaba cualquier ondulación mínima)
+  const gCurv=new Float64Array(GN); for(let k=0;k<GN;k++){ const k0=Math.max(0,k-CURV_BASE_M), k1=Math.min(GN-1,k+CURV_BASE_M); gCurv[k]=k1>k0?(gRelS[k1]-gRelS[k0])/(k1-k0):0; }
+  const atG=(arr,cum)=>{ const p=cum-G0, k=Math.max(0,Math.min(GN-2,Math.floor(p))), t=Math.max(0,Math.min(1,p-k)); return arr[k]+(arr[k+1]-arr[k])*t; };
+  const raw=bandCum.map(c=>({cum:c,dd:d0+c}));
+  const relS=bandCum.map(c=>atG(gRelS,c)), eleS=bandCum.map(c=>atG(gEleS,c)), curvS=bandCum.map(c=>atG(gCurv,c));
+  const relCam=relS[0]; // el rumbo suavizado en tu posición manda: así la ruta sale derecha desde tu bici
+  const S=[]; let x=0, z=0, Zlast=0;
+  for(let i=0;i<raw.length;i++){
+    const rel=relS[i]-relCam, seg=i>0?raw[i].cum-raw[i-1].cum:0;
+    // donde el camino ya dobló más de ~75° (horquilla), se corta: este dibujo por franjas no puede mostrar un camino
+    // que vuelve hacia la cámara. El camino "se pierde detrás de la curva" y aparece al tomarla.
+    if(i>1 && Math.cos(rel)<ROAD_TURN_CUT) break;
+    if(i>0){ x += Math.sin(rel)*seg; z += Math.cos(rel)*seg; }
     const Zt=i===0?0:Math.max(Zlast+0.05,z); Zlast=Zt;
-    const Z=Zt+0.5, sc2=f/Z, e=eFn(dd);
-    let dRel=rel-prevRel; dRel=Math.atan2(Math.sin(dRel),Math.cos(dRel));
-    const curv=i>0&&prevSeg>0?dRel/prevSeg:0; prevRel=rel;
-    S.push({cx:w/2+x*sc2, y:horizon-(e-camE-camEyeH)*sc2, hw:wRoad*sc2, d:dd, bank:Math.max(-BANK_MAX,Math.min(BANK_MAX,curv*BANK_CURV))});
-    const seg=NEAR+i*GROW; prevSeg=seg; cum+=seg;
+    const Z=Zt+0.5, sc2=f/Z, e=camE+(eleS[i]-eleS[0]); // alturas suavizadas, ancladas a tu posición (sin escalón en la rueda)
+    const curv=curvS[i];
+    S.push({cx:w/2+x*sc2, y:horizon-(e-camE-camEyeH)*sc2, hw:wRoad*sc2, d:raw[i].dd, bank:Math.max(-BANK_MAX,Math.min(BANK_MAX,curv*BANK_CURV))});
   }
-  for(let i=1;i<S.length;i++) if(i===1) S[0].bank=S[1].bank; // la primera franja toma la curvatura de la siguiente
 
-  for(let i=N-1;i>=0;i--){
+  for(let i=S.length-2;i>=0;i--){ // S puede ser más corto que N+1 (corte en horquillas)
     const a=S[i+1], b=S[i], light=(Math.floor(b.d/bandLen)%2===0);
     const bo=b.bank*b.hw*BANK_K, ao=a.bank*a.hw*BANK_K;   // peralte: desnivel de bordes
     const bLY=b.y-bo, bRY=b.y+bo, aLY=a.y-ao, aRY=a.y+ao;
