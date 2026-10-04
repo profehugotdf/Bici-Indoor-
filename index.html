@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v158</title>
+<title>Bici Indoor · v160</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v158</h1>
+  <h1>Bici Indoor · v160</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1505,7 +1505,7 @@ function hexRgba(hex,a){ const n=parseInt(hex.slice(1),16); return "rgba("+((n>>
 const SCENES={
   rural:{ label:"Rural", sky:["#5bb0e6","#bfe6f5"], ground:"#213524", asphalt:"#4c5661", mtnCol:["#7492ad","#54718d"], mtnAmp:1, decor:"trees" },
   urbana:{ label:"Urbana", sky:["#8fb3cf","#d8e6ec"], ground:"#3a3d42", asphalt:"#54595f", mtnCol:["#93a0ad","#717d89"], mtnAmp:1.5, decor:"buildings" },
-  cornisa:{ label:"Cornisa", sky:["#4f8fc0","#a9d3e8"], ground:"#4a4034", asphalt:"#4c4640", mtnCol:["#8f7f6e","#6e6156"], mtnAmp:1.9, decor:"rocks" },
+  cornisa:{ label:"Camino de cornisa", defaultWall:"auto", sky:["#4f8fc0","#a9d3e8"], ground:"#4a4034", asphalt:"#4c4640", mtnCol:["#8f7f6e","#6e6156"], mtnAmp:1.9, decor:"rocks" },
   mar:{ label:"Costa / Mar", sky:["#57b6e0","#cdeffb"], ground:"#cdb583", asphalt:"#565049", mtnCol:["#6fb0d6","#3f80ab"], mtnAmp:0.35, decor:"waves" },
   bosque:{ label:"Bosque de lengas", sky:["#4fa3dc","#bfe3f4"], ground:"#2d5a33", asphalt:"#4f5761", mtnCol:["#7d97ad","#5d7890"], mtnAmp:1.2, snow:0.3, decor:"lengas" },
   canal:{ label:"Costa del canal", sky:["#5a9fd0","#c9e4f2"], ground:"#4c6a45", asphalt:"#525a63", mtnCol:["#9aaec2","#7d93a9"], mtnAmp:1.4, snow:0.55, decor:"lengas", defaultWater:"left" },
@@ -1638,7 +1638,8 @@ function renderSceneRows(){
     const kmU=document.createElement("span"); kmU.style.cssText="font-size:13px;color:var(--dim)"; kmU.textContent="km";
     const sel=document.createElement("select"); sel.style.flex="1";
     for(const key in SCENES){ const o=document.createElement("option"); o.value=key; o.textContent=SCENES[key].label; if(key===row.scene)o.selected=true; sel.appendChild(o); }
-    sel.onchange=()=>{ row.scene=sel.value; drawSceneStrip(); };
+    sel.onchange=()=>{ row.scene=sel.value; drawSceneStrip();
+      const dw=(SCENES[sel.value]||{}).defaultWall; if(dw&&!row.wall){ row.wall=dw; renderSceneRows(); } };
     div.appendChild(lbl);div.appendChild(km);div.appendChild(kmU);div.appendChild(sel);
     if(i>0){ const del=document.createElement("button"); del.className="del"; del.textContent="✕"; del.style.minHeight="36px";
       del.onclick=()=>{ sceneEditRows.splice(i,1); renderSceneRows(); drawSceneStrip(); };
@@ -1950,7 +1951,8 @@ function sceneAt(routeName,d){
   let cur=segs[0]||{scene:"rural",water:null,wall:null};
   for(const s of segs){ if(s.km<=km+1e-6) cur=s; else break; }
   const base=SCENES[cur.scene]||SCENES.rural;
-  const wall=cur.wall==="auto"?uphillSideAt(routeName,d):(mir.back?flipSide(cur.wall||null):(cur.wall||null)); // la automática ya usa la geometría real
+  const wallChoice=cur.wall||base.defaultWall||null; // "Camino de cornisa" trae pared automática aunque el tramo no la tenga elegida
+  const wall=wallChoice==="auto"?uphillSideAt(routeName,d):(mir.back?flipSide(wallChoice):wallChoice); // la automática ya usa la geometría real
   const water=cur.water||base.defaultWater||null;
   return Object.assign({},base,{waterSide:mir.back?flipSide(water):water, waterKind:cur.waterKind||"mar", wallSide:wall});
 }
@@ -2118,17 +2120,30 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
     ctx.fillStyle=sc.ground; ctx.fillRect(0,horizon,w,h-horizon);
   }
   const gShade=Math.max(0.72,Math.min(1.15,1-gAhead*0.02)); // luz según pendiente (sube=oscuro)
-  const asphaltL=shadeHex(sc.asphalt,gShade*1.1), asphaltD=shadeHex(sc.asphalt,gShade*0.96);
+  const asphaltL=shadeHex(sc.asphalt,gShade*1.1), asphaltD=shadeHex(sc.asphalt,gShade*0.96), asphaltM=shadeHex(sc.asphalt,gShade*1.03);
+  const isVelo=!!(sceneOverride&&String(sc.label||"").toLowerCase().includes("velódromo")), shoulderCol=shadeHex(sc.ground,0.82);
   const BANK_K=0.5;
   const bridges=bridgesFor(routeName);
-  const S=[]; let x=0, prevSeg=0, cum=0;
+  // v159: posición real de cada franja. Antes la profundidad era la distancia recorrida por el camino (en una curva
+  // es más que lo que de verdad está adelante), así que lo que doblaba se veía más lejos y chico, y las eses
+  // (curva y contracurva) quedaban aplastadas. Ahora: avance real hacia adelante (cos) y de costado (sin).
+  // En una horquilla el camino vuelve hacia atrás: la profundidad se mantiene creciente para que el dibujo
+  // (de lejos a cerca) siga siendo válido.
+  // El peralte sale de la CURVATURA en ese punto (no de cuánto difiere su dirección de la tuya, como antes, que
+  // exageraba curvas suaves): casi nada en curvas abiertas, tope realista en las cerradas.
+  const BANK_CURV=25, BANK_MAX=0.16;
+  const S=[]; let x=0, z=0, prevSeg=0, cum=0, prevRel=0, Zlast=0;
   for(let i=0;i<=N;i++){
     const dd=d0+cum; let rel=bFn(dd)-camB; rel=Math.atan2(Math.sin(rel),Math.cos(rel));
-    if(i>0) x += Math.sin(rel)*prevSeg*latK;
-    const Z=cum+0.5, sc2=f/Z, e=eFn(dd);
-    S.push({cx:w/2+x*sc2, y:horizon-(e-camE-camEyeH)*sc2, hw:wRoad*sc2, d:dd, bank:Math.max(-0.6,Math.min(0.6,rel))});
+    if(i>0){ x += Math.sin(rel)*prevSeg; z += Math.cos(rel)*prevSeg; }
+    const Zt=i===0?0:Math.max(Zlast+0.05,z); Zlast=Zt;
+    const Z=Zt+0.5, sc2=f/Z, e=eFn(dd);
+    let dRel=rel-prevRel; dRel=Math.atan2(Math.sin(dRel),Math.cos(dRel));
+    const curv=i>0&&prevSeg>0?dRel/prevSeg:0; prevRel=rel;
+    S.push({cx:w/2+x*sc2, y:horizon-(e-camE-camEyeH)*sc2, hw:wRoad*sc2, d:dd, bank:Math.max(-BANK_MAX,Math.min(BANK_MAX,curv*BANK_CURV))});
     const seg=NEAR+i*GROW; prevSeg=seg; cum+=seg;
   }
+  for(let i=1;i<S.length;i++) if(i===1) S[0].bank=S[1].bank; // la primera franja toma la curvatura de la siguiente
 
   for(let i=N-1;i>=0;i--){
     const a=S[i+1], b=S[i], light=(Math.floor(b.d/bandLen)%2===0);
@@ -2140,13 +2155,27 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
       const L=WATER_LOOK.rio; ctx.fillStyle=L.mid;
       ctx.beginPath();ctx.moveTo(-w,bLY);ctx.lineTo(b.cx-b.hw,bLY);ctx.lineTo(a.cx-a.hw,aLY);ctx.lineTo(-w,aLY);ctx.closePath();ctx.fill();
       ctx.beginPath();ctx.moveTo(2*w,bRY);ctx.lineTo(b.cx+b.hw,bRY);ctx.lineTo(a.cx+a.hw,aRY);ctx.lineTo(2*w,aRY);ctx.closePath();ctx.fill();
-    } else {
+    } else if(isVelo){ // pista del editor de perspectiva: se mantienen los cordones
     ctx.fillStyle=light?"#eeeeee":"#d8452f";
     ctx.beginPath();ctx.moveTo(b.cx-b.hw-rb,bLY);ctx.lineTo(b.cx-b.hw,bLY);ctx.lineTo(a.cx-a.hw,aLY);ctx.lineTo(a.cx-a.hw-ra,aLY);ctx.closePath();ctx.fill();
     ctx.beginPath();ctx.moveTo(b.cx+b.hw+rb,bRY);ctx.lineTo(b.cx+b.hw,bRY);ctx.lineTo(a.cx+a.hw,aRY);ctx.lineTo(a.cx+a.hw+ra,aRY);ctx.closePath();ctx.fill();
+    } else { // v160: banquina de ripio continua (antes cordones rojo/blanco alternados, que hacían "serrucho" en las curvas)
+    const sbw=Math.max(1,b.hw*0.12), saw=Math.max(0.7,a.hw*0.12);
+    ctx.fillStyle=shoulderCol; ctx.strokeStyle=shoulderCol; ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(b.cx-b.hw-sbw,bLY);ctx.lineTo(b.cx-b.hw,bLY);ctx.lineTo(a.cx-a.hw,aLY);ctx.lineTo(a.cx-a.hw-saw,aLY);ctx.closePath();ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.moveTo(b.cx+b.hw+sbw,bRY);ctx.lineTo(b.cx+b.hw,bRY);ctx.lineTo(a.cx+a.hw,aRY);ctx.lineTo(a.cx+a.hw+saw,aRY);ctx.closePath();ctx.fill();ctx.stroke();
     }
-    ctx.fillStyle=onBr?(light?"#8a8e94":"#80848a"):(light?asphaltL:asphaltD);
-    ctx.beginPath();ctx.moveTo(b.cx-b.hw,bLY);ctx.lineTo(b.cx+b.hw,bRY);ctx.lineTo(a.cx+a.hw,aRY);ctx.lineTo(a.cx-a.hw,aLY);ctx.closePath();ctx.fill();
+    // un solo tono (antes dos tonos alternados cada 6 m): el trazo del mismo color tapa las rendijas entre franjas
+    const deck=onBr?"#868a90":(isVelo?(light?asphaltL:asphaltD):asphaltM);
+    ctx.fillStyle=deck; ctx.strokeStyle=deck; ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(b.cx-b.hw,bLY);ctx.lineTo(b.cx+b.hw,bRY);ctx.lineTo(a.cx+a.hw,aRY);ctx.lineTo(a.cx-a.hw,aLY);ctx.closePath();ctx.fill();ctx.stroke();
+    if(!isVelo){ // línea blanca continua en cada borde
+      const lb=Math.max(0.8,b.hw*0.035), la=Math.max(0.5,a.hw*0.035), ib=b.hw*0.93, ia=a.hw*0.93;
+      ctx.fillStyle="#e8e8e0";
+      for(const sd of [-1,1]){ const by=sd<0?bLY:bRY, ay=sd<0?aLY:aRY; const tb=(ib/b.hw), ta=(ia/a.hw);
+        const yb=b.y+(by-b.y)*tb, ya=a.y+(ay-a.y)*ta, yb2=b.y+(by-b.y)*((ib-lb)/b.hw), ya2=a.y+(ay-a.y)*((ia-la)/a.hw);
+        ctx.beginPath();ctx.moveTo(b.cx+sd*ib,yb);ctx.lineTo(b.cx+sd*(ib-lb),yb2);ctx.lineTo(a.cx+sd*(ia-la),ya2);ctx.lineTo(a.cx+sd*ia,ya);ctx.closePath();ctx.fill(); }
+    }
     if(light){ const cb=Math.max(1,b.hw*0.06), ca=Math.max(0.7,a.hw*0.06);
       ctx.fillStyle="#efe7c8";
       ctx.beginPath();ctx.moveTo(b.cx-cb,b.y);ctx.lineTo(b.cx+cb,b.y);ctx.lineTo(a.cx+ca,a.y);ctx.lineTo(a.cx-ca,a.y);ctx.closePath();ctx.fill(); }
