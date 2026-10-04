@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v154</title>
+<title>Bici Indoor · v155</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v154</h1>
+  <h1>Bici Indoor · v155</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1398,7 +1398,12 @@ function fmtTime(s){s=Math.floor(s);const h=Math.floor(s/3600),m=Math.floor(s%36
   return (h?h+":"+String(m).padStart(2,"0"):m)+":"+String(ss).padStart(2,"0");}
 
 // ================= Dibujo =================
-function fit(cv){const dpr=window.devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight||150;
+// La primera vez se fija la altura en CSS (la original del lienzo). Sin esto, un lienzo sin altura CSS crecía
+// x densidad de pantalla en cada redibujo (~x3 en el S26), porque su alto en pantalla sale del atributo height,
+// que esta misma función reescribe. Con redibujos frecuentes (vista previa del editor) quedaba un bloque negro enorme.
+function fit(cv){const dpr=window.devicePixelRatio||1;
+  if(!cv.style.height){ if(!cv.dataset.h0) cv.dataset.h0=cv.clientHeight||parseFloat(cv.getAttribute("height"))||150; cv.style.height=cv.dataset.h0+"px"; }
+  const w=cv.clientWidth,h=cv.clientHeight||parseFloat(cv.dataset.h0)||150;
   cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);const ctx=cv.getContext("2d");
   ctx.setTransform(dpr,0,0,dpr,0,0);return{ctx,w,h};}
 function gradeColor(g){if(g<=-2)return"#4cc2ff";if(g<0)return"#7fd1e8";if(g<2)return"#3fb950";
