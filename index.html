@@ -434,6 +434,7 @@
 
     <div style="display:flex;justify-content:space-between;margin-top:10px">
       <button id="road3dBtn" style="min-height:40px;padding:8px 14px;font-size:13px">Vista 3D: OFF</button>
+      <button id="realLandBtn" style="min-height:40px;padding:8px 14px;font-size:13px;display:none">Paisaje: real</button>
       <button id="zoomBtn" style="min-height:40px;padding:8px 14px;font-size:13px">Zoom disputa: ON</button>
     </div>
     <canvas id="road" height="240" class="hidden" style="margin-top:8px"></canvas>
@@ -691,7 +692,7 @@ const $=id=>document.getElementById(id);
 // Se trabaja con una copia en memoria (lecturas instantáneas, mismo código de siempre) y cada cambio se escribe
 // a la base en segundo plano. Hasta que la base abre (milisegundos al arrancar) se usa localStorage como antes;
 // lo que se haya escrito ahí en ese instante se combina después con la base, sin perder nada.
-const BIG_KEYS=["bici_sesiones","bici_routes"];
+const BIG_KEYS=["bici_sesiones","bici_routes","bici_route_extra"]; // v165: + paisaje real de las rutas que manda Rumbo
 let bigMem={}, bigReady=false, bigMode="ls", bigDB=null, bigWriteErrLogged=false;
 function bigGet(k){ if(bigReady&&bigMode==="idb") return bigMem[k]!=null?bigMem[k]:null; try{ return localStorage.getItem(k); }catch(_){ return null; } }
 function bigSet(k,v){ if(bigReady&&bigMode==="idb"){ bigMem[k]=v; bigPersist(k,v); if(k==="bici_sesiones") writeSesionesMirror(); return; } localStorage.setItem(k,v); }
@@ -2029,6 +2030,77 @@ function drawMountains(ctx,w,horizon,camB,sc,f){
       for(const [x,y] of pts){ if(y<lim){ if(!on){ctx.moveTo(x,lim);on=true;} ctx.lineTo(x,y); } else if(on){ ctx.lineTo(x,lim); ctx.closePath(); ctx.fill(); ctx.beginPath(); on=false; } }
       if(on){ ctx.lineTo(w+6,lim); ctx.closePath(); ctx.fill(); } } }
 }
+// ---------- v165: paisaje real de las rutas que manda Rumbo ----------
+// hz: desde cada punto de la ruta (cada hz.sp metros) y en hz.na direcciones, el ángulo del horizonte real en tres
+// franjas (cerca <1,5 km, medio 1,5-6 km, lejos 6-20 km), con altura y distancia del punto más alto (para la nieve).
+// peaks: cerros con nombre (OpenStreetMap). ground: color real del suelo a cada lado del camino, cada 100 m.
+let routeExtraCache=null; const RX_DEC={};
+function loadRouteExtra(){ if(!routeExtraCache){ try{ routeExtraCache=JSON.parse(bigGet("bici_route_extra")||"{}")||{}; }catch(_){ routeExtraCache={}; } } return routeExtraCache; }
+function setRouteExtra(name,o){ const all=loadRouteExtra(); if(o) all[name]=o; else delete all[name]; routeExtraCache=all; delete RX_DEC[name]; try{ bigSet("bici_route_extra",JSON.stringify(all)); }catch(_){} }
+function b64u8(s){ const b=atob(s.replace(/-/g,"+").replace(/_/g,"/")+"===".slice((s.length+3)%4)); return Uint8Array.from(b,c=>c.charCodeAt(0)); }
+function routeExtra(name){
+  if(!name) return null; if(RX_DEC[name]!==undefined) return RX_DEC[name];
+  const o=loadRouteExtra()[name]; let r=null;
+  if(o){ try{ r={hz:o.hz&&o.hz.d?Object.assign({},o.hz,{u:b64u8(o.hz.d)}):null, peaks:(o.peaks||[]).filter(p=>p&&p.e>0), ground:o.ground&&o.ground.d?Object.assign({},o.ground,{u:b64u8(o.ground.d)}):null, geo:undefined}; }catch(_){ r=null; } }
+  RX_DEC[name]=r; return r;
+}
+const realLandOn=()=>{ try{ return localStorage.getItem("bici_real_land")!=="0"; }catch(_){ return true; } };
+function mixHex(a,b,t){ const A=parseInt(a.slice(1),16),B=parseInt(b.slice(1),16),m=(x,y)=>Math.round(x+(y-x)*t);
+  return "#"+((1<<24)|(m(A>>16&255,B>>16&255)<<16)|(m(A>>8&255,B>>8&255)<<8)|m(A&255,B&255)).toString(16).slice(1); }
+// Altura en pantalla: las sierras lejanas se ven un 50 % más altas (como el "Relieve ×1,5" de Rumbo; si no, quedan chatas),
+// y los cerros cercanos y altos se comprimen de a poco para que la cumbre entre en la pantalla (la vista mira ±15° en vertical).
+const HZ_EX=1.5, HZ_MAX=13;
+const hzAng=a=>a<=0?a*HZ_EX:HZ_MAX*Math.tanh(a*HZ_EX/HZ_MAX);
+function hzSample(hz,d,az){
+  const k=Math.max(0,Math.min(hz.n-1,d/hz.sp)), i0=Math.floor(k), i1=Math.min(hz.n-1,i0+1), t=k-i0;
+  let a=az*180/Math.PI%360; if(a<0)a+=360; const ak=a/(360/hz.na), a0=Math.floor(ak)%hz.na, a1=(a0+1)%hz.na, u=ak-Math.floor(ak), U=hz.u, na=hz.na;
+  const v=f=>{ const A=U[(i0*na+a0)*7+f]*(1-u)+U[(i0*na+a1)*7+f]*u, B=U[(i1*na+a0)*7+f]*(1-u)+U[(i1*na+a1)*7+f]*u; return A*(1-t)+B*t; };
+  const ang=x=>(x-60)*0.25;
+  return [ang(v(0)),ang(v(1)),v(2)*25,v(3)*100,ang(v(4)),v(5)*25,v(6)*100];
+}
+function drawRealHorizon(ctx,w,horizon,camB,sc,f,rx,d0,camE,routeName,labels){
+  const hz=rx.hz, step=4, cols=[], toD=180/Math.PI;
+  for(let px=0;px<=w+step;px+=step) cols.push([px,hzSample(hz,d0,camB+Math.atan((px-w/2)/f))]);
+  const Y=a=>horizon-f*Math.tan(Math.max(-15,hzAng(a))/toD), base=horizon+2;
+  const layer=(i,col)=>{ ctx.fillStyle=col; ctx.beginPath(); ctx.moveTo(0,base); for(const [px,v] of cols) ctx.lineTo(px,Math.min(base,Y(v[i]))); ctx.lineTo(w+step,base); ctx.closePath(); ctx.fill(); };
+  const snow=(ai,ei,di)=>{ if(!hz.snow) return; let run=[];
+    const flush=()=>{ if(run.length>1){ ctx.beginPath(); ctx.moveTo(run[0][0],run[0][1]); for(const p of run) ctx.lineTo(p[0],p[1]); for(let k=run.length-1;k>=0;k--) ctx.lineTo(run[k][0],run[k][2]); ctx.closePath(); ctx.fill(); } run=[]; };
+    ctx.fillStyle="#eef3f7";
+    for(const [px,v] of cols){ const e=v[ei], dd=v[di];
+      if(e>hz.snow && dd>0){ const ys=Math.min(base,Y(v[ai])), yb=Math.min(base,Math.max(ys+1,Y(Math.atan((hz.snow-camE)/dd)*toD))); run.push([px,ys,yb]); } else flush(); }
+    flush(); };
+  layer(4,mixHex(sc.mtnCol[0],sc.sky[1],0.45)); snow(4,5,6);
+  layer(1,sc.mtnCol[0]); snow(1,2,3);
+  layer(0,mixHex(sc.mtnCol[1],sc.ground,0.35));
+  // cerros con nombre que se ven en el horizonte
+  if(labels && rx.peaks.length){
+    if(rx.geo===undefined) rx.geo=routeGeoFor(routeName)||null;
+    if(rx.geo){ const pos=posAtDistance(rx.geo,d0), kc=Math.cos(pos.lat*Math.PI/180), out=[];
+      for(const p of rx.peaks){ const dy=(p.la-pos.lat)*111320, dx=(p.lo-pos.lon)*111320*kc, dist=Math.hypot(dx,dy); if(dist<400||dist>22000) continue;
+        let rel=Math.atan2(dx,dy)-camB; rel=Math.atan2(Math.sin(rel),Math.cos(rel)); if(Math.abs(rel)>0.62) continue;
+        const ang=Math.atan((p.e-camE-1.6-dist*dist*0.87/12742000)/dist)*toD, v=hzSample(hz,d0,camB+rel), sky=Math.max(v[0],v[1],v[4]);
+        if(ang<sky-1.5) continue; // tapado por otro cerro (con 1,5° de margen: la cumbre de un cerro ancho suele quedar apenas detrás de su propio hombro)
+        out.push({x:w/2+f*Math.tan(rel), y:Y(Math.max(ang,sky)), p, dist}); }
+      out.sort((a,b)=>b.p.e-a.p.e); const shown=[];
+      ctx.font="600 11px system-ui,sans-serif"; ctx.textAlign="center"; ctx.lineJoin="round";
+      for(const o of out){ if(shown.length>=4) break; if(shown.some(s=>Math.abs(s.x-o.x)<90&&Math.abs(s.y-o.y)<26)) continue; if(o.y<6) continue; shown.push(o);
+        ctx.fillStyle="#ffffff"; ctx.beginPath(); ctx.moveTo(o.x,o.y-3); ctx.lineTo(o.x-4,o.y-10); ctx.lineTo(o.x+4,o.y-10); ctx.closePath(); ctx.fill();
+        const t=o.p.n+" · "+Math.round(o.p.e)+" m", ty=o.y-14<12?o.y+20:o.y-14; // si la cumbre toca el borde, el nombre va debajo
+        ctx.strokeStyle="rgba(20,30,40,.75)"; ctx.lineWidth=3; ctx.strokeText(t,o.x,ty); ctx.fillText(t,o.x,ty); }
+      ctx.textAlign="start"; }
+  }
+}
+function drawSkyline(ctx,w,horizon,camB,sc,f,routeName,d0,camE,labels){
+  const rx=routeExtra(routeName);
+  if(rx&&rx.hz&&realLandOn()){ try{ drawRealHorizon(ctx,w,horizon,camB,sc,f,rx,d0,camE,routeName,labels); return; }catch(e){} }
+  drawMountains(ctx,w,horizon,camB,sc,f);
+}
+// color real del suelo a cada lado (de la foto satelital), un poco aclarado y mezclado con el del escenario
+function groundSides(rx,d0,sc){
+  if(!rx||!rx.ground||!realLandOn()) return null; const g=rx.ground, k=Math.max(0,Math.min(g.n-1,d0/g.sp)), i0=Math.floor(k), i1=Math.min(g.n-1,i0+1), t=k-i0, U=g.u;
+  const c=o=>{ const r=[0,1,2].map(j=>Math.min(255,(U[i0*6+o+j]*(1-t)+U[i1*6+o+j]*t)*1.18)); return "#"+((1<<24)|(r[0]<<16)|(r[1]<<8)|r[2]).toString(16).slice(1); };
+  return {L:mixHex(c(0),sc.ground,0.3), R:mixHex(c(3),sc.ground,0.3)};
+}
 function drawSideDecor(ctx,decor,tx,ty,th,seed,side){
   if(decor==="buildings"){
     const bw=th*0.62, bh=th*(0.9+0.5*Math.abs(seed));
@@ -2105,7 +2177,7 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
   const sky=ctx.createLinearGradient(0,0,0,horizon);
   sky.addColorStop(0,sc.sky[0]); sky.addColorStop(1,sc.sky[1]);
   ctx.fillStyle=sky; ctx.fillRect(0,0,w,horizon);
-  drawMountains(ctx,w,horizon,camB,sc,f);
+  drawSkyline(ctx,w,horizon,camB,sc,f,routeName,d0,camE,true);
   // niebla suave en la franja del horizonte (debajo de la ruta cercana)
   const fogH=Math.round(h*0.10);
   const fog=ctx.createLinearGradient(0,horizon-fogH*0.5,0,horizon+fogH);
@@ -2113,24 +2185,25 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
   ctx.fillStyle=fog; ctx.fillRect(0,horizon-fogH*0.5,w,fogH*1.5);
   const leftType = sc.wallSide==="left"?"wall":(sc.waterSide==="left"?"water":(sc.wallSide==="right"?"valley":"normal"));
   const rightType = sc.wallSide==="right"?"wall":(sc.waterSide==="right"?"water":(sc.wallSide==="left"?"valley":"normal"));
-  const sideFill=(type)=>{
+  const gs=sceneOverride?null:groundSides(routeExtra(routeName),d0,sc);
+  const sideFill=(type,side)=>{
     if(type==="water"){ const L=WATER_LOOK[sc.waterKind]||WATER_LOOK.mar, g=ctx.createLinearGradient(0,horizon,0,h);
       g.addColorStop(0,L.top); g.addColorStop(0.4,L.mid); g.addColorStop(1,L.bot); return g; }
     if(type==="valley"){ const g=ctx.createLinearGradient(0,horizon,0,h); // valle: el terreno cae y se ve lejos, con bruma
       g.addColorStop(0,hexRgba(sc.sky[1],1)); g.addColorStop(0.25,"#7f98a6"); g.addColorStop(0.6,"#4f6b55"); g.addColorStop(1,"#3a5240"); return g; }
     if(type==="wall"){ const g=ctx.createLinearGradient(0,horizon,0,h);
       g.addColorStop(0,"#8a7d6e"); g.addColorStop(0.35,"#6b5f52"); g.addColorStop(1,"#443c33"); return g; }
-    return sc.ground;
+    return gs?(side==="R"?gs.R:gs.L):sc.ground;
   };
-  if(leftType!=="normal" || rightType!=="normal"){
-    ctx.fillStyle=sideFill(leftType); ctx.fillRect(0,horizon,w/2,h-horizon);
-    ctx.fillStyle=sideFill(rightType); ctx.fillRect(w/2,horizon,w/2,h-horizon);
+  if(leftType!=="normal" || rightType!=="normal" || gs){
+    ctx.fillStyle=sideFill(leftType,"L"); ctx.fillRect(0,horizon,w/2,h-horizon);
+    ctx.fillStyle=sideFill(rightType,"R"); ctx.fillRect(w/2,horizon,w/2,h-horizon);
     // brillos horizontales sutiles sobre el agua (efecto espejo), del lado que corresponda
     if(leftType==="water"||rightType==="water"){
       const wx0=leftType==="water"?0:w/2, wx1=leftType==="water"?w/2:w, kind=sc.waterKind||"mar";
       if(kind==="laguna"){ // espejo: las montañas reflejadas, agua quieta
         ctx.save(); ctx.beginPath(); ctx.rect(wx0,horizon,wx1-wx0,h-horizon); ctx.clip();
-        ctx.globalAlpha=0.38; ctx.translate(0,2*horizon); ctx.scale(1,-1); drawMountains(ctx,w,horizon,camB,sc,f); ctx.restore();
+        ctx.globalAlpha=0.38; ctx.translate(0,2*horizon); ctx.scale(1,-1); drawSkyline(ctx,w,horizon,camB,sc,f,routeName,d0,camE,false); ctx.restore();
         ctx.strokeStyle="rgba(255,255,255,.10)"; ctx.lineWidth=1;
         for(let k=1;k<5;k++){ const yy=horizon+6+k*k*6; if(yy>h)break; ctx.beginPath();ctx.moveTo(wx0+(wx1-wx0)*0.2,yy);ctx.lineTo(wx0+(wx1-wx0)*0.8,yy);ctx.stroke(); }
       } else if(kind==="rio"){ // la otra orilla a la vista, con árboles, y ondas que corren
@@ -3071,6 +3144,7 @@ function startRide(){ cancelRecovery();
   $("zoomRow").style.display="none";
   $("road3dBtn").style.display=(mode==="gpx")?"":"none";
   $("road3dBtn").textContent="Vista 3D: "+(road3d?"ON":"OFF");
+  try{ refreshRealLandBtn(); }catch(_){}
   $("zoomBtn").textContent="Zoom disputa: "+(battleZoom?"ON":"OFF");
   sendUserConfig();
   state="riding";lastTs=performance.now();
@@ -4465,7 +4539,7 @@ function renderRoutesList(){
     const dlBtn=document.createElement("button"); dlBtn.textContent="⬇ GPX"; dlBtn.style.minHeight="40px"; dlBtn.style.padding="8px 12px";
     dlBtn.onclick=()=>{ const blob=new Blob([text],{type:"application/gpx+xml"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name.endsWith(".gpx")?name:name+".gpx"; a.click(); };
     const delBtn=document.createElement("button"); delBtn.className="del"; delBtn.textContent="✕";
-    delBtn.onclick=()=>{ if(confirm('¿Borrar la ruta guardada "'+name+'"? (no borra las sesiones que la usaron)')){ const m=loadRoutesMap(); delete m[name]; bigSet("bici_routes",JSON.stringify(m)); renderRoutesList(); } };
+    delBtn.onclick=()=>{ if(confirm('¿Borrar la ruta guardada "'+name+'"? (no borra las sesiones que la usaron)')){ const m=loadRoutesMap(); delete m[name]; bigSet("bici_routes",JSON.stringify(m)); setRouteExtra(name,null); renderRoutesList(); } };
     const useBtn=document.createElement("button"); useBtn.textContent="▶ Usar"; useBtn.className="primary"; useBtn.style.minHeight="40px"; useBtn.style.padding="8px 12px";
     useBtn.onclick=()=>{ try{ $("modeSel").value="gpx"; toggleMode(); fname=name; parseGpx(text); $("routesBack").click(); }catch(err){ alert("No pude cargar la ruta: "+err.message); } };
     row.appendChild(useBtn); row.appendChild(editBtn); row.appendChild(dlBtn); row.appendChild(delBtn);
@@ -5129,6 +5203,8 @@ $("gpxGhostSel").onchange=()=>{
   } else { note.style.display="none"; }
 };
 $("zoomBtn").onclick=()=>{ battleZoom=!battleZoom; $("zoomBtn").textContent="Zoom disputa: "+(battleZoom?"ON":"OFF"); if(state==="riding"||state==="paused")drawMap(); };
+function refreshRealLandBtn(){ const b=$("realLandBtn"); if(!b) return; const rx=routeExtra(fname); b.style.display=(mode==="gpx"&&rx&&(rx.hz||rx.ground))?"":"none"; b.textContent="Paisaje: "+(realLandOn()?"real":"dibujado"); }
+$("realLandBtn").onclick=()=>{ try{ localStorage.setItem("bici_real_land",realLandOn()?"0":"1"); }catch(_){} refreshRealLandBtn(); };
 $("road3dBtn").onclick=()=>{ road3d=!road3d; $("road3dBtn").textContent="Vista 3D: "+(road3d?"ON":"OFF"); applyGpxView(); if(!road3d && (state==="riding"||state==="paused"))drawRide(); };
 $("selToggle").onclick=()=>setSelMode(true);
 $("histFilterSel").onchange=()=>{ histFilterMode=$("histFilterSel").value; renderHistorial(); };
@@ -5170,9 +5246,10 @@ async function rumboImport(){
     const o=JSON.parse(txt); if(!o||!o.gpx||!o.name) throw new Error("datos incompletos");
     const name=o.name, ro=loadRouteOpts(); ro[name]={smoothM:o.smoothM!=null?o.smoothM:20,src:"rumbo"}; saveRouteOpts(ro);
     if(Array.isArray(o.scenes)&&o.scenes.length) setRouteScenes(name,o.scenes);
+    setRouteExtra(name,(o.hz||o.ground)?{hz:o.hz||null,peaks:o.peaks||[],ground:o.ground||null}:null);
     $("modeSel").value="gpx"; toggleMode();
     fname=name; parseGpx(o.gpx);
-    log("🧭 Ruta de Rumbo cargada: "+name+" · "+(total/1000).toFixed(1)+" km"+(o.scenes&&o.scenes.length?" · escenario de "+o.scenes.length+" tramo"+(o.scenes.length>1?"s":"")+" (se retoca en Rutas guardadas → Escenario; se ve con Vista 3D: ON)":""),"#3fb950");
+    log("🧭 Ruta de Rumbo cargada: "+name+" · "+(total/1000).toFixed(1)+" km"+(o.scenes&&o.scenes.length?" · escenario de "+o.scenes.length+" tramo"+(o.scenes.length>1?"s":"")+" (se retoca en Rutas guardadas → Escenario; se ve con Vista 3D: ON)":"")+(o.hz?" · montañas reales"+(o.peaks&&o.peaks.length?" con nombres":""):"")+(o.ground?" · colores del suelo":""),"#3fb950");
     msg("Ruta de Rumbo lista: conectá el rodillo y empezá");
   }catch(e){ log("No pude abrir la ruta que mandó Rumbo: "+e.message,"#f85149"); }
 }
