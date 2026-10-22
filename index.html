@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v164</title>
+<title>Bici Indoor · v165</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v164</h1>
+  <h1>Bici Indoor · v165</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1077,8 +1077,22 @@ $("loadBtn").onclick=()=>$("file").click();
 $("file").onchange=e=>{const f=e.target.files[0];if(!f)return;fname=f.name;
   const r=new FileReader();r.onload=()=>{try{parseGpx(r.result);}catch(err){msg("GPX: "+err.message);}};r.readAsText(f);};
 
+// v165: suavizado propio de cada ruta (las que manda Rumbo ya vienen suavizadas con el relieve real: con 100 m se aplanarían de más).
+// Al cargar una de esas se guarda el suavizado que tenías; al volver a una ruta común, se restituye.
+function loadRouteOpts(){ try{ return JSON.parse(localStorage.getItem("bici_route_opts")||"{}"); }catch(_){ return {}; } }
+function saveRouteOpts(o){ try{ localStorage.setItem("bici_route_opts",JSON.stringify(o)); }catch(_){} }
+function applyRouteSmooth(name){
+  const o=loadRouteOpts()[name], KU="bici_smooth_user";
+  let v=null;
+  if(o&&o.smoothM!=null){ if(localStorage.getItem(KU)==null) localStorage.setItem(KU,$("smoothM").value); v=o.smoothM; }
+  else{ const u=localStorage.getItem(KU); if(u!=null){ v=u; localStorage.removeItem(KU); } }
+  if(v==null) return;
+  $("smoothM").value=v; if($("pvSmooth"))$("pvSmooth").value=v; if($("pvSmoothV"))$("pvSmoothV").textContent=v+" m";
+  try{ saveCfg(); }catch(_){}
+}
 function parseGpx(text){
   gpxText=text;
+  applyRouteSmooth(fname);
   if(!saveRouteText(fname,text)) log("No pude guardar esta ruta en caché (¿sin espacio? revisá \"Rutas guardadas\")","#f0883e");
   refreshRouteBridges(fname);
   const xml=new DOMParser().parseFromString(text,"application/xml");
@@ -1108,7 +1122,7 @@ function parseGpx(text){
 }
 function recomputeProfile(){
   if(!peRawArr.length) return;
-  const sm=Math.max(0,parseInt($("smoothM").value,10)||100);
+  const sm=(v=>isFinite(v)?Math.max(0,v):100)(parseInt($("smoothM").value,10)); // v165: 0 es válido (antes 0||100 lo volvía 100)
   pe=smooth(peRawArr,sm); pg=[]; uphillCache={}; turnCache={};
   for(let i=0;i<pe.length;i++){const a=Math.max(0,i-1),b=Math.min(pe.length-1,i+1),run=(b-a)*STEP;
     pg.push(Math.max(-30,Math.min(30,run>0?(pe[b]-pe[a])/run*100:0)));}
@@ -2916,7 +2930,8 @@ function actualizarFormaCompartida(s){
   if(!s || s.mode==="tcx") return;
   try{
     const reg=JSON.parse(localStorage.getItem(K_FORMA_COMPARTIDA)||"[]");
-    reg.push({fecha:new Date(s.date).toISOString().slice(0,10), deporte:"bici", tss:s.tss||0, id:s.date});
+    const dl=new Date(s.date); // v165: fecha LOCAL (con toISOString, una sesión después de las 21 h quedaba en el día siguiente)
+    reg.push({fecha:dl.getFullYear()+"-"+String(dl.getMonth()+1).padStart(2,"0")+"-"+String(dl.getDate()).padStart(2,"0"), deporte:"bici", tss:s.tss||0, id:s.date});
     localStorage.setItem(K_FORMA_COMPARTIDA,JSON.stringify(reg));
   }catch(_){}
 }
@@ -3308,6 +3323,7 @@ $("modeSel").onchange=toggleMode;
 function setSmooth(v){
   v=Math.max(0,Math.min(300,parseInt(v,10)||0));
   $("smoothM").value=v;
+  { const ro=loadRouteOpts(); if(fname&&ro[fname]){ ro[fname].smoothM=v; saveRouteOpts(ro); } } // ruta con suavizado propio: se recuerda el nuevo
   if($("pvSmooth"))$("pvSmooth").value=v;
   if($("pvSmoothV"))$("pvSmoothV").textContent=v+" m";
   if(pd.length){ recomputeProfile(); if(state==="riding"||state==="paused")drawRide(); }
@@ -4450,7 +4466,9 @@ function renderRoutesList(){
     dlBtn.onclick=()=>{ const blob=new Blob([text],{type:"application/gpx+xml"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name.endsWith(".gpx")?name:name+".gpx"; a.click(); };
     const delBtn=document.createElement("button"); delBtn.className="del"; delBtn.textContent="✕";
     delBtn.onclick=()=>{ if(confirm('¿Borrar la ruta guardada "'+name+'"? (no borra las sesiones que la usaron)')){ const m=loadRoutesMap(); delete m[name]; bigSet("bici_routes",JSON.stringify(m)); renderRoutesList(); } };
-    row.appendChild(editBtn); row.appendChild(dlBtn); row.appendChild(delBtn);
+    const useBtn=document.createElement("button"); useBtn.textContent="▶ Usar"; useBtn.className="primary"; useBtn.style.minHeight="40px"; useBtn.style.padding="8px 12px";
+    useBtn.onclick=()=>{ try{ $("modeSel").value="gpx"; toggleMode(); fname=name; parseGpx(text); $("routesBack").click(); }catch(err){ alert("No pude cargar la ruta: "+err.message); } };
+    row.appendChild(useBtn); row.appendChild(editBtn); row.appendChild(dlBtn); row.appendChild(delBtn);
     wrap.appendChild(row);
   });
 }
@@ -5138,7 +5156,28 @@ $("delSel").onclick=()=>{ if(!selected.size){return;}
 
 window.addEventListener("resize",()=>{ if(state==="riding"||state==="paused"){drawRide(); if(raceActive()){fitLane();drawLane();}} if(fitImg) fitDrawCanvas(); });
 if(!("usb" in navigator))msg("WebUSB no disponible en este navegador.");
-initBigStore();
+// v165: ruta que manda Rumbo (app de GPS) en el link: #rumbo=<z|j><base64url de {v,name,gpx,scenes,smoothM}>
+// z = comprimido (deflate-raw), j = JSON sin comprimir. Se guarda como ruta, con su escenario y su suavizado, y queda lista.
+async function rumboImport(){
+  const m=(location.hash||"").match(/^#rumbo=([zj])([A-Za-z0-9_-]+)/); if(!m) return;
+  history.replaceState(null,"",location.pathname+location.search);
+  try{
+    const b64=m[2].replace(/-/g,"+").replace(/_/g,"/"), bin=atob(b64+"===".slice((b64.length+3)%4)), u8=Uint8Array.from(bin,c=>c.charCodeAt(0));
+    let txt;
+    if(m[1]==="z"){ if(!window.DecompressionStream) throw new Error("este navegador no puede descomprimir: actualizá Chrome");
+      txt=await new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).text(); }
+    else txt=new TextDecoder().decode(u8);
+    const o=JSON.parse(txt); if(!o||!o.gpx||!o.name) throw new Error("datos incompletos");
+    const name=o.name, ro=loadRouteOpts(); ro[name]={smoothM:o.smoothM!=null?o.smoothM:20,src:"rumbo"}; saveRouteOpts(ro);
+    if(Array.isArray(o.scenes)&&o.scenes.length) setRouteScenes(name,o.scenes);
+    $("modeSel").value="gpx"; toggleMode();
+    fname=name; parseGpx(o.gpx);
+    log("🧭 Ruta de Rumbo cargada: "+name+" · "+(total/1000).toFixed(1)+" km"+(o.scenes&&o.scenes.length?" · escenario de "+o.scenes.length+" tramo"+(o.scenes.length>1?"s":"")+" (se retoca en Rutas guardadas → Escenario; se ve con Vista 3D: ON)":""),"#3fb950");
+    msg("Ruta de Rumbo lista: conectá el rodillo y empezá");
+  }catch(e){ log("No pude abrir la ruta que mandó Rumbo: "+e.message,"#f85149"); }
+}
+window.addEventListener("hashchange",()=>{ if(bigReady) rumboImport(); });
+initBigStore().then(rumboImport);
 </script>
 </body>
 </html>
