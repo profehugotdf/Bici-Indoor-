@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v165</title>
+<title>Bici Indoor · v166</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v165</h1>
+  <h1>Bici Indoor · v166</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -3455,6 +3455,18 @@ function loadCfg(){ let o; try{o=JSON.parse(localStorage.getItem(CFG_KEY)||"{}")
     if(ftpEl && (!ftpEl.value || parseFloat(ftpEl.value)===200)){
       const u=JSON.parse(localStorage.getItem(K_UMBRALES)||"{}");
       if(u.ftpBici!=null && u.ftpBici>0) ftpEl.value=u.ftpBici;
+    }
+  }catch(_){}
+  // v166: lo usan otras personas — si Bici todavía no tiene peso o edad guardados, se toman del perfil compartido
+  // (Mi plan, Correr, Fuerza) en vez de quedar en los valores de fábrica (75 kg, 40 años)
+  try{
+    const p=JSON.parse(localStorage.getItem("entrenamiento_perfil")||"{}")||{};
+    if(o.weight==null && p.pesoKg>0) $("weight").value=p.pesoKg;
+    if(o.age==null){
+      let edad=null;
+      if(p.fechaNacimiento){ const n=new Date(p.fechaNacimiento+"T00:00:00"), h=new Date(); edad=h.getFullYear()-n.getFullYear(); if(h.getMonth()<n.getMonth()||(h.getMonth()===n.getMonth()&&h.getDate()<n.getDate())) edad--; }
+      else if(p.edad>0) edad=p.edad;
+      if(edad>0 && edad<100) $("age").value=edad;
     }
   }catch(_){}
   conn=$("connType").value;
