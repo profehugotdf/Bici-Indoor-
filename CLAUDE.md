@@ -14,6 +14,7 @@ Rodillo BKOOL Smart Pro por ANT+ FE-C (stick USB). Además:
 - Versión en el `<title>` y en el `<h1>`: `Bici Indoor · vNNN`. Subirla en cada entrega.
 - Lo pesado va en IndexedDB `bici_indoor` (almacén `kv`), con `bigGet`/`bigSet`. Esas claves están en `BIG_KEYS`: `bici_sesiones`, `bici_routes`, `bici_route_extra`. En localStorage queda `bici_sesiones` como resumen sin muestras, porque Mi plan lo lee de ahí.
 - Rutas de Rumbo: `rumboImport()` lee `#rumbo=z…`.
+  - v167: el `land` (costados reales cada 25 m) va en `bici_route_extra` y lo dibuja `roadBands` por franja. El bloque `landDec`/`landFranja`/`landDecorFranja`/`landCasa`… es **el mismo que en Correr**: si se cambia acá, copiarlo allá. En ida y vuelta, `LD.map` usa `mirrorD`.
   - Guarda las escenas en `bici_scenes`, el suavizado por ruta en `bici_route_opts` y el horizonte, los cerros y el suelo en `bici_route_extra`.
   - `drawRealHorizon` usa `HZ_EX=1.5` y comprime con `tanh` (`HZ_MAX=13`).
 - La fecha de la Forma va en hora **local**.
@@ -64,6 +65,6 @@ Todas las apps comparten `localStorage` (unos 5 MB en total para todas) y pueden
   - Rumbo: NGP con pendiente para correr, potencia estimada/FTP para bici.
   - Una salida grabada por Rumbo **y** por la app dedicada cuenta una sola vez, la de la dedicada.
 - Rumbo abre las otras apps con `#rumbo=` en el link:
-  - Bici, Correr y Kayak: `z` + base64url de JSON comprimido con deflate-raw. Bici y Correr reciben el mismo paquete (gpx con la altura, escenas, horizonte, cerros y suelo); Kayak recibe `app:'kayak'`, puntos, orillas y perfil, horizonte y cerros.
+  - Bici, Correr y Kayak: `z` + base64url de JSON comprimido con deflate-raw. Bici y Correr reciben el mismo paquete (gpx con la altura, escenas, horizonte, cerros, suelo y `land`: qué hay a cada costado cada 25 m: uso del suelo, casa más cercana con pisos y distancia, tipo de camino); Kayak recibe `app:'kayak'`, puntos, orillas y perfil, horizonte y cerros.
   - Mi plan: base64 de `{v,s:[sesiones]}`, sin comprimir.
 - Hay una app de Backup (`profehugotdf.github.io`) que exporta y restaura localStorage e IndexedDB de todas.
