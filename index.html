@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v168</title>
+<title>Bici Indoor · v169</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v168</h1>
+  <h1>Bici Indoor · v169</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -120,6 +120,7 @@
       </div>
       <input type="file" id="file" accept=".gpx,application/gpx+xml,text/xml">
       <div class="routeinfo" id="routeinfo">Sin recorrido cargado.</div>
+      <button id="renRutaBtn" style="margin-top:6px;min-height:36px;padding:6px 12px;font-size:13px">✏️ Cambiar el nombre de esta ruta</button>
       <!-- v168: clima real del recorrido -->
       <div id="wxBox" style="margin-top:10px;padding:10px;border:1px solid var(--line,#30363d);border-radius:10px">
         <div class="row" style="margin:0"><label for="wxOn">🌬️ Viento y clima reales del recorrido</label><input type="checkbox" id="wxOn"></div>
@@ -4925,10 +4926,35 @@ function renderRoutesList(){
     delBtn.onclick=()=>{ if(confirm('¿Borrar la ruta guardada "'+name+'"? (no borra las sesiones que la usaron)')){ const m=loadRoutesMap(); delete m[name]; bigSet("bici_routes",JSON.stringify(m)); setRouteExtra(name,null); renderRoutesList(); } };
     const useBtn=document.createElement("button"); useBtn.textContent="▶ Usar"; useBtn.className="primary"; useBtn.style.minHeight="40px"; useBtn.style.padding="8px 12px";
     useBtn.onclick=()=>{ try{ $("modeSel").value="gpx"; toggleMode(); fname=name; parseGpx(text); $("routesBack").click(); }catch(err){ alert("No pude cargar la ruta: "+err.message); } };
-    row.appendChild(useBtn); row.appendChild(editBtn); row.appendChild(dlBtn); row.appendChild(delBtn);
+    const renBtn=document.createElement("button"); renBtn.textContent="✏️"; renBtn.title="Cambiar el nombre"; renBtn.style.minHeight="40px"; renBtn.style.padding="8px 12px";
+    renBtn.onclick=()=>{ const base=name.replace(/\.gpx$/i,""), nv=prompt("Nombre de la ruta:",base); if(nv==null) return; renombrarRuta(name,nv); };
+    row.appendChild(useBtn); row.appendChild(editBtn); row.appendChild(renBtn); row.appendChild(dlBtn); row.appendChild(delBtn);
     wrap.appendChild(row);
   });
 }
+// v169: cambiar el nombre de una ruta guardada (Hugo: "¿cómo guardo el recorrido en mis rutas?" — las que manda Rumbo
+// llegan con un nombre como "Trazada En bici 27-oct, 01:11 p. m..gpx"). Se mueve todo lo que cuelga del nombre: el
+// escenario, el paisaje real, el suavizado, los puentes, el clima y las sesiones hechas en esa ruta (así siguen siendo
+// fantasmas de la misma ruta).
+function renombrarRuta(viejo,nuevoTxt){
+  let nuevo=String(nuevoTxt||"").replace(/[<>"]/g,"").trim(); if(!nuevo){ alert("Poné un nombre"); return false; }
+  if(/\.gpx$/i.test(viejo)&&!/\.gpx$/i.test(nuevo)) nuevo+=".gpx";
+  if(nuevo===viejo) return true;
+  const m=loadRoutesMap(); if(!m[viejo]){ alert("No encontré esa ruta"); return false; }
+  if(m[nuevo]&&!confirm('Ya hay una ruta "'+nuevo+'". ¿Reemplazarla?')) return false;
+  try{
+    m[nuevo]=m[viejo]; delete m[viejo]; bigSet("bici_routes",JSON.stringify(m));
+    const mover=(get,set)=>{ const o=get(); if(o&&o[viejo]!==undefined){ o[nuevo]=o[viejo]; delete o[viejo]; set(o); } };
+    mover(loadScenes,saveScenes); mover(loadRouteOpts,saveRouteOpts); mover(loadBridges,saveBridges);
+    mover(()=>wxUltimos(),o=>{ try{ localStorage.setItem(WX_LAST,JSON.stringify(o)); }catch(_){} });
+    const ex=loadRouteExtra()[viejo]; if(ex){ setRouteExtra(nuevo,ex); setRouteExtra(viejo,null); }
+    const a=JSON.parse(bigGet("bici_sesiones")||"[]"); let n=0; a.forEach(s=>{ if(s.route===viejo){ s.route=nuevo; n++; } }); if(n) bigSet("bici_sesiones",JSON.stringify(a));
+    if(fname===viejo){ fname=nuevo; try{ parseGpx(getRouteText(nuevo)); }catch(_){} }
+    renderRoutesList(); log("Ruta renombrada: "+nuevo+(n?" · "+n+" sesión"+(n>1?"es":"")+" movida"+(n>1?"s":""):""),"#3fb950");
+    return true;
+  }catch(e){ log("No pude cambiar el nombre: "+e.message,"#f85149"); return false; }
+}
+$("renRutaBtn").onclick=()=>{ if(!fname||!loadRoutesMap()[fname]){ msg("Cargá una ruta primero"); return; } const nv=prompt("Nombre de la ruta:",fname.replace(/\.gpx$/i,"")); if(nv!=null) renombrarRuta(fname,nv); };
 $("routesBtn").onclick=()=>{ renderRoutesList(); $("setup").classList.add("hidden"); $("routesCard").classList.remove("hidden"); scrollTop(); };
 // ---------- Fitting de la bici ----------
 let fitImg=null, fitPoints=[], fitScale=1, fitPhase=1, fitSide="A", fitCalibMode="saddle";
