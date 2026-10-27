@@ -2313,7 +2313,7 @@ function wxFlecha(ctx, x, y, W, rel) {
 // represente en las animaciones lo más realista posible". El viento de frente o de cola (según el rumbo de cada tramo)
 // entra en la física (aire relativo y densidad del aire de ahora) y en el rodillo (como pendiente equivalente, igual
 // que el rebufo), y se ve en la vista 3D.
-let WX=null, wxRelAhora=null;
+var WX=null, wxRelAhora=null;
 const WX_CFG="bici_wx", WX_LAST="bici_wx_last";
 function wxCfg(){ try{ return JSON.parse(localStorage.getItem(WX_CFG)||"{}")||{}; }catch(_){ return {}; } }
 function wxCfgSet(o){ try{ localStorage.setItem(WX_CFG,JSON.stringify(Object.assign(wxCfg(),o))); }catch(e){ log("No se pudo guardar el ajuste del clima: "+e.message,"#f85149"); } }
