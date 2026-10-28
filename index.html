@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v170</title>
+<title>Bici Indoor · v171</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v170</h1>
+  <h1>Bici Indoor · v171</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -4976,7 +4976,7 @@ function mapaInfoRuta(){
   if(!rx&&!sc.length){ el.textContent="🗺️ Sin datos del mapa: esta ruta no vino de Rumbo (para casas, calles y montañas reales, mandala desde Rumbo con 🚴 Indoor)."; return; }
   const p=[sc.length?sc.length+" tramo"+(sc.length>1?"s":"")+" de escenario":"sin escenario por tramos", rx&&rx.hz?"montañas reales":"sin montañas reales", rx&&rx.ground?"colores del suelo":"sin colores del suelo"];
   const r=rx&&rx.land?landResumen(rx.land):null; if(r) p.push("casas en el mapa "+r.casas+" %","tipo de calle "+r.calles+" %","uso del suelo "+r.uso+" %");
-  el.innerHTML="🗺️ Del mapa: "+p.join(" · ")+(r?"":"<br>Sin los costados (casas, calles): mandala de nuevo desde Rumbo.")+(r&&r.casas<20&&r.calles>30?"<br>OpenStreetMap tiene pocas casas cargadas acá: donde es barrio, se completan con casas genéricas.":"");
+  const lo=loadRouteExtra()[fname]; el.innerHTML="🗺️ Del mapa: "+p.join(" · ")+(lo&&lo.osm?"<br>OpenStreetMap: "+String(lo.osm).replace(/[<>]/g,""):"")+(r?"":"<br>Sin los costados (casas, calles): mandala de nuevo desde Rumbo.")+(r&&r.casas<20&&r.calles>30?"<br>OpenStreetMap tiene pocas casas cargadas acá: donde es barrio, se completan con casas genéricas.":"");
 }
 $("renRutaBtn").onclick=()=>{ if(!fname||!loadRoutesMap()[fname]){ msg("Cargá una ruta primero"); return; } const nv=prompt("Nombre de la ruta:",fname.replace(/\.gpx$/i,"")); if(nv!=null) renombrarRuta(fname,nv); };
 $("routesBtn").onclick=()=>{ renderRoutesList(); $("setup").classList.add("hidden"); $("routesCard").classList.remove("hidden"); scrollTop(); };
@@ -5679,7 +5679,7 @@ async function rumboImport(){
     const o=JSON.parse(txt); if(!o||!o.gpx||!o.name) throw new Error("datos incompletos");
     const name=o.name, ro=loadRouteOpts(); ro[name]={smoothM:o.smoothM!=null?o.smoothM:20,src:"rumbo"}; saveRouteOpts(ro);
     if(Array.isArray(o.scenes)&&o.scenes.length) setRouteScenes(name,o.scenes);
-    setRouteExtra(name,(o.hz||o.ground||o.land)?{hz:o.hz||null,peaks:o.peaks||[],ground:o.ground||null,land:o.land||null}:null); // v167: + land
+    setRouteExtra(name,(o.hz||o.ground||o.land)?{hz:o.hz||null,peaks:o.peaks||[],ground:o.ground||null,land:o.land||null,osm:o.osm||""}:null); // v167: + land · v171: + osm
     $("modeSel").value="gpx"; toggleMode();
     fname=name; parseGpx(o.gpx);
     log("🧭 Ruta de Rumbo cargada: "+name+" · "+(total/1000).toFixed(1)+" km"+(o.scenes&&o.scenes.length?" · escenario de "+o.scenes.length+" tramo"+(o.scenes.length>1?"s":"")+" (se retoca en Rutas guardadas → Escenario; se ve con Vista 3D: ON)":"")+(o.land?" · casas, calles y campo reales":"")+(o.hz?" · montañas reales"+(o.peaks&&o.peaks.length?" con nombres":""):"")+(o.ground?" · colores del suelo":""),"#3fb950");
