@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v172</title>
+<title>Bici Indoor · v173</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v172</h1>
+  <h1>Bici Indoor · v173</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -2070,7 +2070,7 @@ function b64u8(s){ const b=atob(s.replace(/-/g,"+").replace(/_/g,"/")+"===".slic
 function routeExtra(name){
   if(!name) return null; if(RX_DEC[name]!==undefined) return RX_DEC[name];
   const o=loadRouteExtra()[name]; let r=null;
-  if(o){ try{ r={hz:o.hz&&o.hz.d?Object.assign({},o.hz,{u:b64u8(o.hz.d)}):null, peaks:(o.peaks||[]).filter(p=>p&&p.e>0), ground:o.ground&&o.ground.d?Object.assign({},o.ground,{u:b64u8(o.ground.d)}):null, land:landDec(o.land), geo:undefined}; }catch(_){ r=null; } }
+  if(o){ try{ r={hz:o.hz&&o.hz.d?Object.assign({},o.hz,{u:b64u8(o.hz.d)}):null, peaks:(o.peaks||[]).filter(p=>p&&p.e>0), ground:o.ground&&o.ground.d?Object.assign({},o.ground,{u:b64u8(o.ground.d)}):null, land:landDec(o.land), infra:Array.isArray(o.infra)?o.infra.filter(x=>x&&x.length>=4&&x[2]>x[1]):null, geo:undefined}; }catch(_){ r=null; } }
   RX_DEC[name]=r; return r;
 }
 const realLandOn=()=>{ try{ return localStorage.getItem("bici_real_land")!=="0"; }catch(_){ return true; } };
@@ -2572,6 +2572,16 @@ function landDecorFranja(ctx,S,i,L,flip,sc,skip,hwM,d0,asf,fallback){
     }
   }
 }
+// v173: puentes, túneles, terraplenes y desmontes REALES del camino (los manda Rumbo como tramos: [tipo, desde m, hasta m, lado, altura m|null];
+// lado 0 = por el propio camino, 1 = izquierda de la marcha, −1 = derecha). Es solo dibujo: no toca la física ni los puentes de "bici_bridges".
+// Hugo: "faltarían los terraplenes de la autopista del triatlón, con una pendiente estándar" → talud 1:2 (INFRA_TALUD).
+const INFRA_TALUD=2, INFRA_H={terraplen:4,desmonte:4,tunel:5.2};
+function infraEn(routeName,d){
+  const rx=routeName?routeExtra(routeName):null; if(!rx||!rx.infra||!rx.infra.length) return null;
+  const mir=mirrorD(routeName,d), dd=mir.d, out=[];
+  for(const t of rx.infra){ if(dd>=t[1]&&dd<=t[2]) out.push({k:t[0],lado:mir.back?-t[3]:t[3],h:t[4]>0?t[4]:(INFRA_H[t[0]]||0)}); }
+  return out.length?out:null;
+}
 function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
   const N=(geom&&geom.N)||130, NEAR=(geom&&geom.NEAR)!=null?geom.NEAR:2.0, GROW=(geom&&geom.GROW)!=null?geom.GROW:0.045,
     f=w*0.95, wRoad=(geom&&geom.wRoad)||5.2, camEyeH=1.4, latK=0.9, bandLen=6, horizonK=5;
@@ -2692,8 +2702,9 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
     const bo=b.bank*b.hw*BANK_K, ao=a.bank*a.hw*BANK_K;   // peralte: desnivel de bordes
     const bLY=b.y-bo, bRY=b.y+bo, aLY=a.y-ao, aRY=a.y+ao;
     const rb=Math.max(1.5,b.hw*0.26), ra=Math.max(1,a.hw*0.26);
-    const onBr=onBridgeAt(routeName,bridges,b.d);
-    if(onBr){ // río cruzando por debajo del puente, a los dos lados
+    const onBr0=onBridgeAt(routeName,bridges,b.d), infB=sceneOverride?null:infraEn(routeName,b.d), infA=sceneOverride?null:infraEn(routeName,a.d);
+    const infKs=infB?infB.map(x=>x.k):[], onBr=onBr0||infKs.includes('puente'), enTun=infKs.includes('tunel');
+    if(onBr0){ // río cruzando por debajo del puente, a los dos lados
       const L=WATER_LOOK.rio; ctx.fillStyle=L.mid;
       ctx.beginPath();ctx.moveTo(-w,bLY);ctx.lineTo(b.cx-b.hw,bLY);ctx.lineTo(a.cx-a.hw,aLY);ctx.lineTo(-w,aLY);ctx.closePath();ctx.fill();
       ctx.beginPath();ctx.moveTo(2*w,bRY);ctx.lineTo(b.cx+b.hw,bRY);ctx.lineTo(a.cx+a.hw,aRY);ctx.lineTo(2*w,aRY);ctx.closePath();ctx.fill();
@@ -2758,12 +2769,43 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
         ctx.beginPath();ctx.moveTo(bx0,by0);ctx.lineTo(bx1,by1);ctx.lineTo(ax1,ay1);ctx.lineTo(ax0,ay0);ctx.closePath();ctx.fill();
       }
     }
+    // v173: túnel, terraplén y desmonte reales del camino
+    const infDec=enTun||infKs.includes('terraplen')||infKs.includes('desmonte');
+    if(infB||infA){
+      const pm=b.hw/wRoad, pa=a.hw/wRoad;      // píxeles por metro en cada borde de la franja
+      const aTun=!!(infA&&infA.some(x=>x.k==='tunel'));
+      if(enTun){ // paredes y techo de hormigón, con luces cada 12 m
+        const T=infB.find(x=>x.k==='tunel'), H=T.h, X=1.12;
+        for(const sd of [-1,1]){ const bx=b.cx+sd*b.hw*X, ax=a.cx+sd*a.hw*X, by=sd<0?bLY:bRY, ay=sd<0?aLY:aRY;
+          ctx.fillStyle=sd<0?"#7d8085":"#6f7277"; ctx.beginPath(); ctx.moveTo(bx,by); ctx.lineTo(ax,ay); ctx.lineTo(ax,ay-H*pa); ctx.lineTo(bx,by-H*pm); ctx.closePath(); ctx.fill(); ctx.strokeStyle=ctx.fillStyle; ctx.stroke(); }
+        ctx.fillStyle="#4d5056"; ctx.strokeStyle=ctx.fillStyle;
+        ctx.beginPath(); ctx.moveTo(b.cx-b.hw*X,bLY-H*pm); ctx.lineTo(b.cx+b.hw*X,bRY-H*pm); ctx.lineTo(a.cx+a.hw*X,aRY-H*pa); ctx.lineTo(a.cx-a.hw*X,aLY-H*pa); ctx.closePath(); ctx.fill(); ctx.stroke();
+        if(Math.floor(b.d/12)!==Math.floor(a.d/12)){ const lx=b.cx, ly=b.y-(H-0.25)*pm, r=Math.max(1.5,pm*0.35);
+          const g=ctx.createRadialGradient(lx,ly,0,lx,ly,r*4); g.addColorStop(0,"rgba(255,236,170,.85)"); g.addColorStop(1,"rgba(255,236,170,0)");
+          ctx.fillStyle=g; ctx.fillRect(lx-r*4,ly-r*4,r*8,r*8); ctx.fillStyle="#fff6d0"; ctx.fillRect(lx-r,ly-r*0.4,r*2,r*0.8); }
+      } else if(aTun){ // la boca del túnel: la cara del cerro con el hueco, a la distancia del primer tramo cubierto
+        const T=infA.find(x=>x.k==='tunel'), H=T.h, X=1.12, top=a.y-(H+7)*pa, l=a.cx-a.hw*X, r=a.cx+a.hw*X;
+        ctx.fillStyle="#8a7f70"; ctx.beginPath(); ctx.rect(0,top,w,a.y-top); ctx.moveTo(l,a.y); ctx.lineTo(l,a.y-H*pa); ctx.lineTo(r,a.y-H*pa); ctx.lineTo(r,a.y); ctx.closePath(); ctx.fill("evenodd");
+        ctx.fillStyle="#b9b6ae"; ctx.fillRect(l-pa*0.5,a.y-(H+0.6)*pa,(r-l)+pa,0.6*pa);   // dintel
+        ctx.fillStyle="#2c2e32"; ctx.fillRect(l,a.y-H*pa,r-l,H*pa);                      // la oscuridad de adentro
+      }
+      for(const t of (infB||[])){
+        if(t.k!=='terraplen'&&t.k!=='desmonte') continue;
+        for(const sd of (t.lado===0?[-1,1]:[t.lado>0?-1:1])){      // lado 1 (izquierda) = borde izquierdo de la pantalla = sd −1
+          const bx=b.cx+sd*b.hw, ax=a.cx+sd*a.hw, by=sd<0?bLY:bRY, ay=sd<0?aLY:aRY, H=t.h, run=H*INFRA_TALUD;
+          if(t.k==='terraplen'){ // el camino va elevado: el talud baja hasta el terreno (1 de alto por 2 de ancho)
+            ctx.fillStyle=sd<0?"#6c7a48":"#627040"; ctx.strokeStyle=ctx.fillStyle; ctx.beginPath(); ctx.moveTo(bx,by); ctx.lineTo(ax,ay); ctx.lineTo(ax+sd*run*pa,ay+H*pa); ctx.lineTo(bx+sd*run*pm,by+H*pm); ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.fillStyle="#c9ccd1"; ctx.beginPath(); ctx.moveTo(bx,by); ctx.lineTo(ax,ay); ctx.lineTo(ax,ay-0.7*pa); ctx.lineTo(bx,by-0.7*pm); ctx.closePath(); ctx.fill();   // baranda de seguridad
+          } else { // desmonte: el camino va hundido y el talud sube
+            ctx.fillStyle=sd<0?"#86745d":"#7a6a55"; ctx.strokeStyle=ctx.fillStyle; ctx.beginPath(); ctx.moveTo(bx,by); ctx.lineTo(ax,ay); ctx.lineTo(ax+sd*run*pa,ay-H*pa); ctx.lineTo(bx+sd*run*pm,by-H*pm); ctx.closePath(); ctx.fill(); ctx.stroke();
+          } } }
+    }
     // decorado lateral según escenario en este tramo
     const decorSpacing=30, wallSpacing=16;
     const bsc0=sceneOverride||sceneAt(routeName,b.d);
     const wallSide0=bsc0.wallSide;
     const spacing = wallSide0 ? wallSpacing : decorSpacing;
-    if(LD&&!onBr){ // v167: casas reales, árboles, alambrados y faroles; del lado del agua, la pared o el valle, lo de siempre
+    if(LD&&!onBr&&!infDec){ // v167: casas reales, árboles, alambrados y faroles; del lado del agua, la pared o el valle, lo de siempre
       const bs=sceneAt(routeName,b.d), valle=bs.wallSide&&!bs.waterSide?(bs.wallSide==="left"?"right":"left"):null;
       landDecorFranja(ctx,S,i,LD,false,sc,[bs.waterSide,bs.wallSide,valle],anchoEn,d0,sc.asphalt,(c2,k,x,y,m,seed,side)=>{
         const n=side<0?"left":"right", sd=Math.sin(seed*9.1);
@@ -2771,7 +2813,7 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
         else if(bs.wallSide===n) drawSideDecor(c2,"rocks",x,y,3*m,sd,side);
         else if(valle===n) drawSideDecor(c2,"rail",x,y,2*m,sd,side);
         else drawSideDecor(c2,bs.decor,x,y,4*m,sd,side); });
-    } else if(!onBr && Math.floor(b.d/spacing)!==Math.floor(a.d/spacing) && b.hw>6){
+    } else if(!onBr && !infDec && Math.floor(b.d/spacing)!==Math.floor(a.d/spacing) && b.hw>6){
       const bsc=sceneOverride||sceneAt(routeName,b.d);
       for(const side of [-1,1]){
         const seed=Math.sin(Math.floor(b.d/spacing)*7.3 + side*2.1);
@@ -5020,6 +5062,7 @@ function mapaInfoRuta(){
   const rx=routeExtra(fname), sc=(loadScenes()[fname]||[]);
   if(!rx&&!sc.length){ el.textContent="🗺️ Sin datos del mapa: esta ruta no vino de Rumbo (para casas, calles y montañas reales, mandala desde Rumbo con 🚴 Indoor)."; return; }
   const p=[sc.length?sc.length+" tramo"+(sc.length>1?"s":"")+" de escenario":"sin escenario por tramos", rx&&rx.hz?"montañas reales":"sin montañas reales", rx&&rx.ground?"colores del suelo":"sin colores del suelo"];
+  if(rx&&rx.infra&&rx.infra.length){ const c={}; rx.infra.forEach(t=>c[t[0]]=(c[t[0]]||0)+1); p.push(Object.keys(c).map(k=>c[k]+" "+({puente:"puente",tunel:"túnel",terraplen:"terraplén",desmonte:"desmonte"}[k]||k)+(c[k]>1?(k==="puente"||k==="terraplen"||k==="desmonte"?"s":"es"):"")).join(", ")); } // v173
   const r=rx&&rx.land?landResumen(rx.land):null; if(r) p.push("casas en el mapa "+r.casas+" %","tipo de calle "+r.calles+" %","uso del suelo "+r.uso+" %");
   const lo=loadRouteExtra()[fname]; el.innerHTML="🗺️ Del mapa: "+p.join(" · ")+(lo&&lo.osm?"<br>OpenStreetMap: "+String(lo.osm).replace(/[<>]/g,""):"")+(r?"":"<br>Sin los costados (casas, calles): mandala de nuevo desde Rumbo.")+(r&&r.casas<20&&r.calles>30?"<br>OpenStreetMap tiene pocas casas cargadas acá: donde es barrio, se completan con casas genéricas.":"");
 }
@@ -5724,7 +5767,8 @@ async function rumboImport(){
     const o=JSON.parse(txt); if(!o||!o.gpx||!o.name) throw new Error("datos incompletos");
     const name=o.name, ro=loadRouteOpts(); ro[name]={smoothM:o.smoothM!=null?o.smoothM:20,src:"rumbo"}; saveRouteOpts(ro);
     if(Array.isArray(o.scenes)&&o.scenes.length) setRouteScenes(name,o.scenes);
-    setRouteExtra(name,(o.hz||o.ground||o.land)?{hz:o.hz||null,peaks:o.peaks||[],ground:o.ground||null,land:o.land||null,osm:o.osm||""}:null); // v167: + land · v171: + osm
+    setRouteExtra(name,(o.hz||o.ground||o.land||o.infra)?{hz:o.hz||null,peaks:o.peaks||[],ground:o.ground||null,land:o.land||null,infra:Array.isArray(o.infra)&&o.infra.length?o.infra:null,osm:o.osm||""}:null); // v173: + infra (puentes, túneles, terraplenes y desmontes)
+     // v167: + land · v171: + osm
     $("modeSel").value="gpx"; toggleMode();
     fname=name; parseGpx(o.gpx);
     log("🧭 Ruta de Rumbo cargada: "+name+" · "+(total/1000).toFixed(1)+" km"+(o.scenes&&o.scenes.length?" · escenario de "+o.scenes.length+" tramo"+(o.scenes.length>1?"s":"")+" (se retoca en Rutas guardadas → Escenario; se ve con Vista 3D: ON)":"")+(o.land?" · casas, calles y campo reales":"")+(o.hz?" · montañas reales"+(o.peaks&&o.peaks.length?" con nombres":""):"")+(o.ground?" · colores del suelo":""),"#3fb950");
