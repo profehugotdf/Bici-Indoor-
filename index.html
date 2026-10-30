@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v174</title>
+<title>Bici Indoor · v175</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -91,7 +91,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v174</h1>
+  <h1>Bici Indoor · v175</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1472,7 +1472,7 @@ function hud(grade){
   $("hPw").textContent=curPower;
   $("hGr").textContent=grade.toFixed(1);
   $("hCad").textContent=curCad;
-  $("hHr").textContent=curHR||"—";
+  $("hHr").textContent=curHR||"—"; hrZonaPintar(curHR); // v175
   const b3=pwBuf.filter(x=>x.t>=elapsed-3), b10=pwBuf;
   const a3=b3.length?Math.round(b3.reduce((s,x)=>s+x.p,0)/b3.length):0;
   const a10=b10.length?Math.round(b10.reduce((s,x)=>s+x.p,0)/b10.length):0;
@@ -3953,6 +3953,25 @@ CFG_IDS.forEach(id=>{const el=$(id);if(el)el.addEventListener("change",saveCfg);
 $("zoneModel").addEventListener("change",()=>{ setZoneModel(parseInt($("zoneModel").value,10)); saveCfg(); renderZones(); });
 loadCfg(); setZoneModel(parseInt(($("zoneModel").value)||"7",10)); updateHrMaxHint();
 
+// v175: pulso en vivo con el color de su zona (Hugo: "en bici y en correr, el pulso en vivo con los colores de cada zona").
+// Zonas por % del umbral de pulso (el propio de Bici, o el compartido): Z1 <85, Z2 85–89, Z3 90–94, Z4 95–99, Z5 ≥100 (como Friel, igual que Correr).
+// Sin umbral cargado se usa el % de la FC máx en uso (Z1 <60, Z2 60–69, Z3 70–79, Z4 80–89, Z5 ≥90) y el rótulo lo aclara.
+const HR_ZCOL=["","79,216,196","111,221,142","232,210,75","240,139,60","255,90,95"];
+let _hrZCache={t:0,u:null};
+function hrZonaDe(hr,umbral,fcmax){
+  if(!(hr>0)) return {z:0,porMax:false};
+  if(umbral>0){ const r=hr/umbral; return {z:r<.85?1:r<.90?2:r<.95?3:r<1?4:5,porMax:false}; }
+  if(fcmax>0){ const r=hr/fcmax; return {z:r<.6?1:r<.7?2:r<.8?3:r<.9?4:5,porMax:true}; }
+  return {z:0,porMax:false};
+}
+function hrZonaPintar(hr){
+  const el=$("hHr"); if(!el) return;
+  const now=Date.now();
+  if(now-_hrZCache.t>5000){ let u=null; try{ const o=loadHrThreshold(); u=o&&o.valor>0?o.valor:null; if(!u){ const c=JSON.parse(localStorage.getItem(K_UMBRALES)||"{}"); u=c.pulsoUmbralBici>0?c.pulsoUmbralBici:null; } }catch(_){} _hrZCache={t:now,u}; }
+  const r=hrZonaDe(hr,_hrZCache.u,hrMaxVal());
+  el.style.color=r.z?"rgba("+HR_ZCOL[r.z]+",1)":"";
+  const un=el.parentElement&&el.parentElement.querySelector(".u"); if(un) un.textContent=r.z?"bpm · Z"+r.z+(r.porMax?" (FC máx)":""):"bpm";
+}
 // ---------- Umbral de pulso (automático, mejor esfuerzo sostenido del historial) ----------
 const HR_THRESHOLD_KEY="bici_hr_threshold";
 function loadHrThreshold(){ try{ return JSON.parse(localStorage.getItem(HR_THRESHOLD_KEY)||"null"); }catch(_){ return null; } }
