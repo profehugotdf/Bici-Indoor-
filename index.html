@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v173</title>
+<title>Bici Indoor · v174</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -74,6 +74,8 @@
   .srow input[type=checkbox]{width:22px;height:22px;accent-color:var(--acc);flex:0 0 auto}
   .progress{height:8px;background:#0a0d12;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:14px 0 4px}
   .progress > i{display:block;height:100%;background:var(--acc);width:0%}
+  /* v174: la animación (vista 3D) ocupa todo el ancho de la pantalla */
+  #road{width:100vw;max-width:none;margin-left:calc(50% - 50vw);border-radius:0}
   canvas{width:100%;display:block;border-radius:8px;background:#0a0d12;touch-action:none}
   #prof{height:150px} #map{height:220px}
   #road{height:240px}
@@ -89,7 +91,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v173</h1>
+  <h1>Bici Indoor · v174</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -1516,7 +1518,9 @@ function gradeColor(g){if(g<=-2)return"#4cc2ff";if(g<0)return"#7fd1e8";if(g<2)re
 function drawRide(){ if(mode==="gpx" && !road3d){drawProf();drawMap();} }
 let road3d=false, roadCtx=null, roadRAF=null, roadCrank=0, roadLast=0, ghostRoadCrank=0;
 function roadActive(){ return (mode==="velodromo" || (mode==="gpx" && road3d)) && (state==="riding"||state==="paused") && !$("road").classList.contains("hidden"); }
-function fitRoad(){ roadCtx=fit($("road")); }
+// v174: la vista 3D va de borde a borde (CSS #road) y el alto sale del ancho con la proporción de antes (356:240)
+function fitRoad(){ const c=$("road"); c.style.height=Math.round((c.clientWidth||356)*240/356)+"px"; roadCtx=fit(c); }
+window.addEventListener("resize",()=>{ if(roadCtx&&!$("road").classList.contains("hidden")) fitRoad(); }); // v174: al girar el teléfono el alto sigue al ancho
 function startRoad(){ fitRoad(); roadLast=0; if(!roadRAF) roadRAF=requestAnimationFrame(roadLoop); }
 function stopRoad(){ if(roadRAF){cancelAnimationFrame(roadRAF);roadRAF=null;} }
 function roadLoop(ts){ if(!roadActive()){ roadRAF=null; return; }
