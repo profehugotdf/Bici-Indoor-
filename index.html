@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v176</title>
+<title>Bici Indoor · v179</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -77,6 +77,11 @@
   /* v174: la animación (vista 3D) ocupa todo el ancho de la pantalla */
   #road{width:100vw;max-width:none;margin-left:calc(50% - 50vw);border-radius:0}
   canvas{width:100%;display:block;border-radius:8px;background:#0a0d12;touch-action:none}
+  /* v179: la vista WebGL del velódromo va en un canvas aparte, debajo del 2D (que queda transparente y dibuja los rótulos) */
+  canvas.glov{background:transparent}
+  #road,#repRoad{position:relative;z-index:1}
+  #glVeloCanvas{position:absolute;pointer-events:none;z-index:0}
+  #road.hidden+#glVeloCanvas,#repRoad.hidden+#glVeloCanvas{display:none!important}
   #prof{height:150px} #map{height:220px}
   #road{height:240px}
   #pvProf{height:130px} #pvMap{height:150px}
@@ -91,7 +96,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v176</h1>
+  <h1>Bici Indoor · v179</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -191,6 +196,17 @@
           <option value="velodromo_open">Al aire libre</option>
         </select>
       </div>
+      <div class="row">
+        <label for="glVeloSel">Gráficos</label>
+        <select id="glVeloSel" style="flex:1">
+          <option value="gl_media">WebGL · calidad media (recomendado)</option>
+          <option value="gl_alta">WebGL · calidad alta</option>
+          <option value="gl_baja">WebGL · calidad baja</option>
+          <option value="off">Canvas 2D (clásico)</option>
+        </select>
+      </div>
+      <button class="full" id="glDiagBtn" style="margin-top:2px;margin-bottom:8px">Diagnóstico de la vista 3D (copiar)</button>
+      <pre id="glDiagTx" style="display:none;white-space:pre-wrap;font-size:11px;color:var(--dim);margin:-4px 0 8px"></pre>
       <div class="row">
         <label for="velRaceSel">Competir por</label>
         <select id="velRaceSel" style="flex:1">
@@ -660,6 +676,15 @@
             <option value="velodromo_open">Al aire libre</option>
           </select>
         </div>
+        <div class="row">
+          <label for="repGlSel">Gráficos</label>
+          <select id="repGlSel" style="flex:1">
+            <option value="gl_media">WebGL · calidad media (recomendado)</option>
+            <option value="gl_alta">WebGL · calidad alta</option>
+            <option value="gl_baja">WebGL · calidad baja</option>
+            <option value="off">Canvas 2D (clásico)</option>
+          </select>
+        </div>
         <button class="full" id="repVeloBtn">Vista Velódromo: OFF</button>
       </div>
       <button class="primary full" id="repStart" style="margin-top:10px">Iniciar carrera</button>
@@ -717,6 +742,17 @@ function bigPersist(k,v){
     tx.onerror=tx.onabort=()=>{ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+((tx.error&&tx.error.message)||"error"),"#f85149"); } };
   }catch(e){ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+e.message,"#f85149"); } }
 }
+// v179: vista WebGL del velódromo (en vivo y en la carrera virtual/replay), la que se probó en la app aparte "Velódromo 3D", con el
+// canvas 2D de v178 como respaldo automático: si WebGL no está, falla, se pierde el contexto o va a menos de ~25 cuadros/s incluso
+// a baja resolución, se vuelve solo al 2D. Opción "Gráficos" (bici_gl_velo: gl_media/gl_alta/gl_baja/off) y tarjeta de diagnóstico
+// con botón "copiar". Los rótulos de los rivales, las flechas de fuera de cuadro, el cartel de ventaja y la viñeta de velocidad
+// siguen siendo del canvas 2D (transparente, encima del WebGL). Geometría, física y sesiones sin tocar.
+// v178: velódromo más realista (Hugo: "dale" a las mejoras de realismo): lámparas con halo cálido (mezcla aditiva) y fila de lámparas sobre las
+// rectas con su reflejo alargado en la madera barnizada; público con silueta (cuerpo y cabeza), tono de piel, niebla con la distancia y un leve
+// movimiento; peralte más legible (la pared de la curva queda más oscura y hay sombra de la baranda sobre la madera). Solo dibujo.
+// v177: velódromo 3D con más vida (Hugo: "cómo mejoraría la gráfica del velódromo"): cada cuadrilátero lleva luz (charcos bajo las
+// lámparas en cubierto, sol fijo al aire libre) y niebla con la distancia; la madera son 4 tablones con tono y juntas propias; marcas
+// cada 10 m sobre la pista y viñeta que se cierra con la velocidad. Solo dibujo: geometría, peralte, física y sesiones sin tocar.
 // v164: copia RESUMIDA de las sesiones en el almacenamiento común, con la misma clave de siempre ("bici_sesiones"),
 // para las otras apps que la leen (Mi plan): todos los datos de cada sesión menos el detalle muestra a muestra.
 // Cada sesión lleva _resumen:true para que Bici nunca la confunda con datos reales al arrancar.
@@ -1521,7 +1557,8 @@ function roadActive(){ return (mode==="velodromo" || (mode==="gpx" && road3d)) &
 // v174: la vista 3D va de borde a borde (CSS #road) y el alto sale del ancho con la proporción de antes (356:240)
 function fitRoad(){ const c=$("road"); c.style.height=Math.round((c.clientWidth||356)*240/356)+"px"; roadCtx=fit(c); }
 window.addEventListener("resize",()=>{ if(roadCtx&&!$("road").classList.contains("hidden")) fitRoad(); }); // v174: al girar el teléfono el alto sigue al ancho
-function startRoad(){ fitRoad(); roadLast=0; if(!roadRAF) roadRAF=requestAnimationFrame(roadLoop); }
+function startRoad(){ fitRoad(); roadLast=0; if(mode==="velodromo"&&glVeloWanted()) GLV.prepare($("road"),glVeloEnv(velEnv),velTrackLen); // v179: arma el mundo 3D antes del primer cuadro
+  if(!roadRAF) roadRAF=requestAnimationFrame(roadLoop); }
 function stopRoad(){ if(roadRAF){cancelAnimationFrame(roadRAF);roadRAF=null;} }
 function roadLoop(ts){ if(!roadActive()){ roadRAF=null; return; }
   const dt=roadLast?Math.min(0.1,(ts-roadLast)/1000):0; roadLast=ts;
@@ -3185,6 +3222,440 @@ function drawRoad(){
 }
 const VELO_GEOM={N:100, NEAR:0.8, GROW:0.012, wRoad:4.2};
 let veloDrawErrLogged=false;
+
+// ================= v179: vista WebGL del velódromo, con respaldo al canvas 2D =================
+// Un canvas WebGL aparte (#glVeloCanvas) va debajo del canvas 2D de siempre, que queda transparente y dibuja los rótulos,
+// las flechas de los que quedan fuera de cuadro y el cartel de ventaja. Si WebGL falla, se pierde el contexto o va muy
+// lento, se vuelve solo al canvas 2D (el de v178) y queda anotado en "Diagnóstico de la vista 3D".
+const GLV=(()=>{'use strict';
+/* ---------- 1. Utilidades ---------- */
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const V={add:(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]],sub:(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],mul:(a,s)=>[a[0]*s,a[1]*s,a[2]*s],
+  dot:(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],cross:(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]],
+  len:a=>Math.hypot(a[0],a[1],a[2]),norm:a=>{const l=Math.hypot(a[0],a[1],a[2])||1;return [a[0]/l,a[1]/l,a[2]/l];}};
+const M4={
+  id(){return new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);},
+  mul(a,b){const o=new Float32Array(16);for(let c=0;c<4;c++)for(let r=0;r<4;r++){let s=0;for(let k=0;k<4;k++)s+=a[k*4+r]*b[c*4+k];o[c*4+r]=s;}return o;},
+  T(x,y,z){const m=M4.id();m[12]=x;m[13]=y;m[14]=z;return m;},
+  S(x,y,z){const m=M4.id();m[0]=x;m[5]=y;m[10]=z;return m;},
+  RX(a){const c=Math.cos(a),s=Math.sin(a),m=M4.id();m[5]=c;m[6]=s;m[9]=-s;m[10]=c;return m;},
+  RZ(a){const c=Math.cos(a),s=Math.sin(a),m=M4.id();m[0]=c;m[1]=s;m[4]=-s;m[5]=c;return m;},
+  basis(X,Y,Z,t){return new Float32Array([X[0],X[1],X[2],0,Y[0],Y[1],Y[2],0,Z[0],Z[1],Z[2],0,t[0],t[1],t[2],1]);},
+  persp(fy,asp,n,f){const t=1/Math.tan(fy/2),m=new Float32Array(16);m[0]=t/asp;m[5]=t;m[10]=(f+n)/(n-f);m[11]=-1;m[14]=2*f*n/(n-f);return m;},
+  look(e,c,u){const f=V.norm(V.sub(c,e)),s=V.norm(V.cross(f,u)),uu=V.cross(s,f);
+    return new Float32Array([s[0],uu[0],-f[0],0,s[1],uu[1],-f[1],0,s[2],uu[2],-f[2],0,-V.dot(s,e),-V.dot(uu,e),V.dot(f,e),1]);},
+  pt(m,p){return [m[0]*p[0]+m[4]*p[1]+m[8]*p[2]+m[12],m[1]*p[0]+m[5]*p[1]+m[9]*p[2]+m[13],m[2]*p[0]+m[6]*p[1]+m[10]*p[2]+m[14]];}
+};
+function segMatrix(A,B,r){const d=V.sub(B,A),len=V.len(d)||1e-4,Y=V.mul(d,1/len),ref=Math.abs(Y[2])>0.9?[1,0,0]:[0,0,1];
+  const X=V.norm(V.cross(ref,Y)),Z=V.cross(X,Y);return M4.basis(V.mul(X,r),V.mul(Y,len),V.mul(Z,r),A);}
+function ik2(S,H,l1,l2,pole){const d0=V.sub(H,S);let d=V.len(d0);const dir=V.mul(d0,1/Math.max(d,1e-5));
+  d=Math.min(Math.max(d,Math.abs(l1-l2)+0.01),l1+l2-0.005);const a=(l1*l1-l2*l2+d*d)/(2*d),h=Math.sqrt(Math.max(l1*l1-a*a,0));
+  const pp=V.norm(V.sub(pole,V.mul(dir,V.dot(pole,dir))));return V.add(V.add(S,V.mul(dir,a)),V.mul(pp,h));}
+function rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function hrnd(n){const x=Math.sin(n*12.9898)*43758.5453;return x-Math.floor(x);}
+
+/* ---------- 3. WebGL y shaders ---------- */
+let cv=null,gl=null,PMESH,PDEC,PSKY,triBuf,decBuf,decIdx;
+function compile(t,src){const s=gl.createShader(t);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error('shader: '+gl.getShaderInfoLog(s));return s;}
+function program(vs,fs,attrs){const p=gl.createProgram();gl.attachShader(p,compile(gl.VERTEX_SHADER,vs));gl.attachShader(p,compile(gl.FRAGMENT_SHADER,fs));
+  attrs.forEach((a,i)=>gl.bindAttribLocation(p,i,a));gl.linkProgram(p);if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw new Error('link: '+gl.getProgramInfoLog(p));p._u={};return p;}
+function U(p,n){if(!(n in p._u))p._u[n]=gl.getUniformLocation(p,n);return p._u[n];}
+const PREC=`#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+`;
+const VS_MESH=`attribute vec3 aPos;attribute vec3 aNor;attribute vec3 aCol;attribute float aPh;
+uniform mat4 uVP;uniform mat4 uModel;uniform float uTime;
+varying vec3 vW;varying vec3 vN;varying vec3 vC;
+void main(){vec3 p=aPos;if(aPh>0.0){p.y+=0.07*max(0.0,sin(uTime*3.0+aPh*40.0));}
+ vec4 w=uModel*vec4(p,1.0);vW=w.xyz;vN=mat3(uModel)*aNor;vC=aCol;gl_Position=uVP*w;}`;
+const FS_MESH=PREC+`varying vec3 vW;varying vec3 vN;varying vec3 vC;
+uniform vec3 uTint,uSunDir,uSunCol,uAmbT,uAmbB,uFog,uCam,uLampCol;
+uniform float uLit,uSpec,uGloss,uFogDen,uEmis,uLampN,uSunSpec;
+uniform vec3 uLamp[8];
+void main(){
+ vec3 N=normalize(vN);vec3 base=vC*uTint;vec3 col;vec3 Vv=normalize(uCam-vW);
+ if(uEmis>0.5){col=base;}
+ else{
+  if(uLit>0.5){vec3 L=normalize(uSunDir);float ndl=max(dot(N,L),0.0);vec3 hemi=mix(uAmbB,uAmbT,N.y*0.5+0.5);col=base*(hemi+uSunCol*ndl);}
+  else col=base;
+  if(uSpec>0.001){
+   vec3 sp=vec3(0.0);
+   for(int i=0;i<8;i++){ if(float(i)>=uLampN)break;
+     vec3 Lp=uLamp[i]-vW;float d2=dot(Lp,Lp);vec3 L=Lp*inversesqrt(d2);vec3 H=normalize(L+Vv);
+     sp+=uLampCol*pow(max(dot(N,H),0.0),uGloss)*(70.0/(d2+30.0)); }
+   if(uSunSpec>0.001){vec3 L=normalize(uSunDir);vec3 H=normalize(L+Vv);sp+=uSunCol*pow(max(dot(N,H),0.0),uGloss*0.6)*uSunSpec;}
+   col+=sp*uSpec;
+  }
+ }
+ float d=length(uCam-vW);col=mix(col,uFog,1.0-exp(-d*uFogDen));
+ gl_FragColor=vec4(col,1.0);}`;
+const VS_DEC=`attribute vec3 aPos;attribute vec2 aUV;attribute float aA;uniform mat4 uVP;varying vec2 vUV;varying float vA;
+void main(){vUV=aUV;vA=aA;gl_Position=uVP*vec4(aPos,1.0);}`;
+const FS_DEC=PREC+`varying vec2 vUV;varying float vA;uniform vec3 uCol;uniform float uK;
+void main(){float r2=dot(vUV,vUV);if(r2>1.0)discard;float a=exp(-uK*r2)*(1.0-r2)*vA;gl_FragColor=vec4(uCol,a);}`;
+const VS_SKY=`attribute vec2 aP;varying vec2 vN;void main(){vN=aP;gl_Position=vec4(aP,0.9999,1.0);}`;
+const FS_SKY=PREC+`varying vec2 vN;uniform vec3 uRight,uUp,uFwd,uSun;uniform float uTanH,uAspect,uTime;
+float h21(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(h21(i),h21(i+vec2(1,0)),f.x),mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x),f.y);}
+float fbm(vec2 p){float s=0.0,a=0.5;for(int i=0;i<4;i++){s+=a*vn(p);p*=2.03;a*=0.5;}return s;}
+void main(){
+ vec3 d=normalize(uFwd+uRight*(vN.x*uTanH*uAspect)+uUp*(vN.y*uTanH));float h=d.y;
+ vec3 hor=vec3(0.76,0.87,0.96),zen=vec3(0.26,0.50,0.86);
+ vec3 col=mix(hor,zen,pow(clamp(h,0.0,1.0),0.5));
+ float s=max(dot(d,normalize(uSun)),0.0);col+=vec3(1.0,0.9,0.7)*(pow(s,700.0)*3.0+pow(s,14.0)*0.22);
+ if(h>0.015){vec2 q=d.xz/(h+0.22)*1.2+vec2(uTime*0.01,0.0);float c=fbm(q);col=mix(col,vec3(1.0),smoothstep(0.5,0.85,c)*0.6*(1.0-h*0.6));}
+ float az=atan(d.z,d.x);float ridge=0.035+0.03*sin(az*3.0+1.0)+0.018*sin(az*7.0+2.0)+0.01*sin(az*17.0);
+ if(h<ridge)col=mix(vec3(0.38,0.50,0.52),hor,0.35+0.4*clamp(h/ridge,0.0,1.0));
+ gl_FragColor=vec4(col,1.0);}`;
+function makePrograms(){PMESH=program(VS_MESH,FS_MESH,['aPos','aNor','aCol','aPh']);PDEC=program(VS_DEC,FS_DEC,['aPos','aUV','aA']);PSKY=program(VS_SKY,FS_SKY,['aP']);}
+/* ---------- 4. Geometría procedural ---------- */
+let LAMPS=[],BAKE=false,CUR=null;const WORLD={wood:[],misc:[],emis:[]};
+function upload(g){const vb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,vb);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(g.v),gl.STATIC_DRAW);
+  const ib=gl.createBuffer();gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ib);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(g.i),gl.STATIC_DRAW);return {vb,ib,n:g.i.length};}
+function Batch(fam,bake,dyn){this.fam=fam;this.bake=bake;this.dyn=dyn;this.g={v:[],i:[]};this.out=[];}
+Batch.prototype.chk=function(){if(this.g.v.length/10>58000)this.flush();};
+Batch.prototype.flush=function(){if(!this.g.i.length)return;const m=upload(this.g);if(this.dyn)this.out.push(m);else WORLD[this.fam].push(m);this.g={v:[],i:[]};};
+function begin(fam,bake,dyn){CUR=new Batch(fam,bake,dyn);BAKE=!!bake;}
+function end(){CUR.flush();BAKE=false;const o=CUR.out;CUR=null;return o;}
+function bakeL(p,n){let s=0;for(let i=0;i<LAMPS.length;i++){const l=LAMPS[i],dx=l[0]-p[0],dy=l[1]-p[1],dz=l[2]-p[2],d2=dx*dx+dy*dy+dz*dz;if(d2>2500)continue;
+  const c=(dx*n[0]+dy*n[1]+dz*n[2])/Math.sqrt(d2);if(c>0)s+=c/(d2+20);}return Math.min(1.3,0.30+46*s);}
+function pv(p,n,c,ph,kfix){const g=CUR.g;let k=1;if(kfix!==undefined)k=kfix;else if(BAKE)k=bakeL(p,n);
+  g.v.push(p[0],p[1],p[2],n[0],n[1],n[2],c[0]*k,c[1]*k,c[2]*k,ph||0);return g.v.length/10-1;}
+function gQuad(P,c,ref,ph,kfix){ // P: 4 puntos; c: color o 4 colores
+  const a=V.sub(P[1],P[0]),b=V.sub(P[2],P[0]);let n=V.norm(V.cross(a,b));if(ref&&V.dot(n,ref)<0)n=V.mul(n,-1);
+  const multi=Array.isArray(c[0]);const base=CUR.g.v.length/10;
+  for(let i=0;i<4;i++)pv(P[i],n,multi?c[i]:c,ph,kfix);CUR.g.i.push(base,base+1,base+2,base,base+2,base+3);CUR.chk();}
+function gOBox(ctr,X,Y,Z,sx,sy,sz,c,ph,kfix){ // caja orientada; X,Y,Z ejes unitarios
+  const hx=sx/2,hy=sy/2,hz=sz/2,ax=[X,Y,Z],h=[hx,hy,hz];
+  for(let a=0;a<3;a++)for(const sg of [1,-1]){const b=(a+1)%3,d=(a+2)%3,n=V.mul(ax[a],sg),base=CUR.g.v.length/10;
+    const cc=V.add(ctr,V.mul(ax[a],sg*h[a]));
+    const corners=[[1,1],[-1,1],[-1,-1],[1,-1]].map(([u,v])=>V.add(V.add(cc,V.mul(ax[b],u*h[b])),V.mul(ax[d],v*h[d])));
+    for(const q of corners)pv(q,n,c,ph,kfix);CUR.g.i.push(base,base+1,base+2,base,base+2,base+3);}
+  CUR.chk();}
+const AX=[[1,0,0],[0,1,0],[0,0,1]];
+function gBox(cx,cy,cz,sx,sy,sz,c){gOBox([cx,cy,cz],AX[0],AX[1],AX[2],sx,sy,sz,c);}
+function gCyl(cx,cy,cz,r0,r1,h,seg,c){const sl=(r0-r1)/h,base=CUR.g.v.length/10;
+  for(let i=0;i<=seg;i++){const a=i/seg*2*Math.PI,co=Math.cos(a),si=Math.sin(a),n=V.norm([co,sl,si]);pv([cx+co*r0,cy,cz+si*r0],n,c);pv([cx+co*r1,cy+h,cz+si*r1],n,c);}
+  for(let i=0;i<seg;i++){const a=base+i*2;CUR.g.i.push(a,a+1,a+2,a+1,a+3,a+2);}CUR.chk();}
+function gSphere(cx,cy,cz,r,sg,c){const lat=sg,lon=sg*2,base=CUR.g.v.length/10;
+  for(let i=0;i<=lat;i++){const th=i/lat*Math.PI,st=Math.sin(th),ct=Math.cos(th);for(let j=0;j<=lon;j++){const ph=j/lon*2*Math.PI,n=[st*Math.cos(ph),ct,st*Math.sin(ph)];pv([cx+n[0]*r,cy+n[1]*r,cz+n[2]*r],n,c);}}
+  for(let i=0;i<lat;i++)for(let j=0;j<lon;j++){const a=base+i*(lon+1)+j,b=a+lon+1;CUR.g.i.push(a,b,a+1,a+1,b,b+1);}CUR.chk();}
+function gTorusX(R,r,seg,tseg,c){const base=CUR.g.v.length/10;
+  for(let i=0;i<=seg;i++){const a=i/seg*2*Math.PI,ca=Math.cos(a),sa=Math.sin(a);for(let j=0;j<=tseg;j++){const b=j/tseg*2*Math.PI,cb=Math.cos(b),sb=Math.sin(b);
+    const rad=[0,ca,sa],n=V.add(V.mul(rad,cb),[sb,0,0]);pv([sb*r,(R+cb*r)*ca,(R+cb*r)*sa],n,c);}}
+  for(let i=0;i<seg;i++)for(let j=0;j<tseg;j++){const a=base+i*(tseg+1)+j,b=a+tseg+1;CUR.g.i.push(a,b,a+1,a+1,b,b+1);}CUR.chk();}
+function gDiscX(R,x,seg,cA,cB){for(const sg of [1,-1]){const cb=pv([sg*x,0,0],[sg,0,0],cA);for(let i=0;i<seg;i++){const a0=i/seg*2*Math.PI,a1=(i+1)/seg*2*Math.PI,c=(i%2)?cA:cB;
+  const p=pv([sg*x,Math.cos(a0)*R,Math.sin(a0)*R],[sg,0,0],c),q=pv([sg*x,Math.cos(a1)*R,Math.sin(a1)*R],[sg,0,0],c);CUR.g.i.push(cb,p,q);}}CUR.chk();}
+
+/* ---------- 5. El velódromo (misma geometría que Bici Indoor: 250 m, peralte 13° rectas / 42° curvas) ---------- */
+function velodromeGeom(trackLen){const R=Math.max(8,trackLen*0.0845),curveLen=Math.PI*R,straight=Math.max(5,(trackLen-2*curveLen)/2);return {R,curveLen,straight,total:2*straight+2*curveLen};}
+let G=velodromeGeom(250);const HW=3.8;
+function ctr(p){const R=G.R,ST=G.straight,CL=G.curveLen;p=((p%G.total)+G.total)%G.total;
+  if(p<ST)return {x:-ST/2+p,z:-R,h:0};
+  if(p<ST+CL){const a=-Math.PI/2+(p-ST)/R;return {x:ST/2+R*Math.cos(a),z:R*Math.sin(a),h:a+Math.PI/2};}
+  if(p<2*ST+CL)return {x:ST/2-(p-ST-CL),z:R,h:Math.PI};
+  const a=Math.PI/2+(p-2*ST-CL)/R;return {x:-ST/2+R*Math.cos(a),z:R*Math.sin(a),h:a+Math.PI/2};}
+function curveSD(p){p=((p%G.total)+G.total)%G.total;let best=-1e9;
+  for(const sh of [-G.total,0,G.total]){const q=p+sh;for(const [a,b] of [[G.straight,G.straight+G.curveLen],[2*G.straight+G.curveLen,G.total]])best=Math.max(best,Math.min(q-a,b-q));}return best;}
+function smooth(e0,e1,x){const t=clamp((x-e0)/(e1-e0),0,1);return t*t*(3-2*t);}
+function bankDeg(p){return 13+29*smooth(-10,10,curveSD(p));}
+// z invertida respecto de Bici Indoor: así la infield queda a la izquierda y se gira a la izquierda (norma UCI)
+function P(p,L,hy,absY){const c=ctr(p),tb=Math.tan(bankDeg(p)*Math.PI/180),Lc=clamp(L,-HW,HW);
+  return [c.x+L*Math.sin(c.h),absY!==undefined?absY:(Lc+HW)*tb+(hy||0),-c.z+L*Math.cos(c.h)];}
+function fr(p){const c=ctr(p);return {f:[Math.cos(c.h),0,-Math.sin(c.h)],o:[Math.sin(c.h),0,Math.cos(c.h)]};}
+let ENV={indoor:true},ROWA=[];
+const CROWD=[[.89,.29,.29],[.95,.76,.19],[.23,.51,.84],[.94,.94,.94],[.18,.64,.42],[.83,.33,.49],[.94,.62,.16],[.60,.64,.68]];
+const SKIN=[[.93,.75,.59],[.80,.59,.43],[.63,.43,.30],[.43,.29,.20]];
+function gTri(A,B,C,c,ref){let n=V.norm(V.cross(V.sub(B,A),V.sub(C,A)));if(ref&&V.dot(n,ref)<0)n=V.mul(n,-1);const b=CUR.g.v.length/10;pv(A,n,c);pv(B,n,c);pv(C,n,c);CUR.g.i.push(b,b+1,b+2);CUR.chk();}
+function buildWorld(indoor,crowdFill){
+  for(const k in WORLD){WORLD[k].forEach(m=>{gl.deleteBuffer(m.vb);gl.deleteBuffer(m.ib);});WORLD[k]=[];}
+  ENV={indoor};const n=Math.round(G.total/0.75),seg=G.total/n;
+  const NR=indoor?15:12,LS=HW+1.2,RD=0.9,RH=0.55,H0=1.2,LW=LS+RD*NR,CEIL=17;
+  LAMPS=[];ROWA=[];
+  if(indoor){
+    for(let p=0;p<G.total;p+=9){const q=P(p+4.5,0,0,13.5);LAMPS.push(q);ROWA.push(q);}
+    for(let p=0;p<G.total;p+=11)LAMPS.push(P(p,HW+7,0,15));
+    for(let x=-G.straight/2-G.R+6;x<G.straight/2+G.R;x+=12)for(const z of [-10,0,10])LAMPS.push([x,15,z]);
+  }
+  const up=[0,1,0];
+  /* madera: 14 tablones, cada uno en dos mitades con costura oscura en los bordes; tablas de ~7 m con juntas desfasadas */
+  begin('wood',indoor,false);
+  const NP=14,wood=[0.80,0.60,0.36];
+  for(let i=0;i<n;i++){const sa=i*seg,sb=sa+seg;
+    for(let k=0;k<NP;k++){const L0=-HW+2*HW*k/NP,L1=-HW+2*HW*(k+1)/NP,Lm=(L0+L1)/2,bd=Math.floor((i+k*3)/9),tone=0.9+0.2*hrnd(bd*7.3+k*31.7+1);
+      const mid=wood.map(v=>v*tone),ed=mid.map(v=>v*0.84),edO=k===NP-1?mid.map(v=>v*0.66):ed;
+      gQuad([P(sa,L0,0),P(sa,Lm,0),P(sb,Lm,0),P(sb,L0,0)],[ed,mid,mid,ed],up);
+      gQuad([P(sa,Lm,0),P(sa,L1,0),P(sb,L1,0),P(sb,Lm,0)],[mid,edO,edO,mid],up);}}
+  end();
+  /* resto de la pista, tribunas, techo */
+  begin('misc',indoor,false);
+  const grass=indoor?[0.22,0.31,0.26]:[0.27,0.50,0.28];
+  for(let i=0;i<n;i++){const sa=i*seg,sb=sa+seg;
+    gQuad([P(sa,-HW-1,0),P(sa,-HW,0),P(sb,-HW,0),P(sb,-HW-1,0)],[0.42,0.70,0.88],up);                         // Côte d'Azur
+    const t=(Math.floor(i/6)%2)?0.94:1.06;gTri([0,-0.01,0],P(sb,-HW-1,0),P(sa,-HW-1,0),grass.map(v=>v*t),up);   // césped del centro
+    for(const [L,w,c] of [[-HW+0.2,.09,[.07,.07,.08]],[-HW+0.85,.09,[.76,.12,.10]],[-HW+2.6,.09,[.15,.38,.82]],[HW-0.2,.07,[.92,.92,.9]]])
+      gQuad([P(sa,L,0.012),P(sa,L+w,0.012),P(sb,L+w,0.012),P(sb,L,0.012)],c,up);}
+  const pf=G.straight;for(let c=0;c<12;c++)for(let r=0;r<2;r++){const L0=-HW+2*HW*c/12,L1=-HW+2*HW*(c+1)/12,col=((c+r)%2)?[.1,.1,.11]:[.93,.93,.9];
+    gQuad([P(pf+r*.45,L0,0.016),P(pf+r*.45,L1,0.016),P(pf+(r+1)*.45,L1,0.016),P(pf+(r+1)*.45,L0,0.016)],col,up);}
+  const seat=indoor?[0.17,0.22,0.38]:[0.56,0.58,0.62],riser=indoor?[0.14,0.15,0.18]:[0.42,0.43,0.46];
+  const adC=[[.12,.37,.68],[.88,.31,.23],[.95,.76,.19],[.17,.19,.22],[.18,.64,.42]];
+  for(let i=0;i<n;i++){const sa=i*seg,sb=sa+seg,F=fr(sa),inw=V.mul(F.o,-1);
+    gQuad([P(sa,HW,0),P(sa,HW,1.1),P(sb,HW,1.1),P(sb,HW,0)],[.94,.93,.9],inw);                                   // baranda
+    gQuad([P(sa,HW-0.01,0.3),P(sa,HW-0.01,0.85),P(sb,HW-0.01,0.85),P(sb,HW-0.01,0.3)],adC[Math.floor(sa/10)%5],inw); // cartel
+    gQuad([P(sa,HW,1.1),P(sa,HW+0.14,1.1),P(sb,HW+0.14,1.1),P(sb,HW,1.1)],[.12,.12,.14],up);
+    gQuad([P(sa,HW,1.15),P(sa,LS,1.15),P(sb,LS,1.15),P(sb,HW,1.15)],[.30,.31,.34],up);                            // pasillo
+    for(let r=0;r<NR;r++){const L0=LS+RD*r,L1=L0+RD,h=H0+RH*r,bay=Math.floor(sa/2.5),aisle=(Math.floor(sa/20)%1===0&&(sa%20)<1.0);
+      const sc=aisle?[.11,.11,.13]:seat.map(v=>v*(0.85+0.3*hrnd(bay*3.1+r*7.7)));
+      gQuad([P(sa,L0,h),P(sa,L1,h),P(sb,L1,h),P(sb,L0,h)],sc,up);
+      gQuad([P(sa,L0,h-RH),P(sa,L0,h),P(sb,L0,h),P(sb,L0,h-RH)],riser,inw);}
+    // pared de fondo
+    const top=H0+RH*NR;
+    if(indoor)gQuad([P(sa,LW,top),P(sa,LW,0,CEIL),P(sb,LW,0,CEIL),P(sb,LW,top)],[.20,.22,.27],inw);
+    else gQuad([P(sa,LW,top),P(sa,LW,0,0),P(sb,LW,0,0),P(sb,LW,top)],[.46,.47,.50],inw);}
+  /* público: cuerpo y cabeza por persona, luz horneada una sola vez */
+  const rr=hrnd;
+  for(let r=0;r<NR;r++){const Lr=LS+RD*(r+0.5),hh=H0+RH*r;
+    for(let s=0;s<G.total;s+=0.75){const k=r*1000+s*1.37;if(rr(k)>crowdFill*0.88)continue;
+      const pc=s+rr(k+1)*0.5,F=fr(pc),c0=P(pc,Lr,hh+0.55),bc=[c0[0]-F.o[0]*0.05,c0[1],c0[2]-F.o[2]*0.05];
+      const kf=indoor?bakeL(bc,[0,0.8,0.2])*0.92:1,sh=CROWD[Math.floor(rr(k+3)*CROWD.length)],sk=SKIN[Math.floor(rr(k+5)*SKIN.length)],ph=rr(k+7)<0.28?0.2+rr(k+9):0;
+      gOBox(bc,F.f,up,F.o,0.42,0.55,0.28,sh,ph,kf);
+      gOBox([bc[0]-F.o[0]*0.04,bc[1]+0.43,bc[2]-F.o[2]*0.04],F.f,up,F.o,0.2,0.22,0.2,sk,ph,kf);}}
+  if(indoor){
+    const maxR=G.R+LW+2,xm=G.straight/2+maxR;
+    for(let ix=0;ix<24;ix++)for(let iz=0;iz<12;iz++){const x0=-xm+2*xm*ix/24,x1=-xm+2*xm*(ix+1)/24,z0=-maxR+2*maxR*iz/12,z1=-maxR+2*maxR*(iz+1)/12;
+      gQuad([[x0,CEIL,z0],[x1,CEIL,z0],[x1,CEIL,z1],[x0,CEIL,z1]],[.30,.32,.36],[0,-1,0]);}
+    for(let x=-xm+6;x<xm;x+=12){const c=[.20,.21,.23];
+      gBox(x,CEIL-0.45,0,0.2,0.2,2*maxR,c);gBox(x,CEIL-1.5,0,0.2,0.2,2*maxR,c);
+      for(let z=-maxR+2;z<maxR;z+=3)gBox(x,CEIL-0.98,z,0.1,1.05,0.1,c);}
+    for(let z=-maxR+3;z<maxR;z+=9){gBox(0,CEIL-0.2,z,2*xm,0.14,0.14,[.17,.18,.20]);}
+  }else{
+    gQuad([[-700,-0.03,-700],[700,-0.03,-700],[700,-0.03,700],[-700,-0.03,700]],[.30,.50,.28],up);
+    for(let p=0;p<G.total;p+=13){const L=LW+6+hrnd(p*3.1)*14,pc=p+hrnd(p)*6,b=P(pc,L,0,0),hgt=4+hrnd(p*1.7)*3;
+      gCyl(b[0],0,b[2],0.18,0.14,hgt*0.4,5,[.35,.25,.16]);gCyl(b[0],hgt*0.3,b[2],1.5+hrnd(p*2.3),0.05,hgt*0.8,6,[.16+.1*hrnd(p),.36+.1*hrnd(p+1),.2]);}
+  }
+  end();
+  /* lo que brilla por sí mismo: lámparas y pantallas LED de la pared */
+  begin('emis',false,false);
+  if(indoor){
+    for(const l of LAMPS)gBox(l[0],l[1],l[2],1.3,0.12,0.5,[1,0.95,0.82]);
+    for(let i=0;i<n;i++){const sa=i*seg,sb=sa+seg,top=H0+RH*NR+0.8,inw=V.mul(fr(sa).o,-1),b=Math.floor(sa/9)%4;
+      gQuad([P(sa,LW-0.03,top),P(sa,LW-0.03,top+0.9),P(sb,LW-0.03,top+0.9),P(sb,LW-0.03,top)],[[.30,.78,1],[.95,.95,.95],[1,.55,.2],[.4,.9,.6]][b],inw);}
+  }
+  end();
+}
+
+/* ---------- 6. Ciclista (modelo local: +x izquierda, +y arriba, +z adelante) ---------- */
+const MESH={};
+function buildMeshes(){
+  const W=[1,1,1];
+  begin('d',false,true);gCyl(0,0,0,1,1,1,10,W);MESH.cyl=end()[0];
+  begin('d',false,true);gSphere(0,0,0,1,8,W);MESH.ball=end()[0];
+  const tire=[.05,.05,.06],rim=[.62,.64,.68],carb=[.10,.10,.12];
+  begin('d',false,true);gTorusX(0.326,0.015,28,8,tire);gTorusX(0.31,0.007,28,6,rim);
+  for(let k=0;k<3;k++){const a=k*2*Math.PI/3,Y=[0,Math.cos(a),Math.sin(a)],Z=[0,-Math.sin(a),Math.cos(a)];gOBox(V.mul(Y,0.16),[1,0,0],Y,Z,0.03,0.32,0.05,carb);}
+  gSphere(0,0,0,0.03,5,rim);MESH.wheelF=end()[0];
+  begin('d',false,true);gTorusX(0.326,0.015,28,8,tire);gTorusX(0.31,0.007,28,6,rim);gDiscX(0.312,0.012,14,[.09,.09,.11],[.60,.10,.10]);MESH.wheelR=end()[0];
+}
+function drawBike(M,jersey,pedalPh,wheelPh,st){
+  const dm=(mesh,Ml,tint,spec)=>drawMesh(mesh,M4.mul(M,Ml),tint,spec||0);
+  const seg=(A,B,r,t)=>dm(MESH.cyl,segMatrix(A,B,r),t);
+  const ball=(c,rx,ry,rz,t,sp)=>dm(MESH.ball,M4.mul(M4.T(c[0],c[1],c[2]),M4.S(rx,ry||rx,rz||rx)),t,sp);
+  const frame=[.11,.11,.13],acc=[.85,.2,.15],skin=[.80,.59,.43],kit=jersey,shorts=[.09,.11,.19],shoe=[.93,.93,.93];
+  dm(MESH.wheelF,M4.mul(M4.T(0,.34,.49),M4.RX(wheelPh)),[1,1,1],.35);
+  dm(MESH.wheelR,M4.mul(M4.T(0,.34,-.49),M4.RX(wheelPh)),[1,1,1],.35);
+  const BB=[0,.28,-.05],ST=[0,.88,-.27],HT=[0,.84,.42],HB=[0,.60,.44];
+  seg(BB,ST,.022,frame);seg(ST,HT,.02,frame);seg(BB,HB,.026,acc);seg(HT,HB,.026,frame);seg(HT,[0,.34,.49],.015,frame);
+  seg(BB,[.04,.34,-.49],.014,frame);seg(BB,[-.04,.34,-.49],.014,frame);seg(ST,[.035,.34,-.49],.012,frame);seg(ST,[-.035,.34,-.49],.012,frame);
+  seg([0,.86,.43],[0,.98,.52],.018,frame);seg([.21,.98,.54],[-.21,.98,.54],.015,frame);
+  seg([.21,.98,.54],[.2,.86,.66],.014,frame);seg([-.21,.98,.54],[-.2,.86,.66],.014,frame);
+  const lift=0.2*(st||0),hip=[0,.99+lift*.9,-.25-.03*(st||0)],sh=[0,1.25+lift,.13+.05*(st||0)];
+  for(const sd of [1,-1]){
+    const th=pedalPh+(sd>0?0:Math.PI),ped=[sd*.085,.28-Math.cos(th)*.165,-.05-Math.sin(th)*.165];
+    seg(BB,ped,.011,[.6,.62,.66]);
+    const foot=[ped[0],ped[1]+.05,ped[2]-.02],hj=[sd*.09,hip[1],hip[2]],knee=ik2(hj,foot,.42,.43,[sd*.12,.25,1]);
+    seg(hj,knee,.062,shorts);seg(knee,foot,.044,skin);ball(knee,.052,.052,.052,skin);
+    ball([foot[0],foot[1]+.01,foot[2]+.07],.05,.04,.11,shoe);
+    const hand=[sd*.2,.99,.55],sho=[sd*.19,sh[1],sh[2]],el=ik2(sho,hand,.27,.27,[sd*.9,-.4,-.5]);
+    seg(sho,el,.04,kit);seg(el,hand,.034,skin);ball(hand,.04,.04,.04,[.08,.08,.09]);
+  }
+  seg(hip,sh,.15,kit);ball(hip,.14,.12,.15,shorts);ball(sh,.17,.11,.12,kit);
+  ball([0,sh[1]+.06,sh[2]+.11],.095,.095,.095,skin);ball([0,sh[1]+.11,sh[2]+.08],.125,.1,.17,[.92,.92,.94],.2);
+}
+
+/* ---------- 7. Cámara y dibujo ---------- */
+function riderFrame(p,L,sway){
+  const a=P(p-0.5,L,0),b=P(p+0.5,L,0),pos=P(p,L,0),fw=V.norm(V.sub(b,a)),o=fr(p).o;
+  const tb=Math.tan(bankDeg(p)*Math.PI/180),ns=V.norm([-tb*o[0],1,-tb*o[2]]);
+  let Y=V.norm(V.add(V.mul([0,1,0],0.25),V.mul(ns,0.75)));
+  if(sway)Y=V.norm(V.add(Y,V.mul(o,sway)));
+  const Z=V.norm(V.sub(fw,V.mul(Y,V.dot(fw,Y)))),X=V.cross(Y,Z);
+  return M4.basis(X,Y,Z,pos);
+}
+function camera(pOwn,L,mode){
+  const o=fr(pOwn).o,tb=Math.tan(bankDeg(pOwn)*Math.PI/180);let eye,tgt,upv=[0,1,0];
+  if(mode===1){eye=P(pOwn-9,L,6.5);tgt=P(pOwn+5,L,0.6);}
+  else if(mode===2){eye=P(pOwn+1.5,-HW-8,1.6);tgt=P(pOwn+2.5,L,1.0);}
+  else{eye=P(pOwn-4.4,L,1.7);tgt=P(pOwn+9,L,1.0);const a=Math.atan(tb)*0.55;upv=V.norm([-Math.sin(a)*o[0],Math.cos(a),-Math.sin(a)*o[2]]);}
+  return {eye,tgt,up:upv};
+}
+function drawMesh(m,M,tint,spec){gl.uniformMatrix4fv(U(PMESH,'uModel'),false,M);gl.uniform3fv(U(PMESH,'uTint'),tint);gl.uniform1f(U(PMESH,'uSpec'),spec||0);
+  gl.bindBuffer(gl.ARRAY_BUFFER,m.vb);gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,m.ib);
+  gl.vertexAttribPointer(0,3,gl.FLOAT,false,40,0);gl.vertexAttribPointer(1,3,gl.FLOAT,false,40,12);gl.vertexAttribPointer(2,3,gl.FLOAT,false,40,24);gl.vertexAttribPointer(3,1,gl.FLOAT,false,40,36);
+  gl.drawElements(gl.TRIANGLES,m.n,gl.UNSIGNED_SHORT,0);}
+const IDM=M4.id(),WH=[1,1,1],lampArr=new Float32Array(24);
+function projPt(VP,p){const x=VP[0]*p[0]+VP[4]*p[1]+VP[8]*p[2]+VP[12],y=VP[1]*p[0]+VP[5]*p[1]+VP[9]*p[2]+VP[13],w=VP[3]*p[0]+VP[7]*p[1]+VP[11]*p[2]+VP[15];return [x/w,y/w,w];}
+function renderScene(RS){ // RS:{pOwn,L,v,time,camMode,riders:[{p,L,jersey,cr,wr,stand,own}]}
+  gl.viewport(0,0,cv.width,cv.height);
+  const indoor=ENV.indoor,asp=cv.width/cv.height,fy=clamp(2*Math.atan(Math.tan(1.28/2)/asp),0.72,1.2),tanH=Math.tan(fy/2);
+  const pOwn=RS.pOwn,L0=RS.L,cam=camera(pOwn,L0,RS.camMode||0),f=V.norm(V.sub(cam.tgt,cam.eye)),r=V.norm(V.cross(f,cam.up)),u=V.cross(r,f);
+  const VP=M4.mul(M4.persp(fy,asp,0.12,900),M4.look(cam.eye,cam.tgt,cam.up));
+  const fog=indoor?[.045,.05,.065]:[.74,.85,.94],fogD=indoor?0.0075:0.0032;
+  gl.clearColor(fog[0],fog[1],fog[2],1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  const sun=V.norm([-0.35,0.8,0.45]);
+  if(!indoor){gl.disable(gl.DEPTH_TEST);gl.useProgram(PSKY);gl.disableVertexAttribArray(1);gl.disableVertexAttribArray(2);gl.disableVertexAttribArray(3);gl.enableVertexAttribArray(0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,triBuf);gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0);
+    gl.uniform3fv(U(PSKY,'uRight'),r);gl.uniform3fv(U(PSKY,'uUp'),u);gl.uniform3fv(U(PSKY,'uFwd'),f);gl.uniform3fv(U(PSKY,'uSun'),sun);
+    gl.uniform1f(U(PSKY,'uTanH'),tanH);gl.uniform1f(U(PSKY,'uAspect'),asp);gl.uniform1f(U(PSKY,'uTime'),RS.time);gl.drawArrays(gl.TRIANGLES,0,3);}
+  gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.depthMask(true);gl.disable(gl.BLEND);
+  gl.useProgram(PMESH);for(let i=0;i<4;i++)gl.enableVertexAttribArray(i);
+  const p=PMESH;
+  gl.uniformMatrix4fv(U(p,'uVP'),false,VP);gl.uniform3fv(U(p,'uCam'),cam.eye);gl.uniform3fv(U(p,'uFog'),fog);gl.uniform1f(U(p,'uFogDen'),fogD);gl.uniform1f(U(p,'uTime'),RS.time);
+  gl.uniform3fv(U(p,'uSunDir'),indoor?[0.15,1,0.1]:sun);gl.uniform3fv(U(p,'uSunCol'),indoor?[.30,.28,.24]:[.62,.56,.46]);
+  gl.uniform3fv(U(p,'uAmbT'),indoor?[.80,.76,.70]:[.56,.63,.74]);gl.uniform3fv(U(p,'uAmbB'),indoor?[.38,.36,.36]:[.34,.32,.30]);
+  gl.uniform3fv(U(p,'uLampCol'),[1,.93,.78]);
+  let nL=0;if(indoor&&ROWA.length){const q=P(pOwn+4,L0,0),arr=ROWA.map(l=>[(l[0]-q[0])**2+(l[2]-q[2])**2,l]).sort((a,b)=>a[0]-b[0]).slice(0,8);
+    arr.forEach((e,i)=>{lampArr[i*3]=e[1][0];lampArr[i*3+1]=e[1][1];lampArr[i*3+2]=e[1][2];});nL=arr.length;}
+  gl.uniform3fv(U(p,'uLamp[0]'),lampArr);gl.uniform1f(U(p,'uLampN'),nL);
+  gl.uniform1f(U(p,'uEmis'),0);gl.uniform1f(U(p,'uLit'),indoor?0:1);gl.uniform1f(U(p,'uSunSpec'),indoor?0:0.7);gl.uniform1f(U(p,'uGloss'),110);
+  for(const m of WORLD.wood)drawMesh(m,IDM,WH,indoor?1.1:0.8);
+  gl.uniform1f(U(p,'uGloss'),40);for(const m of WORLD.misc)drawMesh(m,IDM,WH,0);
+  gl.uniform1f(U(p,'uEmis'),1);for(const m of WORLD.emis)drawMesh(m,IDM,WH,0);
+  gl.uniform1f(U(p,'uEmis'),0);gl.uniform1f(U(p,'uLit'),1);gl.uniform1f(U(p,'uSunSpec'),indoor?0.15:0.5);gl.uniform1f(U(p,'uGloss'),50);gl.uniform1f(U(p,'uLampN'),0);
+  for(const rd of RS.riders){const sw=Math.sin(rd.cr)*(0.025+0.07*(rd.stand||0))*Math.min(1,RS.v/6);drawBike(riderFrame(rd.p,rd.L,sw),rd.jersey,rd.cr,rd.wr,rd.stand||0);}
+  gl.depthMask(false);gl.enable(gl.BLEND);gl.useProgram(PDEC);gl.uniformMatrix4fv(U(PDEC,'uVP'),false,VP);
+  gl.disableVertexAttribArray(3);gl.enableVertexAttribArray(0);gl.enableVertexAttribArray(1);gl.enableVertexAttribArray(2);
+  const dec=[];const quad=(c,a,b,al)=>{for(const [x,y] of [[-1,-1],[1,-1],[1,1],[-1,1]]){const q=V.add(V.add(c,V.mul(a,x)),V.mul(b,y));dec.push(q[0],q[1],q[2],x,y,al);}};
+  const flush=(col,k,src,dst)=>{if(!dec.length)return;const arr=new Float32Array(dec),idx=[];for(let i=0;i<dec.length/24;i++){const o=i*4;idx.push(o,o+1,o+2,o,o+2,o+3);}
+    gl.blendFunc(src,dst);gl.uniform3fv(U(PDEC,'uCol'),col);gl.uniform1f(U(PDEC,'uK'),k);
+    gl.bindBuffer(gl.ARRAY_BUFFER,decBuf);gl.bufferData(gl.ARRAY_BUFFER,arr,gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,decIdx);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(idx),gl.DYNAMIC_DRAW);
+    gl.vertexAttribPointer(0,3,gl.FLOAT,false,24,0);gl.vertexAttribPointer(1,2,gl.FLOAT,false,24,12);gl.vertexAttribPointer(2,1,gl.FLOAT,false,24,20);
+    gl.drawElements(gl.TRIANGLES,idx.length,gl.UNSIGNED_SHORT,0);dec.length=0;};
+  gl.enable(gl.POLYGON_OFFSET_FILL);gl.polygonOffset(-2,-2);
+  for(const rd of RS.riders){const a=P(rd.p-1.0,rd.L,0.025),b=P(rd.p+1.0,rd.L,0.025),wl=P(rd.p,rd.L-0.45,0.025),wr=P(rd.p,rd.L+0.45,0.025);
+    quad(V.mul(V.add(a,b),0.5),V.mul(V.sub(b,a),0.5),V.mul(V.sub(wr,wl),0.5),indoor?0.6:0.5);}
+  flush([0,0,0],2.2,gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+  gl.disable(gl.POLYGON_OFFSET_FILL);
+  if(indoor){for(const l of LAMPS){const d=V.sub(l,cam.eye),z=V.dot(d,f);if(z<0.8||z>120)continue;
+      const lx=V.dot(d,r)/(z*tanH*asp),ly=V.dot(d,u)/(z*tanH);if(Math.abs(lx)>1.6||Math.abs(ly)>1.6)continue;quad(l,V.mul(r,2.6),V.mul(u,2.6),0.55*Math.exp(-z/95));}
+    flush([1,.9,.7],3.0,gl.SRC_ALPHA,gl.ONE);
+    for(const l of LAMPS){const d=V.sub(l,cam.eye),z=V.dot(d,f);if(z<0.8||z>120)continue;quad(l,V.mul(r,0.55),V.mul(u,0.55),Math.min(1,1.3*Math.exp(-z/130)));}
+    flush([1,.98,.9],1.2,gl.SRC_ALPHA,gl.ONE);}
+  gl.depthMask(true);gl.disable(gl.BLEND);gl.useProgram(PMESH);
+  // posición en pantalla (0..1) de cada corredor, para rótulos y flechas en el canvas 2D de arriba
+  return RS.riders.map(rd=>{const q=projPt(VP,V.add(P(rd.p,rd.L,0),[0,2.1,0])),g=projPt(VP,P(rd.p,rd.L,0));
+    return {x:(q[0]*0.5+0.5),y:(1-(q[1]*0.5+0.5)),gy:(1-(g[1]*0.5+0.5)),w:q[2],vis:q[2]>0.5&&Math.abs(q[0])<1.05&&Math.abs(q[1])<1.2};});
+}
+
+/* ---------- 8. Interfaz con la app ---------- */
+const CAL={alta:{res:1,crowd:1},media:{res:.85,crowd:.65},baja:{res:.65,crowd:.35}};
+const st8={failed:'',lost:0,isLost:false,built:'',buildMs:0,renderer:'',frames:0,avg:16,last:0,res:.85,crowd:.65,q:'media',msgs:[],size:'',cool:0};
+function note(m){st8.msgs.push(m);if(st8.msgs.length>12)st8.msgs.shift();try{if(typeof log==='function')log('Vista 3D: '+m,'#8b98a9');}catch(e){}}
+const cssC=(()=>{let c2=null;return col=>{try{if(!c2)c2=document.createElement('canvas').getContext('2d');c2.fillStyle='#808080';c2.fillStyle=col;const s=c2.fillStyle;
+  if(s[0]==='#'){const n=parseInt(s.slice(1),16);return [(n>>16&255)/255,(n>>8&255)/255,(n&255)/255];}
+  const m=s.match(/[\d.]+/g);return [m[0]/255,m[1]/255,m[2]/255];}catch(e){return [.5,.5,.5];}};})();
+function initGL(){
+  gl=cv.getContext('webgl',{antialias:true,alpha:false,powerPreference:'high-performance'})||cv.getContext('experimental-webgl');
+  if(!gl)throw new Error('este navegador no da WebGL');
+  makePrograms();triBuf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,triBuf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+  decBuf=gl.createBuffer();decIdx=gl.createBuffer();buildMeshes();st8.built='';
+  try{const e=gl.getExtension('WEBGL_debug_renderer_info');st8.renderer=e?gl.getParameter(e.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);}catch(e){st8.renderer='?';}
+}
+function makeCanvas(){
+  cv=document.createElement('canvas');cv.id='glVeloCanvas';
+  cv.addEventListener('webglcontextlost',e=>{e.preventDefault();st8.lost++;st8.isLost=true;note('se perdió el contexto gráfico; sigo con el canvas 2D hasta que vuelva');});
+  cv.addEventListener('webglcontextrestored',()=>{try{for(const k in WORLD)WORLD[k]=[];initGL();st8.isLost=false;note('contexto gráfico recuperado');}catch(e){st8.failed='no pude recuperar WebGL: '+e.message;}});
+  initGL();
+}
+function ensure(env,len){const key=env+'|'+len+'|'+st8.q;if(st8.built===key)return;const t0=performance.now();
+  G=velodromeGeom(len);buildWorld(env==='indoor',st8.crowd);st8.built=key;st8.buildMs=Math.round(performance.now()-t0);note('mundo armado en '+st8.buildMs+' ms ('+(env==='indoor'?'cubierto':'aire libre')+', '+len+' m)');}
+function place(c2d){
+  if(cv.previousElementSibling!==c2d){c2d.insertAdjacentElement('afterend',cv);}
+  const s=cv.style;s.position='absolute';s.pointerEvents='none';s.zIndex='0';s.display='block';
+  const l=c2d.offsetLeft+'px',t=c2d.offsetTop+'px',w=c2d.offsetWidth+'px',h=c2d.offsetHeight+'px';
+  if(s.left!==l)s.left=l;if(s.top!==t)s.top=t;if(s.width!==w)s.width=w;if(s.height!==h)s.height=h;
+  if(cv._c2d!==c2d){cv._c2d=c2d;s.borderRadius=getComputedStyle(c2d).borderRadius;}
+  c2d.classList.add('glov');
+}
+function perf(){const now=performance.now(),dt=st8.last?now-st8.last:0;st8.last=now;if(!dt||dt>250)return;st8.frames++;st8.avg+=(dt-st8.avg)*0.04;
+  if(st8.cool>0){st8.cool--;return;}
+  if(st8.frames>90&&st8.avg>40){ if(st8.res>0.56){st8.res=Math.max(0.5,st8.res-0.15);st8.cool=90;st8.avg=16;note('va lento: bajo la resolución a '+Math.round(st8.res*100)+'%');}
+    else{st8.failed='muy lento ('+Math.round(st8.avg)+' ms por cuadro) incluso a baja resolución';note('vuelvo al canvas 2D: '+st8.failed);} }
+}
+function setQuality(q){if(!CAL[q])return;if(q===st8.q)return;st8.q=q;st8.res=CAL[q].res;st8.crowd=CAL[q].crowd;st8.built='';st8.frames=0;st8.avg=16;st8.cool=0;}
+function ok(){return !st8.failed&&!st8.isLost;}
+function prepare(c2d,env,len){if(st8.failed)return false;try{if(!cv)makeCanvas();if(!ok())return false;place(c2d);ensure(env,len);return true;}catch(e){st8.failed=e.message;note('error: '+e.message);return false;}}
+// st:{d,v,crank,stand,env:'indoor'|'open',trackLen,jersey,racers:[{gap,lane,crank,color}]}; devuelve la posición en pantalla de cada corredor (el primero es el propio) o null
+function draw(c2d,s){
+  if(st8.failed)return null;
+  try{
+    if(!prepare(c2d,s.env,s.trackLen))return null;
+    const dpr=Math.min(window.devicePixelRatio||1,2)*st8.res,w=Math.max(2,Math.round(c2d.clientWidth*dpr)),h=Math.max(2,Math.round(c2d.clientHeight*dpr));
+    if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h;st8.size=w+'×'+h;}
+    const L0=-HW+1.2,pOwn=s.d+G.straight,riders=[{p:pOwn,L:L0,jersey:cssC(s.jersey||'#2f6f9c'),cr:s.crank,wr:s.d/0.34,stand:s.stand||0,own:true}];
+    for(const r of (s.racers||[])){if(r.gap<-3.5)continue;riders.push({p:pOwn+r.gap,L:L0+(r.lane||0),jersey:cssC(r.color||'#9fb0c0'),cr:r.crank||0,wr:(s.d+r.gap)/0.34,stand:0});}
+    const pr=renderScene({pOwn,L:L0,v:s.v||0,time:performance.now()/1000,camMode:0,riders});
+    perf();
+    return {own:pr[0],others:pr.slice(1),racers:(s.racers||[]).filter(r=>r.gap>=-3.5)};
+  }catch(e){st8.failed=e.message;note('error al dibujar: '+e.message);return null;}
+}
+function hide(){if(cv)cv.style.display='none';}
+function diag(){return ['Vista 3D (WebGL): '+(st8.failed?'DESACTIVADA — '+st8.failed:(st8.isLost?'contexto perdido':'activa')),
+  'Placa: '+(st8.renderer||'(sin iniciar)'),'Calidad: '+st8.q+' · resolución interna '+Math.round(st8.res*100)+'% · '+(st8.size||'—'),
+  'Mundo: '+(st8.built||'(sin armar)')+' · '+st8.buildMs+' ms','Cuadros: '+st8.frames+' · promedio '+Math.round(st8.avg)+' ms','Contexto perdido: '+st8.lost+' vez/veces',
+  'Últimos avisos: '+(st8.msgs.length?st8.msgs.slice(-4).join(' | '):'ninguno')].join('\n');}
+function reset(){st8.failed='';st8.frames=0;st8.avg=16;st8.cool=0;st8.res=CAL[st8.q].res;}
+return {draw,prepare,hide,diag,setQuality,reset,ok,state:st8,_dbg:{get gl(){return gl;}}};
+})();
+
+const GL_KEY="bici_gl_velo";
+function glVeloSetting(){ try{ return localStorage.getItem(GL_KEY)||"gl_media"; }catch(e){ return "gl_media"; } }
+function glVeloEnv(e){ return e==="velodromo_open"?"open":"indoor"; }
+function glVeloWanted(){ const s=glVeloSetting(); if(s==="off") return false; GLV.setQuality(s.slice(3)); return GLV.ok(); }
+function glVeloOverlay(ctx,w,h,res){
+  let k=0;
+  res.racers.forEach((r,i)=>{ const q=res.others[i]; if(!q) return;
+    if(q.vis){
+      if(r.label){ const x=q.x*w, ly=q.y*h-6; ctx.font="700 12px system-ui"; ctx.textAlign="center"; const tw=ctx.measureText(r.label).width;
+        ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(x-tw/2-4,ly-12,tw+8,16); ctx.fillStyle=r.labelColor||"#fff"; ctx.fillText(r.label,x,ly); ctx.textAlign="start"; }
+    } else if(r.gap>0){
+      const left=q.x<0.5, x=left?10:w-10, y=Math.max(44,Math.min(h-40,q.y*h))+(k++)*22, dir=left?-1:1;
+      ctx.globalAlpha=0.9; ctx.fillStyle=r.color;
+      ctx.beginPath(); ctx.moveTo(x+dir*6,y); ctx.lineTo(x-dir*6,y-8); ctx.lineTo(x-dir*6,y+8); ctx.closePath(); ctx.fill();
+      const txt=(r.gap>=0?"+":"")+Math.round(r.gap)+" m"; ctx.font="700 11px system-ui"; ctx.textAlign=left?"left":"right";
+      ctx.fillStyle="rgba(4,7,10,.72)"; const tw=ctx.measureText(txt).width; ctx.fillRect(left?x+8:x-8-tw-4,y-8,tw+4,15);
+      ctx.fillStyle=r.color; ctx.fillText(txt,left?x+10:x-10,y+4); ctx.textAlign="start"; ctx.globalAlpha=1;
+    } });
+}
+// devuelve true si dibujó con WebGL (entonces NO hay que dibujar el mundo ni el ciclista en 2D)
+function glVeloDraw(c2d,ctx,w,h,st){
+  if(!glVeloWanted()){ GLV.hide(); c2d.classList.remove("glov"); return false; }
+  const res=GLV.draw(c2d,st);
+  if(!res){ GLV.hide(); c2d.classList.remove("glov"); return false; }
+  ctx.clearRect(0,0,w,h); glVeloOverlay(ctx,w,h,res); return true;
+}
+(function(){
+  const sels=[$("glVeloSel"),$("repGlSel")].filter(Boolean), cur=glVeloSetting();
+  sels.forEach(s=>{ s.value=cur; s.onchange=()=>{ try{ localStorage.setItem(GL_KEY,s.value); }catch(e){ log("No pude guardar la opción de gráficos: "+e.message,"#f85149"); }
+    sels.forEach(o=>{ o.value=s.value; }); GLV.reset(); }; });
+  const b=$("glDiagBtn"); if(b) b.onclick=async()=>{ const t=GLV.diag(), pre=$("glDiagTx"); pre.textContent=t; pre.style.display="block";
+    try{ await navigator.clipboard.writeText(t); log("Diagnóstico de la vista 3D copiado","#3fb950"); }catch(e){ log("No pude copiar al portapapeles; el texto quedó a la vista","#f0883e"); } };
+})();
+
 // ================= Velódromo 3D (v149) =================
 // El óvalo existe completo en el espacio (dos rectas + dos curvas de radio fijo, misma geometría que
 // velodromeGeom) y la cámara va detrás de tu bici. Así se ve la recta de enfrente del otro lado del
@@ -3193,7 +3664,20 @@ let veloDrawErrLogged=false;
 // de la distancia 3D; de la tabla de calibración se toma solo la transparencia y la regla de que
 // desaparecen pasados los 2 m atrás.
 const V3_HW=3.8, V3_CAMH=2.0, V3_SEG=2.5, V3_NEAR=0.4, V3_SPRITE_K=0.468; // V3_SPRITE_K: metros por (s·px/f) del sprite
+const V3_SKIN=[[236,190,150],[205,150,110],[160,110,76],[110,74,52]];
 const V3_CROWD=["#e24b4a","#f2c230","#3b82d6","#f1f1f1","#2fa36b","#d4537e","#ef9f27","#9aa3ad"];
+// v177: color con luz y niebla (el velódromo era todo de colores planos). Se precalcula el RGB y la luz de cada cuadrilátero una sola vez.
+function v3Rgb(h){const n=parseInt(h.slice(1),16);return [n>>16&255,n>>8&255,n&255];}
+function v3Tone(hex,k){const c=v3Rgb(hex);return "#"+c.map(x=>Math.max(0,Math.min(255,Math.round(x*k))).toString(16).padStart(2,"0")).join("");}
+function v3Lit(w,indoor,R){ // luz de un cuadrilátero: bajo techo, charcos de luz bajo las lámparas; al aire libre, sol fijo según la inclinación
+  let cx=0,cz=0;for(const p of w){cx+=p.x;cz+=p.z;}cx/=w.length;cz/=w.length;
+  const a=w[0],b=w[1],c=w[2],ux=b.x-a.x,uy=b.y-a.y,uz=b.z-a.z,vx=c.x-a.x,vy=c.y-a.y,vz=c.z-a.z;
+  let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;const nl=Math.hypot(nx,ny,nz)||1;nx/=nl;ny/=nl;nz/=nl;
+  const bk=ny>0.6?(0.8+0.2*Math.max(0,Math.min(1,(ny-0.743)/0.231))):1; // v178: cuanto más peraltado, más oscuro (la curva se lee empinada)
+  if(indoor){const lx=((cx+6)%12+12)%12-6,lz=Math.min(Math.abs(cz-10),Math.abs(cz),Math.abs(cz+10),Math.abs(cz-(R-1)),Math.abs(cz+(R-1))),pool=Math.exp(-(lx*lx+lz*lz)/(2*7*7));
+    return (0.66+0.44*pool)*(0.88+0.12*Math.abs(ny))*bk;}
+  return (0.66+0.3*Math.abs(nx*-0.35+ny*0.85+nz*0.4))*bk;
+}
 function v3rnd(n){const x=Math.sin(n*12.9898)*43758.5453;return x-Math.floor(x);}
 // p = posición sobre el óvalo, 0 = inicio de la recta principal. La vuelta de la app (d=0) cae en p=straight.
 function v3Center(g,p){const R=g.R,ST=g.straight,CL=g.curveLen;p=((p%g.total)+g.total)%g.total;
@@ -3220,22 +3704,27 @@ function v3World(trackLen,indoor){
   const standTop=indoor?12:8;
   for(let i=0;i<n;i++){ const sa=i*seg, sb=sa+seg, P=(s,L,h)=>v3Point(g,s,L,h);
     Q([P(sa,-HW-1.0,0),P(sa,-HW,0),P(sb,-HW,0),P(sb,-HW-1.0,0)],"#6fb7e0");                    // Côte d'Azur
-    Q([P(sa,-HW,0),P(sa,HW,0),P(sb,HW,0),P(sb,-HW,0)], i%2===0?"#d2ab76":"#c6a06c");          // madera
+    for(let pl=0;pl<4;pl++){ const L0=-HW+2*HW*pl/4,L1=-HW+2*HW*(pl+1)/4,bd=Math.floor((i+pl*2)/4);   // madera: 4 tablones, tablas de ~10 m con las juntas desfasadas
+      Q([P(sa,L0,0),P(sa,L1,0),P(sb,L1,0),P(sb,L0,0)],v3Tone("#d0a872",0.9+0.2*v3rnd(bd*7+pl*31+3)));
+      if(pl>0) items.push({t:0,w:[P(sa,L0-0.03,0.012),P(sa,L0+0.03,0.012),P(sb,L0+0.03,0.012),P(sb,L0-0.03,0.012)],col:"#8f6f46",bias:0.05}); }  // junta entre tablones
+    if(Math.floor(sb/10)>Math.floor(sa/10)) items.push({t:0,w:[P(sb,-HW,0.014),P(sb,HW,0.014),P(sb+0.16,HW,0.014),P(sb+0.16,-HW,0.014)],col:"#e9d6a8",bias:0.06}); // marca cada 10 m: da sensación de velocidad
     for(const [L,col] of [[-HW+0.2,"#15171b"],[-HW+0.85,"#c0392b"],[-HW+2.6,"#2f6fd0"]])          // medición, sprinters, stayers
       Q([P(sa,L,0.02),P(sa,L+0.09,0.02),P(sb,L+0.09,0.02),P(sb,L,0.02)],col);
+    Q([P(sa,HW-0.55,0),P(sa,HW,0),P(sb,HW,0),P(sb,HW-0.55,0)],"#7a5c3a");                          // v178: sombra de la baranda sobre la madera
     Q([P(sa,HW,0),P(sa,HW,1.1),P(sb,HW,1.1),P(sb,HW,0)],"#f1efe8");                               // baranda
     Q([P(sa,HW-0.01,0.3),P(sa,HW-0.01,0.85),P(sb,HW-0.01,0.85),P(sb,HW-0.01,0.3)],["#1f5fae","#e04f3a","#f2c230","#2b2f36","#2fa36b"][Math.floor(sa/10)%5]);
     Q([P(sa,HW,1.1),P(sa,HW+1.5,2.2),P(sb,HW+1.5,2.2),P(sb,HW,1.1)],"#565e6b");
     Q([P(sa,HW+1.5,2.2),P(sa,HW+14,standTop),P(sb,HW+14,standTop),P(sb,HW+1.5,2.2)],indoor?"#3a414d":"#6d7684");
-    const dots=[]; for(let r=0;r<7;r++){const k=i*13+r; if(v3rnd(k)<0.8) dots.push({w:P(sa+seg*v3rnd(k+7),HW+2.3+r*1.6,2.9+r*(indoor?1.3:0.8)),col:V3_CROWD[Math.floor(v3rnd(k+3)*V3_CROWD.length)]});}
+    const dots=[]; for(let r=0;r<7;r++){const k=i*13+r; if(v3rnd(k)<0.8) dots.push({w:P(sa+seg*v3rnd(k+7),HW+2.3+r*1.6,2.9+r*(indoor?1.3:0.8)),col:V3_CROWD[Math.floor(v3rnd(k+3)*V3_CROWD.length)],k});}
+    for(const d of dots) d.rgb=v3Rgb(d.col);
     if(dots.length) items.push({t:2,dots});
   }
   // línea de llegada a cuadros (donde la app cuenta la vuelta: final de la recta principal)
   const pf=g.straight; for(let c=0;c<8;c++){const L0=-HW+2*HW*c/8,L1=-HW+2*HW*(c+1)/8;
     items.push({t:0,w:[v3Point(g,pf,L0,0.03),v3Point(g,pf,L1,0.03),v3Point(g,pf+0.6,L1,0.03),v3Point(g,pf+0.6,L0,0.03)],col:c%2===0?"#e6edf3":"#c0392b"});}
-  if(indoor){ for(let x=-g.straight/2-g.R+6;x<g.straight/2+g.R;x+=12) for(const z of [-10,0,10])
-    items.push({t:3,w:[{x:x-0.8,z:z-0.2,y:19},{x:x+0.8,z:z-0.2,y:19},{x:x+0.8,z:z+0.2,y:19},{x:x-0.8,z:z+0.2,y:19}],col:"#fff4d6"}); }
-  v3Cache={key,items,g}; return v3Cache;
+  const lamps=[]; if(indoor){ for(let x=-g.straight/2-g.R+6;x<g.straight/2+g.R;x+=12) for(const z of [-10,0,10,-(g.R-1),g.R-1]) lamps.push({x,z}); } // v178: lámparas (halo aditivo al dibujar) y una fila sobre cada recta
+  for(const it of items){ if(it.t===0||it.t===1){ it.rgb=v3Rgb(it.col); it.lit=it.floor?1:v3Lit(it.w,indoor,g.R); } }
+  v3Cache={key,items,g,lamps}; return v3Cache;
 }
 // opts: {trackLen, env, dOwn (distancia de la app), youS, camL, racers:[{gap,lane,crank,color,alpha,label,labelColor}]}
 // Dibuja el mundo y los demás ciclistas; tu propio ciclista lo dibuja quien llama, encima y sin inclinar.
@@ -3250,12 +3739,12 @@ function drawVelodrome3D(ctx,w,h,o){
   const proj=c=>[w/2+c[0]*f/c[2],horizon-c[1]*f/c[2]];
   const clip=poly=>{const out=[];for(let i=0;i<poly.length;i++){const a=poly[i],b=poly[(i+1)%poly.length],ai=a[2]>=V3_NEAR,bi=b[2]>=V3_NEAR;
     if(ai)out.push(a); if(ai!==bi){const t=(V3_NEAR-a[2])/(b[2]-a[2]);out.push([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,V3_NEAR]);}} return out;};
-  const list=[], offscreen=[];
+  const FOGC=indoor?[21,24,30]:[165,208,234], list=[], offscreen=[];
   for(const it of W3.items){
-    if(it.t===2){const ds=it.dots.map(d=>({c:toCam(d.w),col:d.col}));let s=0;for(const d of ds)s+=d.c[2];list.push({t:2,ds,dep:s/ds.length-0.01});continue;}
+    if(it.t===2){const ds=it.dots.map(d=>({c:toCam(d.w),col:d.col,rgb:d.rgb,k:d.k}));let s=0;for(const d of ds)s+=d.c[2];list.push({t:2,ds,dep:s/ds.length-0.01});continue;}
     const c=it.w.map(toCam); let s=0,mx=-1e9; for(const q of c){s+=q[2];if(q[2]>mx)mx=q[2];}
     if(mx<V3_NEAR) continue;
-    list.push({t:it.t,c,col:it.col,dep:it.floor?1e9:s/c.length});
+    list.push({t:it.t,c,col:it.col,rgb:it.rgb,lit:it.lit,dep:it.floor?1e9:s/c.length-(it.bias||0)});
   }
   for(const r of (o.racers||[])){
     const wp=v3Point(g,pOwn+r.gap,o.camL+(r.lane||0),0), c=toCam(wp);
@@ -3268,7 +3757,18 @@ function drawVelodrome3D(ctx,w,h,o){
   if(indoor){ ctx.fillStyle="#15181e"; ctx.fillRect(-w,-h,w*3,h*3); }
   else { ctx.fillStyle="#8cc6ec"; ctx.fillRect(-w,-h,w*3,horizon+h); ctx.fillStyle="#4d7a4f"; ctx.fillRect(-w,horizon,w*3,h*2); }
   for(const it of list){
-    if(it.t===2){ for(const d of it.ds){ if(d.c[2]<V3_NEAR)continue; const [x,y]=proj(d.c); ctx.fillStyle=d.col; ctx.beginPath(); ctx.arc(x,y,Math.max(0.7,0.28*f/d.c[2]),0,7); ctx.fill(); } continue; }
+    if(it.t===2){ const tt=performance.now()/1000; // v178: espectadores con cuerpo, cabeza, piel, niebla y un leve movimiento
+      for(const d of it.ds){ const z=d.c[2]; if(z<V3_NEAR||z>170)continue; const [x,y]=proj(d.c), u=f/z;
+        if(x<-u||x>w+u)continue;
+        const fk=1-Math.exp(-z/(indoor?75:170)), fa=(indoor?0.8:0.7)*fk, r=d.rgb;
+        const cr=(r[0]*(1-fa)+FOGC[0]*fa)|0, cg=(r[1]*(1-fa)+FOGC[1]*fa)|0, cb=(r[2]*(1-fa)+FOGC[2]*fa)|0;
+        if(u<2.4){ ctx.fillStyle="rgb("+cr+","+cg+","+cb+")"; ctx.beginPath(); ctx.arc(x,y,Math.max(0.7,0.28*u),0,7); ctx.fill(); continue; }
+        const bob=0.05*Math.max(0,Math.sin(tt*3+d.k*1.7))*(v3rnd(d.k+11)<0.25?1:0.25)*u, yy=y-bob;
+        ctx.fillStyle="rgb("+cr+","+cg+","+cb+")"; ctx.fillRect(x-0.26*u,yy-0.5*u,0.52*u,0.5*u);
+        const sk=V3_SKIN[Math.floor(v3rnd(d.k+5)*V3_SKIN.length)];
+        ctx.fillStyle="rgb("+((sk[0]*(1-fa)+FOGC[0]*fa)|0)+","+((sk[1]*(1-fa)+FOGC[1]*fa)|0)+","+((sk[2]*(1-fa)+FOGC[2]*fa)|0)+")";
+        ctx.beginPath(); ctx.arc(x,yy-0.66*u,0.15*u,0,7); ctx.fill(); }
+      continue; }
     if(it.t===4){ const r=it.r, [x,y]=proj(it.c), s=Math.max(2,V3_SPRITE_K*f/it.c[2]), gy=y-0.52*s*WHEEL_H_SCALE;
       if(x<-s*0.6||x>w+s*0.6){ offscreen.push({r,left:x<0,y}); continue; }
       // Inclinación en curva: cada ciclista se inclina según el peralte en SU posición, con la misma regla que tu
@@ -3282,8 +3782,22 @@ function drawVelodrome3D(ctx,w,h,o){
       continue; }
     const cpl=clip(it.c); if(cpl.length<3) continue;
     if(it.t===3){ const [x,y]=proj(cpl[0]); ctx.fillStyle="rgba(255,244,214,.16)"; ctx.beginPath(); ctx.arc(x,y,Math.max(2,2.5*f/cpl[0][2]),0,7); ctx.fill(); }
-    ctx.fillStyle=it.col; ctx.beginPath(); const p0=proj(cpl[0]); ctx.moveTo(p0[0],p0[1]); for(let k=1;k<cpl.length;k++){const p=proj(cpl[k]);ctx.lineTo(p[0],p[1]);} ctx.closePath(); ctx.fill();
+    if(it.rgb&&!(it.t===1)){ const fk=1-Math.exp(-it.dep/(indoor?75:170)), fa=indoor?0.8*fk:0.7*fk, L=it.lit, r=it.rgb; // v177: luz y niebla
+      ctx.fillStyle="rgb("+((r[0]*L*(1-fa)+FOGC[0]*fa)|0)+","+((r[1]*L*(1-fa)+FOGC[1]*fa)|0)+","+((r[2]*L*(1-fa)+FOGC[2]*fa)|0)+")"; }
+    else ctx.fillStyle=it.col;
+    ctx.beginPath(); const p0=proj(cpl[0]); ctx.moveTo(p0[0],p0[1]); for(let k=1;k<cpl.length;k++){const p=proj(cpl[k]);ctx.lineTo(p[0],p[1]);} ctx.closePath(); ctx.fill();
   }
+  if(indoor&&W3.lamps){ // v178: halo cálido de las lámparas y su reflejo en la madera barnizada (mezcla aditiva)
+    ctx.save(); ctx.globalCompositeOperation="lighter";
+    for(const lp of W3.lamps){ const c=toCam({x:lp.x,y:19,z:lp.z}); if(c[2]<V3_NEAR+1||c[2]>170)continue; const [x,y]=proj(c), u=f/c[2], R=3.4*u;
+      if(x<-R||x>w+R||y<-R||y>h+R)continue; const a=0.5*Math.exp(-c[2]/110);
+      const gr=ctx.createRadialGradient(x,y,0,x,y,R); gr.addColorStop(0,"rgba(255,240,205,"+a.toFixed(3)+")"); gr.addColorStop(0.25,"rgba(255,226,170,"+(a*0.32).toFixed(3)+")"); gr.addColorStop(1,"rgba(255,220,160,0)");
+      ctx.fillStyle=gr; ctx.beginPath(); ctx.arc(x,y,R,0,7); ctx.fill();
+      ctx.fillStyle="rgba(255,250,235,"+Math.min(1,a*1.6).toFixed(3)+")"; ctx.beginPath(); ctx.arc(x,y,Math.max(0.8,0.45*u),0,7); ctx.fill();
+      if(Math.abs(lp.z)>g.R-2&&Math.abs(lp.x)<g.straight/2){ const q=toCam({x:lp.x,y:0.65,z:lp.z}); if(q[2]>V3_NEAR+1){ const [gx,gy]=proj(q), gu=f/q[2], rx=0.55*gu, ry=rx*2.4;
+        if(gx>-rx&&gx<w+rx&&gy>-ry&&gy<h+ry){ ctx.save(); ctx.translate(gx,gy); ctx.scale(1,ry/rx); const g2=ctx.createRadialGradient(0,0,0,0,0,rx);
+          g2.addColorStop(0,"rgba(255,236,190,"+(a*0.55).toFixed(3)+")"); g2.addColorStop(1,"rgba(255,230,180,0)"); ctx.fillStyle=g2; ctx.beginPath(); ctx.arc(0,0,rx,0,7); ctx.fill(); ctx.restore(); } } } }
+    ctx.restore(); }
   ctx.restore();
   // rivales fuera de cuadro: flecha en el borde del lado donde están, con su brecha
   offscreen.forEach((o2,k)=>{ const x=o2.left?10:w-10, y=Math.max(44,Math.min(h-40,o2.y))+k*22, dir=o2.left?-1:1;
@@ -3311,7 +3825,9 @@ function drawVelodromeRoad(ctx,w,h){
       if(ghostGap>=PERSP_KEYFRAMES[0].gap) // por diseño: pasados los 2 m atrás sale de pantalla
         racers.push({gap:ghostGap, lane:1.0, crank:ghostRoadCrank, color:"#9fb0c0", alpha:ghostKeyframeAt(ghostGap).alpha});
     }
-    drawVelodrome3D(ctx,w,h,{trackLen:velTrackLen, env:velEnv, dOwn:dNow, youS, camL:V3_CAM_L, racers});
+    const standNow=updateLiveStand();
+    const glr=glVeloDraw($("road"),ctx,w,h,{d:dNow,v,crank:roadCrank,stand:standNow,env:glVeloEnv(velEnv),trackLen:velTrackLen,racers}); // v179
+    if(!glr) drawVelodrome3D(ctx,w,h,{trackLen:velTrackLen, env:velEnv, dOwn:dNow, youS, camL:V3_CAM_L, racers});
     if(ghost){
       const gapNow=Math.round(dNow-gNow), ahead=gapNow>=0;
       const yourLaps=Math.floor(dNow/velTrackLen), ghostLaps=Math.floor(gNow/velTrackLen);
@@ -3323,7 +3839,11 @@ function drawVelodromeRoad(ctx,w,h){
       ctx.fillStyle=ahead?"#3fb950":"#ff6b6b"; ctx.fillText(lbl,w/2,25);
       ctx.textAlign="start";
     }
-    drawCyclistRear(ctx, w/2, h-6, youS, roadCrank, "#2f6f9c", 1, {stand:updateLiveStand()});
+    { // v177: viñeta que se cierra con la velocidad (a 40 km/h ya se nota en los bordes)
+      const k=Math.max(0,Math.min(1,((v||0)*3.6-15)/35));
+      if(k>0.02){ const gr=ctx.createRadialGradient(w/2,h*0.55,Math.min(w,h)*0.35,w/2,h*0.55,Math.hypot(w,h)*0.55);
+        gr.addColorStop(0,"rgba(0,0,0,0)"); gr.addColorStop(1,"rgba(0,0,0,"+(0.42*k).toFixed(3)+")"); ctx.fillStyle=gr; ctx.fillRect(0,0,w,h); } }
+    if(!glr) drawCyclistRear(ctx, w/2, h-6, youS, roadCrank, "#2f6f9c", 1, {stand:standNow});
     veloDrawErrLogged=false;
   }catch(e){
     if(!veloDrawErrLogged){ veloDrawErrLogged=true; log("Error dibujando la vista de velódromo: "+e.message,"#f85149"); }
@@ -4429,6 +4949,7 @@ function drawRepVelodrome(st){
     racers.push({gap, lane:0.9*laneSignFor(x.r), crank:x.r.crank, color:x.r.color, alpha:ghostKeyframeAt(gap).alpha,
       label:(gapM>=0?"+":"")+gapM+" m"+(lapDiff!==0?" ("+(lapDiff>0?"+":"")+lapDiff+"v)":""), labelColor:x.r.color});
   }
+  if(glVeloDraw($("repRoad"),ctx,w,h,{d:cam.d,v:(cam.v||0),crank:camRacer.crank,stand:0,env:glVeloEnv(repVeloEnv),trackLen:L,jersey:camRacer.color,racers})) return; // v179
   drawVelodrome3D(ctx,w,h,{trackLen:L, env:repVeloEnv, dOwn:cam.d, youS, camL:V3_CAM_L, racers});
   drawCyclistRear(ctx, w/2, h-6, youS, camRacer.crank, camRacer.color, 1);
 }
