@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v193</title>
+<title>Bici Indoor · v194</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -96,7 +96,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v193</h1>
+  <h1>Bici Indoor · v194</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -745,6 +745,7 @@ function bigPersist(k,v){
     tx.onerror=tx.onabort=()=>{ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+((tx.error&&tx.error.message)||"error"),"#f85149"); } };
   }catch(e){ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+e.message,"#f85149"); } }
 }
+// v194: 🌳 escenario "Yungas (selva de montaña)" en el editor (Hugo, 17-nov: "¿podría representar la vegetación tipo Yungas?"): decor yungas. WebGL: selva densa con árboles altos de copa ancha e irregular en varios bultos (algunos de corteza clara, como la tipa), helechos arborescentes, sotobosque y matas al borde de la banquina, y copas grandes atrás; más bruma (sc.bruma = 2,2, multiplica la niebla). 2D: landArbol con tipos yunga, helecho y mata (bloque land: copiar a Correr). Con `cost` de Rumbo las plantas van sobre la ladera real y solo donde la foto es verde.
 // v193: 🏞️ terreno REAL a los costados en la vista WebGL (Hugo, 17-nov, Ixtapa–Zihuatanejo: "no se parece al recorrido": pared de roca pelada y agua donde hay ladera de selva). Rumbo manda `cost` (cada 25 m, 7 alturas por lado y colores cerca/lejos de la foto satelital); costEn lo da en el sentido de la marcha (vuelta espejada) y GLR lo usa en vez de la pared/valle/agua del escenario: ladera y barranca reales (×1,3), colores de la foto, agua solo al nivel del mar con color de agua, árboles sobre la ladera y solo donde la foto es verde, banquina con el color del costado. Hay que volver a mandar la ruta desde Rumbo.
 // v192: 🛰️ foto satelital de fondo en el plano del Escenario de la ruta (Hugo, 17-nov): teselas Esri, primero de lo que Rumbo ya bajó (IndexedDB rumbo/tiles, sin crearla nunca), si no de internet; tilde bici_mapa_sat (prendido); la línea de pendientes lleva borde oscuro.
 // v191: arroyos y calles cercanas de Rumbo (`lin`, Hugo 17-nov: arroyo con puente y bicisenda junto a la RN3) en la vista WebGL: cauce excavado con agua (cruza por debajo del camino), calles paralelas, de servicio y bicisenda como cintas sobre el suelo; en la vuelta de un ida y vuelta se espejan. Además el puente que va por un costado (lado ≠ 0) ya no hunde el suelo bajo la calzada.
@@ -1649,6 +1650,7 @@ const SCENES={
   canal:{ label:"Costa del canal", sky:["#5a9fd0","#c9e4f2"], ground:"#4c6a45", asphalt:"#525a63", mtnCol:["#9aaec2","#7d93a9"], mtnAmp:1.4, snow:0.55, decor:"lengas", defaultWater:"left" },
   montana:{ label:"Montaña nevada", sky:["#5f9fcf","#d3e7f2"], ground:"#6f7c72", asphalt:"#545b62", mtnCol:["#aebbc8","#8494a6"], mtnAmp:2.0, snow:0.75, decor:"nieve" },
   ciudad:{ label:"Casas de colores", sky:["#6aa8d6","#d6e8f1"], ground:"#4a4f55", asphalt:"#555c63", mtnCol:["#8aa0b6","#6a8198"], mtnAmp:1.3, snow:0.4, decor:"casas" },
+  yungas:{ label:"Yungas (selva de montaña)", sky:["#7fa3bb","#d3e0e4"], ground:"#1d4a24", asphalt:"#4d5458", mtnCol:["#5d7c68","#41604e"], mtnAmp:1.7, snow:0, decor:"yungas", bruma:2.2 },   // v194
   estepa:{ label:"Estepa y alambrado", sky:["#6fb3e3","#dceef7"], ground:"#9c8a56", asphalt:"#5a5650", mtnCol:["#aaa190","#8f8674"], mtnAmp:0.5, snow:0, decor:"estepa" },
   velodromo:{ label:"Velódromo cubierto", sky:["#171b22","#2a323d"], ground:"#2e4a2f", asphalt:"#c9a768", mtnCol:["#333a44","#242931"], mtnAmp:0.6, decor:"stands" },
   velodromo_open:{ label:"Velódromo al aire libre", sky:["#5bb0e6","#bfe6f5"], ground:"#3a6b3d", asphalt:"#b8956a", mtnCol:["#7492ad","#54718d"], mtnAmp:0.5, decor:"stands" },
@@ -2722,6 +2724,14 @@ function landArbol(ctx,x,y,m,H,tipo,r,sc,dd,d0){
       ctx.beginPath(); ctx.moveTo(x-wk,yb); ctx.lineTo(x+wk,yb); ctx.lineTo(x,yb-h*0.34); ctx.closePath(); ctx.fill();
       if(h>14){ ctx.fillStyle="rgba(0,12,6,"+(0.1+0.16*lk).toFixed(2)+")"; ctx.beginPath(); ctx.moveTo(x-sl*wk,yb); ctx.lineTo(x,yb); ctx.lineTo(x,yb-h*0.34); ctx.closePath(); ctx.fill(); // media copa a la sombra
         ctx.fillStyle="rgba(0,10,5,.16)"; ctx.fillRect(x-wk*0.8,yb-1,wk*1.6,Math.max(1,h*0.012)); } } return; }
+  if(tipo==="yunga"||tipo==="helecho"||tipo==="mata"){   // v194: Yungas (selva de montaña). Mismo bloque land que Correr.
+    const vs=[B("#173f1f"),B("#1f4f24"),B("#2a5f2a"),B("#123318")];
+    if(tipo==="mata"){ ctx.fillStyle=vs[Math.floor(r*7)%4]; ctx.beginPath(); ctx.ellipse(x,y-h*0.35,h*0.9,h*0.5,0,0,7); ctx.fill(); return; }
+    if(tipo==="helecho"){ ctx.fillStyle=B("#3a2f22"); ctx.fillRect(x-tr*0.35,y-h*0.92,tr*0.7,h*0.92); ctx.fillStyle=vs[2]; for(let k=0;k<6;k++){ const a=-Math.PI*(0.1+0.8*k/5); ctx.beginPath(); ctx.ellipse(x+Math.cos(a)*h*0.28,y-h*0.92-Math.sin(a)*h*0.12,h*0.3,h*0.06,a,0,7); ctx.fill(); } return; }
+    ctx.fillStyle=B(r>0.8?"#8f8a7c":"#4a3a2c"); ctx.fillRect(x-tr/2,y-h*0.64,tr,h*0.64);   // tronco alto (tipa: corteza clara)
+    const bolas=[[-0.22,0.66,0.2],[0.2,0.68,0.19],[0,0.8,0.24],[-0.12,0.9,0.16],[0.14,0.92,0.15]];
+    bolas.forEach(([dx,dy,rr],j)=>{ ctx.fillStyle=vs[(j+Math.floor(r*9))%4]; ctx.beginPath(); ctx.ellipse(x+dx*h*(1+0.3*r),y-dy*h,rr*h*1.25,rr*h*0.6,0,0,7); ctx.fill(); });
+    return; }
   const otono=tipo==="lenga"&&r>0.62, base=otono?["#8a4b1f","#b8742a","#d49a3a"]:tipo==="lenga"?["#2f4a2c","#3f6236","#557a44"]:["#2c5a2e","#3a7036","#4f8a43"];
   const bolas=tipo==="lenga"?[[-0.16,0.62,0.2],[0.15,0.66,0.19],[0,0.8,0.2],[-0.08,0.93,0.13],[0.12,0.88,0.12]]:[[-0.17,0.6,0.22],[0.17,0.62,0.21],[0,0.78,0.25],[-0.1,0.9,0.15],[0.1,0.92,0.14]];
   bolas.forEach(([dx,dy,rr],j)=>{ ctx.fillStyle=B(base[j===2?1:j>2?2:0]); ctx.beginPath(); ctx.ellipse(x+dx*h*(0.9+0.2*r),y-dy*h,rr*h,rr*h*0.9,0,0,7); ctx.fill(); });
@@ -3063,6 +3073,11 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
         if(bsc.decor==="stands" && side===-1 && !isWaterSide && !isWallSide) continue; // sin tribunas en el interior (infield) del velódromo
         const off=b.hw*(isWallSide?0.15:(0.45+0.5*Math.abs(seed)));
         const tx=b.cx+side*(b.hw+off), ty=b.y, th=b.hw*(isWallSide?(0.9+0.4*Math.abs(seed)):(0.45+0.3*Math.abs(seed)));
+        if(!isWaterSide&&!isWallSide&&!isValleySide&&bsc.decor==="yungas"){ // v194: Yungas en la vista 2D: árboles altos de copa ancha, helechos y matas
+          const mm=b.m||b.hw/wRoad, r1=Math.abs(seed), r2=landHash(seed*5.7), r3=landHash(seed*2.3);
+          landArbol(ctx,tx+side*(8+7*r2)*mm,ty,mm,14+9*r2,"yunga",r2,bsc,b.d,d0);
+          landArbol(ctx,tx+side*(2+3*r3)*mm,ty,mm,r3<.4?5+3*r3:3,r3<.4?"helecho":"mata",r3,bsc,b.d,d0);
+          landArbol(ctx,tx,ty,mm,12+8*r1,"yunga",r1,bsc,b.d,d0); continue; }
         if(!isWaterSide&&!isWallSide&&!isValleySide&&(bsc.decor==="trees"||bsc.decor==="lengas")){ // v176: árboles con copa, volumen y sombra (los mismos que en los costados reales), dos por lado
           const mm=b.m||b.hw/wRoad, r1=Math.abs(seed), r2=landHash(seed*5.7), len=bsc.decor==="lengas";
           landArbol(ctx,tx+side*(5+6*r2)*mm,ty,mm,(len?8:9)+6*r2,len?"lenga":r2>0.6?"pino":"hoja",r2,bsc,b.d,d0);
@@ -3700,11 +3715,36 @@ function mundo(S){
       const T=sg<0?lT:rT; if(T!=='normal')continue;
       const h1=hash(kc*2+(sg>0?1:0)), h2=hash(kc*7.31+sg), h3=hash(kc*3.7+sg*5);
       const s=kc*14+7-d; if(s<-8||s>330)continue;
-      const dens=(dec==='casas'||dec==='buildings')?.55:(dec==='estepa'?.25:.78); if(h1>dens)continue;
-      const o=sg*(HW+SH+4+h2*(dec==='casas'||dec==='buildings'?22:30)), w=at(s), x=w.x+w.rx*o, z=w.z+w.rz*o; let y=w.y, dk=dec;
+      const dens=(dec==='casas'||dec==='buildings')?.55:(dec==='estepa'?.25:dec==='yungas'?.97:.78); if(h1>dens)continue;
+      const o=sg*(HW+SH+(dec==='yungas'?2.5:4)+h2*(dec==='casas'||dec==='buildings'?22:dec==='yungas'?16:30)), w=at(s), x=w.x+w.rx*o, z=w.z+w.rz*o; let y=w.y, dk=dec;
       if(hayCO){ const q=gT(x,z,0); if(q.agua)continue; y=q.p[1]+.05;                                              // v193: sobre la ladera real, no a la altura del camino
         const cq=CO[q.k], cc=cq&&cq.c?cq.c[sg<0?0:1][0]:null, verde=cc&&cc[1]>cc[0]*1.08&&cc[1]>cc[2]*1.05;     // y según la foto: verde = árboles; si no, lo del escenario sin árboles
-        if(cc) dk=verde?(dk==='lengas'||dk==='nieve'?dec:'trees'):(dk==='trees'||dk==='lengas'?'rocks':dec); }
+        if(cc) dk=verde?(dk==='lengas'||dk==='nieve'||dk==='yungas'?dec:'trees'):(dk==='trees'||dk==='lengas'||dk==='yungas'?'rocks':dec); }
+      if(dk==='yungas'){   /* v194: Yungas (selva de montaña): árboles altos de copa ancha y achatada en dos pisos (tipa, cedro, laurel), helechos arborescentes y,
+                              por debajo, sotobosque denso; verdes oscuros y húmedos. Cada celda pone dos o tres plantas. */
+        const verdes=[[.09,.27,.12],[.12,.33,.13],[.16,.38,.15],[.07,.22,.1]], trunk=[.29,.23,.17];
+        const plantas=[[0,0,h3],[sg*(3+5*h2),4.5,hash(kc*9.1+sg)],[sg*(-1.5+3*h1),-4,hash(kc*4.3-sg)],[sg*(6+6*h3),-1.5,hash(kc*2.9+sg*3)],[sg*(1+4*h2),2,hash(kc*6.7-sg*2)]];
+        for(const [dl,df,rr] of plantas){ const ww=at(s+df); if(!ww)continue; const px_=ww.x+ww.rx*(o+dl), pz_=ww.z+ww.rz*(o+dl);
+          let py=ww.y; if(hayCO){ const q=gT(px_,pz_,0); if(q.agua)continue; py=q.p[1]+.05; }
+          const lf=verdes[Math.floor(rr*997)%4];
+          if(rr<.2){   // helecho arborescente: tronco fino y una roseta de frondas
+            const hf=3+rr*9; obox(A,[px_,py+hf*.45,pz_],[1,0,0],[0,1,0],[0,0,1],.22,hf*.9,.22,[.25,.2,.15]);
+            cone(A,px_,py+hf*.95,pz_,1.9,.5,tone(lf,1.25),7); cone(A,px_,py+hf*.95,pz_,1.6,-.6,tone(lf,.9),7); continue; }
+          if(rr<.5){   // sotobosque: matas y arbustos (a veces de a dos)
+            const hb=1.4+rr*3.5; cone(A,px_,py,pz_,1.8+rr*2,hb,tone(lf,1.1),6); if(rr>.35)cone(A,px_+1.4,py,pz_-1,1.4+rr,hb*.7,tone(lf,.95),6); continue; }
+          const hh=10+rr*14, R1=hh*(.22+.08*rr), [a1,b1]=sway(px_,pz_,hh,.6);
+          shTree(px_,pz_,hh*.9); obox(A,[px_,py+hh*.3,pz_],[1,0,0],[0,1,0],[0,0,1],.45,hh*.6,.45,rr>.8?[.55,.52,.46]:trunk);   // tipa: corteza clara
+          const nb=3+Math.floor(rr*7)%3;                                                                                    // copa irregular: 3 a 5 bultos
+          for(let b=0;b<nb;b++){ const an=b*2.4+rr*6, dr=R1*(b?.55:0), bx_=px_+a1+Math.cos(an)*dr, bz_=pz_+b1+Math.sin(an)*dr, by=py+hh*(.6+.12*((b*7+Math.floor(rr*10))%3)), rb=R1*(b?.6:.8);
+            const cb=tone(verdes[(b+Math.floor(rr*13))%4],.95+.1*(b%2)); cone(A,bx_,by,bz_,rb,hh*.15,cb,7); cone(A,bx_,by,bz_,rb*.94,-hh*.09,tone(cb,.7),7); }
+        }
+        { const pf=(dl,df)=>{ const ww=at(s+df); if(!ww)return null; const x_=ww.x+ww.rx*dl, z_=ww.z+ww.rz*dl; let y_=ww.y; if(hayCO){ const q=gT(x_,z_,0); if(q.agua)return null; y_=q.p[1]+.05; } return [x_,y_,z_]; };
+          for(const df of [-3.5,3.5]){ const p_=pf(sg*(HW+SH+3+2*hash(kc*1.7+df+sg)),df); if(p_){ const cv=tone(verdes[(kc+(df>0?1:0))%4],1.05); cone(A,p_[0],p_[1],p_[2],2.4,1.2+.8*h2,cv,7); cone(A,p_[0]+.4,p_[1]+1,p_[2],1.5,1.3+h2,tone(cv,1.1),7); } }   // borde de matas junto a la banquina
+          for(let f=0;f<2;f++){ const rf=hash(kc*3.3+f*7+sg), p_=pf(sg*(30+45*rf),f*7-3.5); if(!p_)continue; const H=13+8*rf, R=6+3*rf;                 // la selva de atrás: copas grandes y juntas
+            obox(A,[p_[0],p_[1]+H*.3,p_[2]],[1,0,0],[0,1,0],[0,0,1],.8,H*.6,.8,trunk);
+            for(let b=0;b<3;b++){ const an=b*2.1+rf*5, cb=tone(verdes[(b+f+kc)%4],.85); cone(A,p_[0]+Math.cos(an)*R*.5,p_[1]+H*(.62+.1*b),p_[2]+Math.sin(an)*R*.5,R*.8,H*.18,cb,7); cone(A,p_[0]+Math.cos(an)*R*.5,p_[1]+H*(.62+.1*b),p_[2]+Math.sin(an)*R*.5,R*.75,-H*.1,tone(cb,.7),7); } } }
+        continue;
+      }
       if(dk==='trees'||dk==='lengas'||dk==='nieve'||dk==='estepa'){
         const hh=(dk==='estepa'?1.6:4.5)+h3*5.5, r=hh*.3;
         const trunk=[.30,.21,.14], leaf=dk==='nieve'?mix([.2,.4,.28],[.92,.95,.97],.55+h3*.3):(dk==='lengas'?mix([.20,.40,.16],[.78,.45,.14],h3<.25?.8:h3*.3):mix([.13,.36,.18],[.22,.5,.2],h3));
@@ -3815,7 +3855,7 @@ function mundo(S){
   bx(0,1.5,.36,.12,.12,.12,skin);                                                                       // nuca
   bx(0,1.56,.42,.2,.15,.28,helm); bx(0,1.5,.31,.15,.1,.2,[.88,.88,.92]); bx(0,1.55,.24,.1,.06,.12,helm);   // casco (con cola)
   for(const sg of [-1,1]){ const sh_=[sg*.19,1.37,.3], el=[sg*.25,1.18,.4], hd=[sg*.2,1.02,.54]; limb(sh_,el,.09,.09,jer); limb(el,hd,.075,.075,skin); bx(sg*.19,1.02,.56,.07,.07,.07,[.1,.1,.12]); }
-  const iC=Math.max(0,Math.min(N-1,Math.round((d-Ds)/G))); return {A,M,R,Sh,sun:sunV,luzK:(S.luz?LZ.k:1)*(hayInf?(1-.65*IT[iC]):1),camB:C.b,cam:(()=>{const e0=at(-4.6),w=at(16),w2=at(34),gr=(w2.y-e0.y)/38.6, ey=e0.y+2.15; return {eye:[e0.x,ey,e0.z],tgt:[w.x,ey+20.6*gr*.85-.5,w.z]};})(),fog:skyB,skyA,skyB,fogK:W?1+(wet?1.6+Math.min(2,W.lluvia*.5):0)+(W.nubes||0)/100*.35:1,W,TW};
+  const iC=Math.max(0,Math.min(N-1,Math.round((d-Ds)/G))); return {A,M,R,Sh,sun:sunV,luzK:(S.luz?LZ.k:1)*(hayInf?(1-.65*IT[iC]):1),camB:C.b,cam:(()=>{const e0=at(-4.6),w=at(16),w2=at(34),gr=(w2.y-e0.y)/38.6, ey=e0.y+2.15; return {eye:[e0.x,ey,e0.z],tgt:[w.x,ey+20.6*gr*.85-.5,w.z]};})(),fog:skyB,skyA,skyB,fogK:(sc.bruma||1)*(W?1+(wet?1.6+Math.min(2,W.lluvia*.5):0)+(W.nubes||0)/100*.35:1),W,TW};
 }
 function draw(ctx,w,h,S){
   if(failed)return false;
