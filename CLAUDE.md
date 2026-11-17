@@ -23,6 +23,7 @@ Rodillo BKOOL Smart Pro por ANT+ FE-C (stick USB). Además:
 - v168: 🌬️ clima real del recorrido (Open-Meteo, sin clave): `WX`, `wxActivo()`. El viento de frente/cola según `bearingAt` entra en la física (aire relativo y densidad de ahora) y en el rodillo como pendiente equivalente (igual que el rebufo); se ve en el 3D. Ajustes en `bici_wx`, último dato por ruta en `bici_wx_last`. El bloque `wxTraer`/`wxRelativo`/`wxCielo`/`wxAire`/`wxEspuma`/`wxFlecha` es **el mismo que en Kayak y Correr**.
   - Guarda las escenas en `bici_scenes`, el suavizado por ruta en `bici_route_opts` y el horizonte, los cerros y el suelo en `bici_route_extra`.
   - `drawRealHorizon` usa `HZ_EX=1.5` y comprime con `tanh` (`HZ_MAX=13`).
+- v180: 🧊 vista WebGL del camino en la vista previa del Escenario de la ruta (`GLR`, `glRutaOn()`, tilde `#sceneGl`, clave `bici_gl_ruta`, por defecto prendido): arma un mundo 3D por punto (calzada con pendiente y curvas, costados según escenario, `decor` en 3D, horizonte real de Rumbo o cerros inventados, ciclista de atrás) en un canvas aparte que se copia al 2D; si falla, vuelve al dibujo 2D (`roadBands`). Todavía no usa `land` de Rumbo, clima, puentes/túneles ni la vista en vivo (`#road`). El diagnóstico sale en el botón de copiar de la vista 3D.
 - La fecha de la Forma va en hora **local**.
 
 ## Quién y cómo trabajamos

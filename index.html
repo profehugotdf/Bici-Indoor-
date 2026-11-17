@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v179</title>
+<title>Bici Indoor · v180</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -96,7 +96,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v179</h1>
+  <h1>Bici Indoor · v180</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -390,6 +390,8 @@
       <div id="sceneOutBackInfo" style="color:var(--dim);font-size:12px;margin:0 0 10px 24px"></div>
       <div id="scenePrevWrap">
         <canvas id="scenePrev" height="200" style="width:100%;display:block;border-radius:10px;background:#0a0d12"></canvas>
+        <label style="display:flex;align-items:center;gap:8px;margin:6px 0 0;font-size:13px"><input type="checkbox" id="sceneGl"><span>🧊 Vista 3D (WebGL)</span></label>
+        <div id="sceneGlInfo" style="color:var(--dim);font-size:12px;margin:2px 0 0 24px"></div>
         <div style="display:flex;align-items:center;gap:8px;margin:6px 0 10px">
           <button id="scenePrevPlay" style="min-height:36px;padding:6px 12px;font-size:13px">▶ Recorrer desde acá</button>
           <span id="scenePrevInfo" style="font-size:12px;color:var(--dim);flex:1">Vista previa con lo que estás editando (sin guardar). Deslizá por el perfil o el mapa para elegir el punto.</span>
@@ -742,6 +744,12 @@ function bigPersist(k,v){
     tx.onerror=tx.onabort=()=>{ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+((tx.error&&tx.error.message)||"error"),"#f85149"); } };
   }catch(e){ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+e.message,"#f85149"); } }
 }
+// v180: vista WebGL del camino en la vista previa del "Escenario de la ruta" (Hugo: "¿cómo puedo tener una vista previa de los escenarios en modo WebGL?").
+// `GLR` arma un mundo 3D alrededor del punto elegido (calzada con la pendiente y las curvas reales, banquinas, costados según el escenario:
+// agua, pared, valle o campo con el color de la foto satelital; árboles, lengas, casas, edificios o rocas según `decor`; el horizonte real de
+// Rumbo con nieve, o cerros inventados; el ciclista de atrás con las piernas girando) y lo dibuja en un canvas aparte que se copia al 2D de la tarjeta.
+// Tilde "Vista 3D (WebGL)" en la tarjeta (bici_gl_ruta, por defecto prendido): apagado, o si WebGL falla, vuelve solo al dibujo 2D de siempre.
+// Todavía NO usa los costados reales de Rumbo (`land`: casas y calles por cuadra), ni el clima, ni el puente/túnel; y la vista en vivo de la ruta sigue en 2D.
 // v179: vista WebGL del velódromo (en vivo y en la carrera virtual/replay), la que se probó en la app aparte "Velódromo 3D", con el
 // canvas 2D de v178 como respaldo automático: si WebGL no está, falla, se pierde el contexto o va a menos de ~25 cuadros/s incluso
 // a baja resolución, se vuelve solo al 2D. Opción "Gráficos" (bici_gl_velo: gl_media/gl_alta/gl_baja/off) y tarjeta de diagnóstico
@@ -1650,6 +1658,8 @@ function loadSceneRouteGeo(routeName){
 // ---------- Vista previa del editor de escenario (v154) ----------
 // Dibuja el punto marcado en el perfil/mapa con el MISMO motor que se ve al pedalear (roadBands), usando los
 // tramos tal como están en el editor (sin guardar). "Recorrer desde acá" avanza a 25 km/h y mueve el marcador.
+const GL_RUTA_KEY="bici_gl_ruta";
+function glRutaOn(){ try{ return localStorage.getItem(GL_RUTA_KEY)!=="0"; }catch(e){ return true; } }
 let scenePrevRAF=null, scenePrevLast=0, scenePrevPlaying=false, scenePrevCrank=0, scenePrevFrame=0;
 const SCENE_PREV_SPEED=25/3.6;
 function sceneEditSegsNormalized(){
@@ -1662,9 +1672,15 @@ function drawScenePreview(){
   const d=Math.max(0,Math.min(sceneEditTotal-1,(sceneScrubKm||0)*1000));
   scenePreviewSegs=sceneEditSegsNormalized();
   try{
-    roadBands(ctx,w,h,d,dd=>bearingRoute(sceneRouteGeo,dd),dd=>sceneEleAt(dd),sceneEditRoute);
-    drawCyclistRear(ctx,w/2,h-6,Math.max(18,h*0.135),scenePrevCrank,"#2f6f9c",1);
     const sc=sceneAt(sceneEditRoute,d);
+    let glOk=false;
+    if(glRutaOn()){ const rx=routeExtra(sceneEditRoute), land=realLandOn();
+      glOk=GLR.draw(ctx,w,h,{d,bFn:dd=>bearingRoute(sceneRouteGeo,dd),eFn:dd=>sceneEleAt(dd),sc,crank:scenePrevCrank,
+        gs:land&&rx&&rx.ground?(dd=>groundSides(rx,Math.max(0,dd),sc)):null, hz:land&&rx&&rx.hz?rx.hz:null});
+      if($("sceneGlInfo")) $("sceneGlInfo").textContent=glOk?"":(GLR.ok()?"":"WebGL no disponible acá: se ve la vista de siempre. "+GLR.diag()); }
+    if(!glOk){
+      roadBands(ctx,w,h,d,dd=>bearingRoute(sceneRouteGeo,dd),dd=>sceneEleAt(dd),sceneEditRoute);
+      drawCyclistRear(ctx,w/2,h-6,Math.max(18,h*0.135),scenePrevCrank,"#2f6f9c",1); }
     $("scenePrevInfo").textContent="Km "+(d/1000).toFixed(2)+" · "+(sc.label||"")+(sc.wallSide?(" · pared "+(sc.wallSide==="left"?"izquierda":"derecha")):"")+(sc.waterSide?(" · agua "+(sc.waterSide==="left"?"izquierda":"derecha")):"");
   }catch(e){ $("scenePrevInfo").textContent="No pude dibujar la vista previa: "+e.message; }
   finally{ scenePreviewSegs=null; }
@@ -1694,6 +1710,7 @@ function openSceneEditor(routeName,totalM,returnTo){
   sceneEditOutBack=!!((loadSceneOpts()[routeName]||{}).outBack); $("sceneOutBack").checked=sceneEditOutBack;
   bridgeEditRows=getRouteBridges(routeName).map(b=>({fromKm:b.fromKm,toKm:b.toKm,peakPct:b.peakPct}));
   $("sceneRouteInfo").textContent=routeName+" · "+(totalM/1000).toFixed(2)+" km";
+  { const g=$("sceneGl"); if(g){ g.checked=glRutaOn(); g.onchange=()=>{ try{ localStorage.setItem(GL_RUTA_KEY,g.checked?"1":"0"); }catch(e){ log("No pude guardar la opción de la vista 3D: "+e.message,"#f0883e"); } if(g.checked) GLR.reset(); }; } }
   const gotGeo=loadSceneRouteGeo(routeName);
   $("sceneProf").classList.toggle("hidden",!gotGeo);
   $("sceneMapCv").classList.toggle("hidden",!gotGeo);
@@ -3220,6 +3237,207 @@ function drawRoad(){
     if(!roadDrawErrLogged){ roadDrawErrLogged=true; log("Error dibujando la vista 3D: "+e.message,"#f85149"); }
   }
 }
+// ================= v180: vista WebGL del camino (vista previa del escenario), con respaldo al canvas 2D =================
+// Arma un mundo 3D chico alrededor de donde estás (camino con pendiente y curvas, costados según el escenario, árboles y casas,
+// horizonte real de Rumbo o cerros inventados, el ciclista de atrás) y lo dibuja en un canvas WebGL aparte; el resultado se copia
+// al canvas 2D de la tarjeta (el cielo va degradé en 2D, abajo). Si WebGL no está o falla, devuelve false y se usa el dibujo 2D de siempre.
+const GLR=(()=>{'use strict';
+const VS='attribute vec3 aPos;attribute vec3 aNor;attribute vec3 aCol;uniform mat4 uVP;uniform vec3 uSun;varying vec3 vC;varying float vD;'+
+ 'void main(){vec4 p=uVP*vec4(aPos,1.0);gl_Position=p;vD=p.w;float l=0.60+0.40*abs(dot(normalize(aNor),uSun));vC=aCol*l;}';
+const FS='precision mediump float;varying vec3 vC;varying float vD;uniform vec3 uFog;uniform float uK;'+
+ 'void main(){float f=1.0-exp(-vD*uK);gl_FragColor=vec4(mix(vC,uFog,clamp(f,0.0,0.96)),1.0);}';
+let cv=null,gl=null,prog=null,vbo=null,failed='',lost=false,msgs=[],q=1;
+const U={};
+const note=m=>{msgs.push(m);if(msgs.length>8)msgs.shift();};
+const col=c=>{ if(Array.isArray(c))return c; c=String(c||'#808080').trim();
+  if(c[0]==='#'){ if(c.length===4)c='#'+c[1]+c[1]+c[2]+c[2]+c[3]+c[3]; const n=parseInt(c.slice(1,7),16); return [(n>>16&255)/255,(n>>8&255)/255,(n&255)/255]; }
+  const m=c.match(/[\d.]+/g)||[128,128,128]; return [m[0]/255,m[1]/255,m[2]/255]; };
+const tone=(c,k)=>c.map(v=>Math.max(0,Math.min(1,v*k)));
+const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);
+const hash=n=>{const x=Math.sin(n*12.9898+4.1)*43758.5453;return x-Math.floor(x);};
+/* ---- matrices ---- */
+const V={sub:(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],dot:(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],
+  cross:(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]],norm:a=>{const l=Math.hypot(a[0],a[1],a[2])||1;return [a[0]/l,a[1]/l,a[2]/l];}};
+function persp(fy,asp,n,f){const t=1/Math.tan(fy/2),m=new Float32Array(16);m[0]=t/asp;m[5]=t;m[10]=(f+n)/(n-f);m[11]=-1;m[14]=2*f*n/(n-f);return m;}
+function look(e,c,u){const f=V.norm(V.sub(c,e)),s=V.norm(V.cross(f,u)),uu=V.cross(s,f);
+  return new Float32Array([s[0],uu[0],-f[0],0,s[1],uu[1],-f[1],0,s[2],uu[2],-f[2],0,-V.dot(s,e),-V.dot(uu,e),V.dot(f,e),1]);}
+function mul(a,b){const o=new Float32Array(16);for(let c=0;c<4;c++)for(let r=0;r<4;r++){let s=0;for(let k=0;k<4;k++)s+=a[k*4+r]*b[c*4+k];o[c*4+r]=s;}return o;}
+/* ---- geometría ---- */
+function tri(B,a,b,c,k){const ux=b[0]-a[0],uy=b[1]-a[1],uz=b[2]-a[2],vx=c[0]-a[0],vy=c[1]-a[1],vz=c[2]-a[2];
+  let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;const l=Math.hypot(nx,ny,nz)||1;nx/=l;ny/=l;nz/=l;
+  B.push(a[0],a[1],a[2],nx,ny,nz,k[0],k[1],k[2],b[0],b[1],b[2],nx,ny,nz,k[0],k[1],k[2],c[0],c[1],c[2],nx,ny,nz,k[0],k[1],k[2]);}
+const quad=(B,a,b,c,d,k)=>{tri(B,a,b,c,k);tri(B,a,c,d,k);};
+function obox(B,c,X,Y,Z,sx,sy,sz,k){ // caja orientada, ejes unitarios, tamaño total
+  const p=(a,b,d)=>[c[0]+X[0]*a*sx/2+Y[0]*b*sy/2+Z[0]*d*sz/2,c[1]+X[1]*a*sx/2+Y[1]*b*sy/2+Z[1]*d*sz/2,c[2]+X[2]*a*sx/2+Y[2]*b*sy/2+Z[2]*d*sz/2];
+  const v=[p(-1,-1,-1),p(1,-1,-1),p(1,1,-1),p(-1,1,-1),p(-1,-1,1),p(1,-1,1),p(1,1,1),p(-1,1,1)];
+  for(const f of [[0,1,2,3],[5,4,7,6],[4,0,3,7],[1,5,6,2],[3,2,6,7],[4,5,1,0]])quad(B,v[f[0]],v[f[1]],v[f[2]],v[f[3]],k);}
+function cone(B,x,y,z,r,h,k,seg){seg=seg||7;const top=[x,y+h,z];for(let i=0;i<seg;i++){const a0=i/seg*6.2832,a1=(i+1)/seg*6.2832;
+  tri(B,[x+Math.cos(a0)*r,y,z+Math.sin(a0)*r],[x+Math.cos(a1)*r,y,z+Math.sin(a1)*r],top,k);}}
+/* ---- WebGL ---- */
+function sh(t,s){const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))throw new Error('shader: '+gl.getShaderInfoLog(o));return o;}
+function init(){
+  cv=document.createElement('canvas');
+  gl=cv.getContext('webgl',{antialias:true,alpha:true,premultipliedAlpha:true,powerPreference:'high-performance'})||cv.getContext('experimental-webgl');
+  if(!gl)throw new Error('este navegador no da WebGL');
+  prog=gl.createProgram();gl.attachShader(prog,sh(gl.VERTEX_SHADER,VS));gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,FS));
+  ['aPos','aNor','aCol'].forEach((a,i)=>gl.bindAttribLocation(prog,i,a));gl.linkProgram(prog);
+  if(!gl.getProgramParameter(prog,gl.LINK_STATUS))throw new Error('link: '+gl.getProgramInfoLog(prog));
+  for(const n of ['uVP','uSun','uFog','uK'])U[n]=gl.getUniformLocation(prog,n);
+  vbo=gl.createBuffer();
+  cv.addEventListener('webglcontextlost',e=>{e.preventDefault();lost=true;note('contexto gráfico perdido');});
+  cv.addEventListener('webglcontextrestored',()=>{try{lost=false;init2();note('contexto gráfico recuperado');}catch(e){failed=e.message;}});
+}
+function init2(){ // tras perder el contexto: recrea programa y buffer sin tocar el canvas
+  prog=gl.createProgram();gl.attachShader(prog,sh(gl.VERTEX_SHADER,VS));gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,FS));
+  ['aPos','aNor','aCol'].forEach((a,i)=>gl.bindAttribLocation(prog,i,a));gl.linkProgram(prog);
+  for(const n of ['uVP','uSun','uFog','uK'])U[n]=gl.getUniformLocation(prog,n);vbo=gl.createBuffer();}
+function flush(B,VP,fog,K){
+  if(!B.length)return;
+  gl.bindBuffer(gl.ARRAY_BUFFER,vbo);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(B),gl.DYNAMIC_DRAW);
+  for(let i=0;i<3;i++){gl.enableVertexAttribArray(i);gl.vertexAttribPointer(i,3,gl.FLOAT,false,36,i*12);}
+  gl.uniformMatrix4fv(U.uVP,false,VP);gl.uniform3fv(U.uFog,fog);gl.uniform1f(U.uK,K);
+  gl.drawArrays(gl.TRIANGLES,0,B.length/9);
+}
+/* ---- el mundo ---- */
+const HW=2.6, SH=1.6;                       // semiancho de la calzada y de la banquina (m)
+const hzAngF=a=>a<=0?a*HZ_EX:HZ_MAX*Math.tanh(a*HZ_EX/HZ_MAX);
+function mundo(S){
+  const {d,bFn,eFn,sc,gs,hz,crank}=S, e0=eFn(d), SS=[];
+  for(let s=-10;s<=60;s+=2)SS.push(s);for(let s=64;s<=200;s+=4)SS.push(s);for(let s=210;s<=700;s+=10)SS.push(s);
+  const N=SS.length, i0=SS.indexOf(0), bs=[], ys=[], px=new Array(N), pz=new Array(N);
+  for(let i=0;i<N;i++){ let sx=0,sy=0; for(const k of [-8,-4,0,4,8]){const b=bFn(Math.max(0,d+SS[i]+k));sx+=Math.sin(b);sy+=Math.cos(b);} bs.push(Math.atan2(sx,sy));
+    let e=0; for(const k of [-6,0,6])e+=eFn(Math.max(0,d+SS[i]+k)); ys.push(e/3-e0); }
+  px[i0]=0;pz[i0]=0;
+  for(let i=i0+1;i<N;i++){const bm=Math.atan2(Math.sin(bs[i-1])+Math.sin(bs[i]),Math.cos(bs[i-1])+Math.cos(bs[i])),ds=SS[i]-SS[i-1];px[i]=px[i-1]+Math.sin(bm)*ds;pz[i]=pz[i-1]+Math.cos(bm)*ds;}
+  for(let i=i0-1;i>=0;i--){const bm=Math.atan2(Math.sin(bs[i+1])+Math.sin(bs[i]),Math.cos(bs[i+1])+Math.cos(bs[i])),ds=SS[i+1]-SS[i];px[i]=px[i+1]-Math.sin(bm)*ds;pz[i]=pz[i+1]-Math.cos(bm)*ds;}
+  const rx=bs.map(b=>Math.cos(b)), rz=bs.map(b=>-Math.sin(b));   // derecha de la marcha
+  const P=(i,o,dy)=>[px[i]+rx[i]*o,ys[i]+(dy||0),pz[i]+rz[i]*o];
+  const at=(s)=>{ let i=0; while(i<N-2&&SS[i+1]<s)i++; const t=Math.max(0,Math.min(1,(s-SS[i])/(SS[i+1]-SS[i])));
+    return {x:px[i]+(px[i+1]-px[i])*t,y:ys[i]+(ys[i+1]-ys[i])*t,z:pz[i]+(pz[i+1]-pz[i])*t,rx:rx[i],rz:rz[i],b:bs[i]}; };
+  const skyA=col(sc.sky[0]), skyB=col(sc.sky[1]), gcol=col(sc.ground), asf=col(sc.asphalt);
+  const lT=sc.wallSide==='left'?'wall':(sc.waterSide==='left'?'water':(sc.wallSide==='right'?'valley':'normal'));
+  const rT=sc.wallSide==='right'?'wall':(sc.waterSide==='right'?'water':(sc.wallSide==='left'?'valley':'normal'));
+  const WL=(typeof WATER_LOOK!=='undefined'&&WATER_LOOK[sc.waterKind||'mar'])||{mid:'#2d7ea8',top:'#7fc4e0'}, wcol=col(WL.mid), wnear=col(WL.top||WL.mid);
+  const A=[], M=[];                              // A: el mundo; M: cerros lejanos
+  /* calzada, banquinas, costados */
+  const OFS=[HW+SH,HW+SH+2.5,HW+SH+10,40,130,400];
+  const DY={normal:[0,0,0,0,0,0],water:[-1.1,-1.2,-1.2,-1.2,-1.2,-1.2],wall:[1.2,5,10,17,34,70],valley:[-.4,-3,-6,-14,-30,-55]};
+  for(let i=0;i<N-1;i++){
+    const dd=d+SS[i], g=gs?gs(dd):null, gL=g?col(g.L):gcol, gR=g?col(g.R):gcol, band=Math.floor(dd/6)%2?1.035:0.965;
+    quad(A,P(i,-HW),P(i,HW),P(i+1,HW),P(i+1,-HW),tone(asf,band));
+    for(const sg of [-1,1]){
+      const T=sg<0?lT:rT, gc=sg<0?gL:gR, dy=DY[T];
+      quad(A,P(i,sg*HW),P(i,sg*(HW+SH),dy[0]*.0),P(i+1,sg*(HW+SH),dy[0]*.0),P(i+1,sg*HW),tone(gc,.8)); // banquina
+      for(let j=0;j<OFS.length-1;j++){
+        let c;
+        if(T==='water')c=j===0?mix(gc,[.8,.74,.55],.6):mix(wcol,wnear,j<2?.5:0);
+        else if(T==='wall')c=tone(mix([.54,.49,.43],[.27,.24,.2],j/5),1);
+        else if(T==='valley')c=mix(gc,[.31,.42,.34],Math.min(1,j/4));
+        else c=tone(gc,1-0.04*j);
+        quad(A,P(i,sg*OFS[j],dy[j]),P(i,sg*OFS[j+1],dy[j+1]),P(i+1,sg*OFS[j+1],dy[j+1]),P(i+1,sg*OFS[j],dy[j]),c);
+      }
+    }
+    if(SS[i]<200&&Math.floor((dd+0.5)/6)%2===0)quad(A,P(i,-.07,.03),P(i,.07,.03),P(i+1,.07,.03),P(i+1,-.07,.03),[.95,.93,.78]);   // raya central
+    for(const sg of [-1,1])quad(A,P(i,sg*(HW-.35),.03),P(i,sg*(HW-.2),.03),P(i+1,sg*(HW-.2),.03),P(i+1,sg*(HW-.35),.03),[.9,.9,.88]);
+  }
+  /* suelo grande: lo que queda más allá de 400 m a los costados (agua del lado del agua) */
+  const c0=at(0), yb=-3, BIG=6000, fwd=[Math.sin(c0.b),Math.cos(c0.b)], rgt=[c0.rx,c0.rz];
+  const big=(sg,c)=>{const o0=sg*350,o1=sg*BIG;quad(A,[rgt[0]*o0-fwd[0]*BIG,yb,rgt[1]*o0-fwd[1]*BIG],[rgt[0]*o1-fwd[0]*BIG,yb,rgt[1]*o1-fwd[1]*BIG],[rgt[0]*o1+fwd[0]*BIG,yb,rgt[1]*o1+fwd[1]*BIG],[rgt[0]*o0+fwd[0]*BIG,yb,rgt[1]*o0+fwd[1]*BIG],c);};
+  big(-1,lT==='water'?wcol:(lT==='valley'?[.25,.36,.3]:tone(gcol,.9)));big(1,rT==='water'?wcol:(rT==='valley'?[.25,.36,.3]:tone(gcol,.9)));
+  quad(A,[-BIG,yb,-BIG],[BIG,yb,-BIG],[BIG,yb,BIG],[-BIG,yb,BIG],tone(gcol,.88)); // por debajo, por si algún hueco
+  /* árboles, casas, rocas */
+  const dec=sc.decor||'trees';
+  if(dec!=='waves'&&dec!=='stands'){
+    for(let kc=Math.floor((d-10)/14);kc<=Math.floor((d+330)/14);kc++)for(const sg of [-1,1]){
+      const T=sg<0?lT:rT; if(T!=='normal')continue;
+      const h1=hash(kc*2+(sg>0?1:0)), h2=hash(kc*7.31+sg), h3=hash(kc*3.7+sg*5);
+      const s=kc*14+7-d; if(s<-8||s>330)continue;
+      const dens=(dec==='casas'||dec==='buildings')?.55:(dec==='estepa'?.25:.78); if(h1>dens)continue;
+      const o=sg*(HW+SH+4+h2*(dec==='casas'||dec==='buildings'?22:30)), w=at(s), x=w.x+w.rx*o, z=w.z+w.rz*o, y=w.y;
+      if(dec==='trees'||dec==='lengas'||dec==='nieve'||dec==='estepa'){
+        const hh=(dec==='estepa'?1.6:4.5)+h3*5.5, r=hh*.3;
+        const trunk=[.30,.21,.14], leaf=dec==='nieve'?mix([.2,.4,.28],[.92,.95,.97],.55+h3*.3):(dec==='lengas'?mix([.20,.40,.16],[.78,.45,.14],h3<.25?.8:h3*.3):mix([.13,.36,.18],[.22,.5,.2],h3));
+        if(dec==='estepa'){cone(A,x,y,z,r*1.4,hh,mix([.55,.5,.28],[.45,.45,.25],h3),6);continue;}
+        obox(A,[x,y+hh*.12,z],[1,0,0],[0,1,0],[0,0,1],.35,hh*.25,.35,trunk);
+        cone(A,x,y+hh*.18,z,r*1.15,hh*.55,leaf,7);cone(A,x,y+hh*.5,z,r*.85,hh*.5,tone(leaf,1.08),7);
+      }else if(dec==='casas'||dec==='buildings'){
+        const hh=dec==='buildings'?7+h3*18:3.2+h3*2.6, ww=dec==='buildings'?8+h2*5:6+h2*3, fx=[Math.sin(w.b),0,Math.cos(w.b)], rr=[w.rx,0,w.rz];
+        const pal=dec==='buildings'?[[.36,.4,.44],[.3,.33,.37]]:[[.85,.35,.3],[.9,.75,.35],[.35,.6,.75],[.88,.85,.78],[.45,.68,.45]];
+        const wc=pal[Math.floor(h1*997)%pal.length];
+        obox(A,[x,y+hh/2,z],rr,[0,1,0],fx,ww,hh,ww*.9,wc);
+        if(dec==='casas')obox(A,[x,y+hh+.5,z],rr,[0,1,0],fx,ww*1.05,1.0,ww*.95,[.42,.2,.17]);
+      }else if(dec==='rocks'){
+        const hh=1.6+h3*3.4;cone(A,x,y,z,hh*.9,hh,mix([.5,.46,.4],[.4,.37,.32],h3),5);
+      }
+    }
+  }
+  /* cerros del horizonte */
+  const cam={b:bs[i0],y:e0};
+  const camY=ys[i0]+2.15, mc0=col(sc.mtnCol[0]), mc1=col(sc.mtnCol[1]);
+  const farC=mix(mc0,skyB,.45), midC=mc0, nearC=mix(mc1,gcol,.35);
+  const COLS=70, A0=cam.b-1.25, A1=cam.b+1.25;                         // ±72° alrededor de donde se mira (rad)
+  const layer=(R,fn,k,snowFn)=>{
+    for(let c=0;c<COLS;c++){
+      const a0=A0+(A1-A0)*c/COLS, a1=A0+(A1-A0)*(c+1)/COLS, t0=fn(a0), t1=fn(a1);
+      const top=(ang,a)=>[Math.sin(a)*R,camY+R*Math.tan(Math.max(-15,hzAngF(ang))*Math.PI/180),Math.cos(a)*R];
+      const B0=[Math.sin(a0)*R,camY-400,Math.cos(a0)*R], B1=[Math.sin(a1)*R,camY-400,Math.cos(a1)*R], T0=top(t0.a,a0), T1=top(t1.a,a1);
+      quad(M,B0,B1,T1,T0,k);
+      if(snowFn){const s0=snowFn(a0),s1=snowFn(a1); if(s0!=null&&s1!=null&&t0.a>s0&&t1.a>s1){const ps=(ang,a)=>[Math.sin(a)*(R-6),camY+R*Math.tan(Math.max(-15,hzAngF(ang))*Math.PI/180),Math.cos(a)*(R-6)];
+        quad(M,ps(s0,a0),ps(s1,a1),[T1[0]*(R-6)/R,T1[1],T1[2]*(R-6)/R],[T0[0]*(R-6)/R,T0[1],T0[2]*(R-6)/R],[.93,.95,.97]);}}
+    }
+  };
+  const deg=180/Math.PI;
+  if(hz){
+    const smp=a=>hzSample(hz,d,a), snow=hz.snow;
+    const sn=(ie,id)=>a=>{ if(!snow)return null; const v=smp(a), e=v[ie], dd=v[id]; return (e>snow&&dd>0)?Math.atan((snow-e0)/dd)*deg:null; };
+    layer(3700,a=>({a:smp(a)[4]}),farC,snow?sn(5,6):null);
+    layer(3400,a=>({a:smp(a)[1]}),midC,snow?sn(2,3):null);
+    layer(3100,a=>({a:smp(a)[0]}),nearC,null);
+  }else{
+    const amp=(sc.mtnAmp||1);
+    layer(3600,a=>({a:2+amp*(2.4+2.2*Math.sin(a*3.1+1.3)+1.4*Math.sin(a*7.7+.4))}),farC,null);
+    layer(3200,a=>({a:1+amp*(1.4+1.6*Math.sin(a*4.3+2.1)+.9*Math.sin(a*11.3+1.1))}),nearC,null);
+  }
+  /* el ciclista, visto de atrás */
+  const f=[Math.sin(bs[i0]),0,Math.cos(bs[i0])], r=[rx[i0],0,rz[i0]], up=[0,1,0], by=ys[i0];
+  const at3=(l,h,fw)=>[px[i0]+r[0]*l+f[0]*fw,by+h,pz[i0]+r[2]*l+f[2]*fw];
+  const jer=[.18,.44,.62], skin=[.82,.62,.5], dark=[.1,.11,.14], helm=[.12,.13,.16];
+  obox(A,at3(0,.33,-.5),r,up,f,.04,.66,.1,dark);       // rueda trasera (de canto)
+  obox(A,at3(0,.33,.45),r,up,f,.04,.66,.1,dark);       // delantera
+  obox(A,at3(0,.62,0),r,up,f,.05,.05,1.0,[.55,.58,.62]); // cuadro
+  obox(A,at3(0,.9,-.1),r,up,f,.3,.07,.22,dark);        // asiento
+  const a1=crank||0;
+  for(const [sg,ph] of [[-1,0],[1,Math.PI]]){
+    const lift=.13*Math.sin(a1+ph); obox(A,at3(sg*.13,.62+lift*.9,-.05),r,up,f,.11,.52,.12,dark);          // pierna
+    obox(A,at3(sg*.13,.32+lift,-.02),r,up,f,.1,.12,.2,[.08,.08,.09]);                                      // zapato
+  }
+  obox(A,at3(0,1.14,-.06),r,up,f,.36,.5,.24,jer);      // torso
+  obox(A,at3(0,1.46,.02),r,up,f,.17,.19,.2,skin);      // cabeza
+  obox(A,at3(0,1.53,.0),r,up,f,.2,.1,.24,helm);        // casco
+  for(const sg of [-1,1])obox(A,at3(sg*.21,1.1,.22),r,up,f,.09,.09,.5,jer);     // brazos
+  obox(A,at3(0,1.0,.42),r,up,f,.46,.04,.04,dark);      // manubrio
+  return {A,M,cam:{eye:[-f[0]*4.6,ys[i0]+2.15,-f[2]*4.6],tgt:(()=>{const w=at(16);return [w.x,w.y+1.2,w.z];})()},fog:skyB,skyA,skyB};
+}
+function draw(ctx,w,h,S){
+  if(failed)return false;
+  try{
+    if(!gl)init(); if(lost)return false;
+    const dpr=Math.min(window.devicePixelRatio||1,2), W=Math.max(2,Math.round(w*dpr*q)), H=Math.max(2,Math.round(h*dpr*q));
+    if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H;}
+    const m=mundo(S), e=m.cam.eye, g=m.cam.tgt;   // el mundo está en (este, arriba, norte): se espeja x para que la derecha quede a la derecha
+    const VP=mul(mul(persp(52*Math.PI/180,W/H,.3,9000),look([-e[0],e[1],e[2]],[-g[0],g[1],g[2]],[0,1,0])),new Float32Array([-1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]));
+    gl.viewport(0,0,W,H);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);gl.disable(gl.CULL_FACE);gl.useProgram(prog);
+    gl.uniform3fv(U.uSun,V.norm([.35,.85,.4]));
+    // cielo en 2D (degradé hasta la altura del horizonte aproximada) y encima el 3D
+    const sg=ctx.createLinearGradient(0,0,0,h*.62);sg.addColorStop(0,S.sc.sky[0]);sg.addColorStop(1,S.sc.sky[1]);ctx.fillStyle=sg;ctx.fillRect(0,0,w,h);
+    flush(m.M,VP,m.fog,.00012);flush(m.A,VP,m.fog,.00085);
+    ctx.drawImage(cv,0,0,w,h);
+    return true;
+  }catch(e){failed=e.message||String(e);note('falló: '+failed);return false;}
+}
+return {draw, ok:()=>!failed&&!lost, diag:()=>'Vista 3D del camino (WebGL): '+(failed?'DESACTIVADA — '+failed:(lost?'contexto perdido':(gl?'activa':'sin usar todavía')))+(msgs.length?' · '+msgs.join(' | '):''), reset:()=>{failed='';}};
+})();
 const VELO_GEOM={N:100, NEAR:0.8, GROW:0.012, wRoad:4.2};
 let veloDrawErrLogged=false;
 
@@ -3652,7 +3870,7 @@ function glVeloDraw(c2d,ctx,w,h,st){
   const sels=[$("glVeloSel"),$("repGlSel")].filter(Boolean), cur=glVeloSetting();
   sels.forEach(s=>{ s.value=cur; s.onchange=()=>{ try{ localStorage.setItem(GL_KEY,s.value); }catch(e){ log("No pude guardar la opción de gráficos: "+e.message,"#f85149"); }
     sels.forEach(o=>{ o.value=s.value; }); GLV.reset(); }; });
-  const b=$("glDiagBtn"); if(b) b.onclick=async()=>{ const t=GLV.diag(), pre=$("glDiagTx"); pre.textContent=t; pre.style.display="block";
+  const b=$("glDiagBtn"); if(b) b.onclick=async()=>{ const t=GLV.diag()+"\n"+GLR.diag(), pre=$("glDiagTx"); pre.textContent=t; pre.style.display="block";
     try{ await navigator.clipboard.writeText(t); log("Diagnóstico de la vista 3D copiado","#3fb950"); }catch(e){ log("No pude copiar al portapapeles; el texto quedó a la vista","#f0883e"); } };
 })();
 
