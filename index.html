@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v188</title>
+<title>Bici Indoor · v189</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -96,7 +96,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v188</h1>
+  <h1>Bici Indoor · v189</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -744,6 +744,9 @@ function bigPersist(k,v){
     tx.onerror=tx.onabort=()=>{ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+((tx.error&&tx.error.message)||"error"),"#f85149"); } };
   }catch(e){ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+e.message,"#f85149"); } }
 }
+// v189: el clima real (`WX`, solo en tu recorrido en vivo con el clima prendido) en la vista WebGL: nubes que derivan con el viento y velo gris (`wxCielo`), niebla más densa con lluvia
+// y nubes (se pierden los cerros), asfalto y suelo mojados (más oscuros), árboles que se mecen para donde sopla, con ráfagas; la lluvia, las rachas y la flecha del viento siguen siendo
+// la capa 2D de siempre (`wxAire`, `wxFlecha`) encima de todo. Pedido de Hugo: "vamos con el clima y luego el ciclista".
 // v188: Hugo: "sigue habiendo movimiento de rampa o escalera del ciclista, en camino de tierra o normal; y los polígonos de las montañas van cambiando de tono de grises a cada momento".
 // (1) La altura del perfil llega escalonada (se muestrea cada varios metros): `traza()` ahora muestrea la altura cruda cada 4 m y la suaviza con un núcleo triangular de ±28 m (el rumbo, ±16 m),
 // y la altura entre muestras se interpola con Catmull-Rom: los quiebres de pendiente de la cámara bajan unas 9 veces en una prueba con escalones. (2) Los cerros se repartían en 70 columnas
@@ -1696,9 +1699,9 @@ function sceneEditSegsNormalized(){
   return segs; }
 // v185: lo que necesita GLR de la ruta: suelo y horizonte de Rumbo + los costados reales (`land`: casas, veredas, árboles, faroles)
 function glRutaExtra(name,sc){ const rx=routeExtra(name), land=realLandOn(); let LD=null;
-  luzCuadro(0,400,(wxActivo()&&name===fname&&state!=="idle")?WX:null); const luz={az:LUZ.az,k:sc.decor==="stands"&&parseInt(sc.sky[0].slice(1,3),16)<60?LUZ.k*0.2:LUZ.k};
+  const Wv=(wxActivo()&&name===fname&&state!=="idle")?WX:null; luzCuadro(0,400,Wv); const luz={az:LUZ.az,k:sc.decor==="stands"&&parseInt(sc.sky[0].slice(1,3),16)<60?LUZ.k*0.2:LUZ.k};
   if(land){ const LB=landDeRuta(name,rx&&rx.land); if(LB) LD=Object.assign({},LB,{map:dd=>mirrorD(name,dd)}); }
-  return {luz, land:LD, gs:land&&rx&&rx.ground?(dd=>groundSides(rx,Math.max(0,dd),sc)):null, hz:land&&rx&&rx.hz?rx.hz:null, infra:rx&&rx.infra&&rx.infra.length?(dd=>infraEn(name,Math.max(0,dd))):null}; }
+  return {luz, wx:Wv?{W:Wv,t:performance.now()/1000}:null, land:LD, gs:land&&rx&&rx.ground?(dd=>groundSides(rx,Math.max(0,dd),sc)):null, hz:land&&rx&&rx.hz?rx.hz:null, infra:rx&&rx.infra&&rx.infra.length?(dd=>infraEn(name,Math.max(0,dd))):null}; }
 function drawScenePreview(){
   const cv=$("scenePrev"); if(!cv||!sceneRouteGeo) return;
   const r=fit(cv); if(!r||r.w<10) return; const {ctx,w,h}=r;
@@ -1709,7 +1712,7 @@ function drawScenePreview(){
     let glOk=false;
     if(glRutaOn()){ const ex=glRutaExtra(sceneEditRoute,sc);
       glOk=GLR.draw(ctx,w,h,{key:sceneEditRoute+"|"+(sceneRouteGeo._glk||(sceneRouteGeo._glk=Math.random().toString(36).slice(2))),d,bFn:dd=>bearingRoute(sceneRouteGeo,dd),eFn:dd=>sceneEleAt(dd),sc,crank:scenePrevCrank,
-        gs:ex.gs, hz:ex.hz, land:ex.land, infra:ex.infra, luz:ex.luz});
+        gs:ex.gs, hz:ex.hz, land:ex.land, infra:ex.infra, luz:ex.luz, wx:ex.wx});
       if($("sceneGlInfo")) $("sceneGlInfo").textContent=glOk?"":(GLR.ok()?"":"WebGL no disponible acá: se ve la vista de siempre. "+GLR.diag()); }
     if(!glOk){
       roadBands(ctx,w,h,d,dd=>bearingRoute(sceneRouteGeo,dd),dd=>sceneEleAt(dd),sceneEditRoute);
@@ -3239,7 +3242,7 @@ function drawRoad(){
     const gNow=ghost?ghostDistAt(elapsed+idt):0;
     if(!ghost&&mode==="gpx"&&points.length&&glRutaOn()&&!glVivoFalla){   // v185: vista en vivo en WebGL (con el fantasma sigue la vista 2D)
       const sc=sceneAt(fname,dNow), ex=glRutaExtra(fname,sc);
-      if(GLR.draw(ctx,w,h,{key:"v|"+fname+"|"+total,d:dNow,bFn:bearingAt,eFn:eleAt,sc,crank:roadCrank,gs:ex.gs,hz:ex.hz,land:ex.land,infra:ex.infra,luz:ex.luz})){
+      if(GLR.draw(ctx,w,h,{key:"v|"+fname+"|"+total,d:dNow,bFn:bearingAt,eFn:eleAt,sc,crank:roadCrank,gs:ex.gs,hz:ex.hz,land:ex.land,infra:ex.infra,luz:ex.luz,wx:ex.wx})){
         if(wxActivo()&&wxRelAhora){ const hz=Math.round(h*0.44); wxAire(ctx,w,h,hz,WX,wxRelAhora,performance.now()/1000,v); wxFlecha(ctx,w-36,36,WX,wxRelAhora); }
         roadDrawErrLogged=false; return; }
       if(!GLR.ok()) glVivoFalla=true; }
@@ -3314,7 +3317,7 @@ function obox(B,c,X,Y,Z,sx,sy,sz,k){ // caja orientada, ejes unitarios, tamaño 
   const p=(a,b,d)=>[c[0]+X[0]*a*sx/2+Y[0]*b*sy/2+Z[0]*d*sz/2,c[1]+X[1]*a*sx/2+Y[1]*b*sy/2+Z[1]*d*sz/2,c[2]+X[2]*a*sx/2+Y[2]*b*sy/2+Z[2]*d*sz/2];
   const v=[p(-1,-1,-1),p(1,-1,-1),p(1,1,-1),p(-1,1,-1),p(-1,-1,1),p(1,-1,1),p(1,1,1),p(-1,1,1)];
   for(const f of [[0,1,2,3],[5,4,7,6],[4,0,3,7],[1,5,6,2],[3,2,6,7],[4,5,1,0]])quad(B,v[f[0]],v[f[1]],v[f[2]],v[f[3]],k,0,c);}
-function cone(B,x,y,z,r,h,k,seg){seg=seg||7;const top=[x,y+h,z];for(let i=0;i<seg;i++){const a0=i/seg*6.2832,a1=(i+1)/seg*6.2832;
+function cone(B,x,y,z,r,h,k,seg,tx,tz){seg=seg||7;const top=[x+(tx||0),y+h,z+(tz||0)];for(let i=0;i<seg;i++){const a0=i/seg*6.2832,a1=(i+1)/seg*6.2832;
   tri(B,[x+Math.cos(a0)*r,y,z+Math.sin(a0)*r],[x+Math.cos(a1)*r,y,z+Math.sin(a1)*r],top,k,0,[x,y+h*.3,z]);}}
 /* ---- WebGL ---- */
 function sh(t,s){const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))throw new Error('shader: '+gl.getShaderInfoLog(o));return o;}
@@ -3371,7 +3374,12 @@ function mundo(S){
   const C=atD(d), Cx=C.x, Cz=C.z; for(let i=0;i<N;i++){px[i]-=C.x;pz[i]-=C.z;ys[i]-=C.y;}      // todo relativo a la cámara
   const P=(i,o,dy)=>[px[i]+rx[i]*o,ys[i]+(dy||0),pz[i]+rz[i]*o];
   const at=(s)=>{ const a=atD(d+s); return {x:a.x,y:a.y,z:a.z,rx:Math.cos(a.b),rz:-Math.sin(a.b),b:a.b}; };
-  const skyA=col(sc.sky[0]), skyB=col(sc.sky[1]), gcol=col(sc.ground), asf=col(sc.asphalt);
+  /* v189: clima (solo en tu recorrido en vivo con el clima prendido; S.wx={W,t}): nubes y velo gris en el cielo, niebla más densa con lluvia y nubes, asfalto y suelo mojados (más oscuros),
+     y los árboles se mecen con el viento (la copa se corre para donde sopla, con ráfagas) */
+  const W=S.wx&&S.wx.W||null, TW=S.wx?S.wx.t:0, wet=!!(W&&W.lluvia>0), gris=W?Math.min(.62,(W.nubes||0)/100*.42+(wet?.18+Math.min(.15,W.lluvia*.03):0)):0;
+  const wDir=W?(W.dir+180)*Math.PI/180:0, wAmp=W?Math.min(1,(W.v||0)/11):0;
+  const sway=(x,z,hh,fr)=>{ if(!wAmp)return [0,0]; const ph=x*.37+z*.21, g=.65+.35*Math.sin(TW*1.9+ph)+.25*Math.sin(TW*.7+ph*1.7), a=wAmp*g*hh*.07*fr; return [Math.sin(wDir)*a,Math.cos(wDir)*a]; };
+  const skyA=col(sc.sky[0]), skyB=mix(col(sc.sky[1]),[.5,.54,.58],gris*.8), gcol=tone(col(sc.ground),wet?.86:1), asf=tone(col(sc.asphalt),wet?.8:1);
   const lT=sc.wallSide==='left'?'wall':(sc.waterSide==='left'?'water':(sc.wallSide==='right'?'valley':'normal'));
   const rT=sc.wallSide==='right'?'wall':(sc.waterSide==='right'?'water':(sc.wallSide==='left'?'valley':'normal'));
   const WL=(typeof WATER_LOOK!=='undefined'&&WATER_LOOK[sc.waterKind||'mar'])||{mid:'#2d7ea8',top:'#7fc4e0'}, wcol=col(WL.mid), wnear=col(WL.top||WL.mid);
@@ -3492,12 +3500,12 @@ function mundo(S){
      Es la misma lógica que `landDecorFranja` (2D), pero con cajas 3D sobre el terreno. */
   function landGL(){
     const STEP=12.5, sur=!!LDm.sur, SKIP=s=>{ const T=s<0?lT:rT; return T!=='normal'; };
-    const arbol=(x,y,z,hh,tipo,r)=>{ const trunk=[.30,.21,.14]; shTree(x,z,hh);
-      if(tipo==='lenga'){ const leaf=mix([.20,.40,.16],[.78,.45,.14],r<.3?.8:r*.3); obox(A,[x,y+hh*.15,z],[1,0,0],[0,1,0],[0,0,1],.3,hh*.3,.3,trunk); cone(A,x,y+hh*.25,z,hh*.3,hh*.75,leaf,7); return; }
+    const arbol=(x,y,z,hh,tipo,r)=>{ const trunk=[.30,.21,.14]; shTree(x,z,hh); const [wx1,wz1]=sway(x,z,hh,.8), [wx2,wz2]=sway(x,z,hh,1), [wx0,wz0]=sway(x,z,hh,.5);
+      if(tipo==='lenga'){ const leaf=mix([.20,.40,.16],[.78,.45,.14],r<.3?.8:r*.3); obox(A,[x,y+hh*.15,z],[1,0,0],[0,1,0],[0,0,1],.3,hh*.3,.3,trunk); cone(A,x,y+hh*.25,z,hh*.3,hh*.75,leaf,7,wx2,wz2); return; }
       if(tipo==='pino'){ const leaf=mix([.1,.3,.16],[.18,.42,.2],r); obox(A,[x,y+hh*.1,z],[1,0,0],[0,1,0],[0,0,1],.3,hh*.2,.3,trunk);
-        cone(A,x,y+hh*.12,z,hh*.2,hh*.5,leaf,7); cone(A,x,y+hh*.4,z,hh*.16,hh*.42,tone(leaf,1.08),7); cone(A,x,y+hh*.62,z,hh*.11,hh*.38,tone(leaf,1.14),7); return; }
+        cone(A,x,y+hh*.12,z,hh*.2,hh*.5,leaf,7,wx0,wz0); cone(A,x+wx0*.6,y+hh*.4,z+wz0*.6,hh*.16,hh*.42,tone(leaf,1.08),7,wx1-wx0*.6,wz1-wz0*.6); cone(A,x+wx1*.7,y+hh*.62,z+wz1*.7,hh*.11,hh*.38,tone(leaf,1.14),7,wx2-wx1*.7,wz2-wz1*.7); return; }
       const leaf=mix([.15,.4,.18],[.3,.52,.2],r); obox(A,[x,y+hh*.22,z],[1,0,0],[0,1,0],[0,0,1],.35,hh*.44,.35,trunk);
-      cone(A,x,y+hh*.3,z,hh*.34,hh*.4,leaf,8); cone(A,x,y+hh*.55,z,hh*.26,hh*.38,tone(leaf,1.08),8); };
+      cone(A,x,y+hh*.3,z,hh*.34,hh*.4,leaf,8,wx0,wz0); cone(A,x+wx0*.7,y+hh*.55,z+wz0*.7,hh*.26,hh*.38,tone(leaf,1.08),8,wx1-wx0*.7,wz1-wz0*.7); };
     const gYat=(x,z)=>gT(x,z,0).p[1];
     for(let kc=Math.floor((d-12)/STEP);kc<=Math.floor((d+340)/STEP);kc++){
       const dd=kc*STEP, s0=dd-d; if(s0<-10||s0>340) continue;
@@ -3561,7 +3569,7 @@ function mundo(S){
         const trunk=[.30,.21,.14], leaf=dec==='nieve'?mix([.2,.4,.28],[.92,.95,.97],.55+h3*.3):(dec==='lengas'?mix([.20,.40,.16],[.78,.45,.14],h3<.25?.8:h3*.3):mix([.13,.36,.18],[.22,.5,.2],h3));
         if(dec==='estepa'){cone(A,x,y,z,r*1.4,hh,mix([.55,.5,.28],[.45,.45,.25],h3),6);continue;}
         shTree(x,z,hh); obox(A,[x,y+hh*.12,z],[1,0,0],[0,1,0],[0,0,1],.35,hh*.25,.35,trunk);
-        cone(A,x,y+hh*.18,z,r*1.15,hh*.55,leaf,7);cone(A,x,y+hh*.5,z,r*.85,hh*.5,tone(leaf,1.08),7);
+        { const [a1,b1]=sway(x,z,hh,.5), [a2,b2]=sway(x,z,hh,1); cone(A,x,y+hh*.18,z,r*1.15,hh*.55,leaf,7,a1,b1);cone(A,x+a1*.7,y+hh*.5,z+b1*.7,r*.85,hh*.5,tone(leaf,1.08),7,a2-a1*.7,b2-b1*.7); }
       }else if(dec==='casas'||dec==='buildings'){
         const hh=dec==='buildings'?7+h3*18:3.2+h3*2.6, ww=dec==='buildings'?8+h2*5:6+h2*3, fx=[Math.sin(w.b),0,Math.cos(w.b)], rr=[w.rx,0,w.rz];
         const pal=dec==='buildings'?[[.36,.4,.44],[.3,.33,.37]]:[[.85,.35,.3],[.9,.75,.35],[.35,.6,.75],[.88,.85,.78],[.45,.68,.45]];
@@ -3624,7 +3632,7 @@ function mundo(S){
   obox(A,at3(0,1.53,.0),r,up,f,.2,.1,.24,helm);        // casco
   for(const sg of [-1,1])obox(A,at3(sg*.21,1.1,.22),r,up,f,.09,.09,.5,jer);     // brazos
   obox(A,at3(0,1.0,.42),r,up,f,.46,.04,.04,dark);      // manubrio
-  const iC=Math.max(0,Math.min(N-1,Math.round((d-Ds)/G))); return {A,M,R,Sh,sun:sunV,luzK:(S.luz?LZ.k:1)*(hayInf?(1-.65*IT[iC]):1),camB:C.b,cam:(()=>{const e0=at(-4.6),w=at(16),w2=at(34),gr=(w2.y-e0.y)/38.6, ey=e0.y+2.15; return {eye:[e0.x,ey,e0.z],tgt:[w.x,ey+20.6*gr*.85-.5,w.z]};})(),fog:skyB,skyA,skyB};
+  const iC=Math.max(0,Math.min(N-1,Math.round((d-Ds)/G))); return {A,M,R,Sh,sun:sunV,luzK:(S.luz?LZ.k:1)*(hayInf?(1-.65*IT[iC]):1),camB:C.b,cam:(()=>{const e0=at(-4.6),w=at(16),w2=at(34),gr=(w2.y-e0.y)/38.6, ey=e0.y+2.15; return {eye:[e0.x,ey,e0.z],tgt:[w.x,ey+20.6*gr*.85-.5,w.z]};})(),fog:skyB,skyA,skyB,fogK:W?1+(wet?1.6+Math.min(2,W.lluvia*.5):0)+(W.nubes||0)/100*.35:1,W,TW};
 }
 function draw(ctx,w,h,S){
   if(failed)return false;
@@ -3640,9 +3648,10 @@ function draw(ctx,w,h,S){
     // cielo en 2D (degradé hasta la altura del horizonte aproximada) y encima el 3D
     const sg=ctx.createLinearGradient(0,0,0,h*.62);sg.addColorStop(0,S.sc.sky[0]);sg.addColorStop(1,S.sc.sky[1]);ctx.fillStyle=sg;ctx.fillRect(0,0,w,h);
     if(typeof luzSol==='function'&&S.luz&&S.luz.k>.3){ const sv=LUZ.k; LUZ.k=S.luz.k; try{luzSol(ctx,w,h*.46,m.camB,h*1.03);}catch(_){} LUZ.k=sv; }
-    flush(m.M,VP,m.fog,.00012);flush(m.A,VP,m.fog,.00085);
-    gl.enable(gl.POLYGON_OFFSET_FILL);gl.polygonOffset(-2,-60);flush(m.R,VP,m.fog,.00085);
-    if(m.Sh.length&&m.luzK>.1){gl.polygonOffset(-5,-150);gl.enable(gl.BLEND);gl.blendFuncSeparate(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA,gl.ZERO,gl.ONE);gl.depthMask(false);gl.uniform1f(U.uAl,.34*m.luzK);flush(m.Sh,VP,m.fog,.00085);gl.depthMask(true);gl.disable(gl.BLEND);gl.uniform1f(U.uAl,1);}
+    if(m.W&&typeof wxCielo==='function'){ try{ wxCielo(ctx,w,h*.6,m.W,m.camB,m.TW,h*1.03); }catch(_){} }
+    flush(m.M,VP,m.fog,.00012*m.fogK);flush(m.A,VP,m.fog,.00085*m.fogK);
+    gl.enable(gl.POLYGON_OFFSET_FILL);gl.polygonOffset(-2,-60);flush(m.R,VP,m.fog,.00085*m.fogK);
+    if(m.Sh.length&&m.luzK>.1){gl.polygonOffset(-5,-150);gl.enable(gl.BLEND);gl.blendFuncSeparate(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA,gl.ZERO,gl.ONE);gl.depthMask(false);gl.uniform1f(U.uAl,.34*m.luzK);flush(m.Sh,VP,m.fog,.00085*m.fogK);gl.depthMask(true);gl.disable(gl.BLEND);gl.uniform1f(U.uAl,1);}
     gl.disable(gl.POLYGON_OFFSET_FILL);
     ctx.drawImage(cv,0,0,w,h);
     return true;
