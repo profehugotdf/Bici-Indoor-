@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v194</title>
+<title>Bici Indoor · v195</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -96,7 +96,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v194</h1>
+  <h1>Bici Indoor · v195</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -394,15 +394,24 @@
         <div id="sceneGlInfo" style="color:var(--dim);font-size:12px;margin:2px 0 0 24px"></div>
         <div style="display:flex;align-items:center;gap:8px;margin:6px 0 10px">
           <button id="scenePrevPlay" style="min-height:36px;padding:6px 12px;font-size:13px">▶ Recorrer desde acá</button>
-          <span id="scenePrevInfo" style="font-size:12px;color:var(--dim);flex:1">Vista previa con lo que estás editando (sin guardar). Deslizá por el perfil o el mapa para elegir el punto.</span>
+          <span id="scenePrevInfo" style="font-size:12px;color:var(--dim);flex:1">Vista previa con lo que estás editando (sin guardar). Elegí el punto en la franja de colores, el perfil o el mapa.</span>
         </div>
       </div>
-      <canvas id="sceneStrip" height="26" style="width:100%;display:block;border-radius:6px;margin-bottom:10px"></canvas>
+      <canvas id="sceneStrip" height="34" style="width:100%;display:block;border-radius:6px;margin-bottom:6px;touch-action:none"></canvas>
+      <div id="sceneTramo" style="margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span id="sceneTramoInfo" style="font-size:13px;flex:1;min-width:150px"></span>
+          <button id="sceneCut" style="min-height:40px;padding:6px 12px;font-size:14px">✂️ Cortar acá</button>
+          <button id="sceneJoin" style="min-height:40px;padding:6px 10px;font-size:13px">🔗 Unir con el anterior</button>
+        </div>
+        <div id="sceneCards" style="display:flex;gap:8px;overflow-x:auto;padding:8px 0 4px;-webkit-overflow-scrolling:touch"></div>
+        <details id="sceneMas" style="margin-top:4px"><summary style="font-size:13px;color:var(--dim);cursor:pointer;padding:4px 0">⚙️ Más: agua, pared y costados de este tramo</summary><div id="sceneMasBody"></div></details>
+      </div>
 
       <canvas id="sceneProf" height="130" style="width:100%;display:block;border-radius:8px;background:#0a0d12"></canvas>
       <canvas id="sceneMapCv" height="150" style="width:100%;display:block;border-radius:8px;background:#0a0d12;margin-top:6px"></canvas>
       <label style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:13px"><input type="checkbox" id="sceneSat" style="width:20px;height:20px"> 🛰️ Foto satelital de fondo <span id="sceneSatInfo" style="color:var(--dim);font-size:11px"></span></label>
-      <div id="sceneReadout" style="color:var(--dim);font-size:12px;margin-top:4px">Deslizá el dedo por el perfil o el mapa para ubicar un punto.</div>
+      <div id="sceneReadout" style="color:var(--dim);font-size:12px;margin-top:4px">Elegí un punto en la franja de colores, el perfil o el mapa: ahí podés cortar el tramo y cambiarle el escenario.</div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
         <span style="font-size:12px;color:var(--dim)">Zoom</span>
         <input type="number" id="sceneZoomFrom" step="0.1" style="width:64px"> <span style="font-size:12px;color:var(--dim)">a</span>
@@ -410,8 +419,10 @@
         <button id="sceneZoomAll" style="min-height:36px;padding:6px 12px;font-size:13px">Ver todo</button>
       </div>
 
-      <div id="sceneRows" style="margin-top:12px"></div>
+      <details id="sceneLista" style="margin-top:12px"><summary style="font-size:13px;color:var(--dim);cursor:pointer;padding:4px 0">📋 Lista de tramos con los km exactos</summary>
+      <div id="sceneRows"></div>
       <button class="full" id="sceneAddBtn" style="margin-top:8px">+ Agregar tramo</button>
+      </details>
 
       <div style="border-top:1px solid var(--line);margin-top:16px;padding-top:12px">
         <div style="font-weight:600;margin-bottom:4px">Puentes / rampas manuales (opcional)</div>
@@ -745,6 +756,7 @@ function bigPersist(k,v){
     tx.onerror=tx.onabort=()=>{ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+((tx.error&&tx.error.message)||"error"),"#f85149"); } };
   }catch(e){ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+e.message,"#f85149"); } }
 }
+// v195: ✂️ editar los tramos del escenario mirando (Hugo, 17-nov: "¿se te ocurre alguna forma más intuitiva para editar los tramos?"; antes había que saber el km de memoria y tocar varios desplegables por tramo). El punto que se elige en la franja de colores (ahora se toca o se arrastra), el perfil o el plano es el cursor: "✂️ Cortar acá" parte el tramo en ese km (el nuevo copia el escenario, agua, pared y costados del que partió) y "🔗 Unir con el anterior" borra el corte. El escenario del tramo del cursor se elige tocando una tarjeta con dibujito (fila que se desliza de costado, sceneThumb); agua, pared y costados quedan plegados en "⚙️ Más" (los mismos controles que la lista, sceneRowExtras). La lista con km exactos sigue, plegada abajo. En ida y vuelta, un punto de la vuelta edita el km espejado de la ida. No cambia cómo se guarda (bici_scenes).
 // v194: 🌳 escenario "Yungas (selva de montaña)" en el editor (Hugo, 17-nov: "¿podría representar la vegetación tipo Yungas?"): decor yungas. WebGL: selva densa con árboles altos de copa ancha e irregular en varios bultos (algunos de corteza clara, como la tipa), helechos arborescentes, sotobosque y matas al borde de la banquina, y copas grandes atrás; más bruma (sc.bruma = 2,2, multiplica la niebla). 2D: landArbol con tipos yunga, helecho y mata (bloque land: copiar a Correr). Con `cost` de Rumbo las plantas van sobre la ladera real y solo donde la foto es verde.
 // v193: 🏞️ terreno REAL a los costados en la vista WebGL (Hugo, 17-nov, Ixtapa–Zihuatanejo: "no se parece al recorrido": pared de roca pelada y agua donde hay ladera de selva). Rumbo manda `cost` (cada 25 m, 7 alturas por lado y colores cerca/lejos de la foto satelital); costEn lo da en el sentido de la marcha (vuelta espejada) y GLR lo usa en vez de la pared/valle/agua del escenario: ladera y barranca reales (×1,3), colores de la foto, agua solo al nivel del mar con color de agua, árboles sobre la ladera y solo donde la foto es verde, banquina con el color del costado. Hay que volver a mandar la ruta desde Rumbo.
 // v192: 🛰️ foto satelital de fondo en el plano del Escenario de la ruta (Hugo, 17-nov): teselas Esri, primero de lo que Rumbo ya bajó (IndexedDB rumbo/tiles, sin crearla nunca), si no de internet; tilde bici_mapa_sat (prendido); la línea de pendientes lleva borde oscuro.
@@ -1737,7 +1749,7 @@ function scenePrevLoop(ts){
     sceneScrubKm=(sceneScrubKm||0)+SCENE_PREV_SPEED*dt/1000;
     scenePrevCrank+=2*Math.PI*(85/60)*dt;
     if(sceneScrubKm*1000>=sceneEditTotal-1){ sceneScrubKm=(sceneEditTotal-1)/1000; scenePrevPlaying=false; $("scenePrevPlay").textContent="▶ Recorrer desde acá"; }
-    if(scenePrevFrame++%12===0){ drawSceneProfile(); drawSceneMap(); updateSceneReadout(); }
+    if(scenePrevFrame++%12===0){ drawSceneStrip(); updateSceneReadout(); renderSceneTramo(); }
   }
   drawScenePreview();
   scenePrevRAF=requestAnimationFrame(scenePrevLoop);
@@ -1795,13 +1807,96 @@ function renderSceneRows(){
     const kmU=document.createElement("span"); kmU.style.cssText="font-size:13px;color:var(--dim)"; kmU.textContent="km";
     const sel=document.createElement("select"); sel.style.flex="1";
     for(const key in SCENES){ const o=document.createElement("option"); o.value=key; o.textContent=SCENES[key].label; if(key===row.scene)o.selected=true; sel.appendChild(o); }
-    sel.onchange=()=>{ row.scene=sel.value; drawSceneStrip();
+    sel.onchange=()=>{ row.scene=sel.value; drawSceneStrip(); renderSceneTramo(true);
       const dw=(SCENES[sel.value]||{}).defaultWall; if(dw&&!row.wall){ row.wall=dw; renderSceneRows(); } };
     div.appendChild(lbl);div.appendChild(km);div.appendChild(kmU);div.appendChild(sel);
     if(i>0){ const del=document.createElement("button"); del.className="del"; del.textContent="✕"; del.style.minHeight="36px";
       del.onclick=()=>{ sceneEditRows.splice(i,1); renderSceneRows(); drawSceneStrip(); };
       div.appendChild(del); }
     block.appendChild(div);
+    block.appendChild(sceneRowExtras(row));
+    wrap.appendChild(block);
+  });
+  drawSceneStrip(); renderSceneTramo(true);
+}
+// ---------- v195: editar el tramo donde está el cursor ----------
+const SCENE_ICON={rural:"🌾",urbana:"🏙️",cornisa:"🪨",mar:"🌊",bosque:"🌲",canal:"⛵",montana:"🏔️",ciudad:"🏘️",yungas:"🌿",estepa:"🐑",velodromo:"🏟️",velodromo_open:"🚴"};
+// km de la ida que corresponde al cursor (en ida y vuelta, un punto de la vuelta es el km espejado de la ida)
+function sceneCursorIdaKm(){ if(sceneScrubKm==null) return null; let km=sceneScrubKm;
+  if(sceneEditOutBack){ const tp=turnPointFor(sceneEditRoute); if(tp&&tp.total>tp.turn&&km*1000>tp.turn){ const fr=Math.min(1,(km*1000-tp.turn)/(tp.total-tp.turn)); km=tp.turn*(1-fr)/1000; } }
+  return km; }
+function sceneEnVuelta(){ if(!sceneEditOutBack||sceneScrubKm==null) return false; const tp=turnPointFor(sceneEditRoute); return !!(tp&&tp.total>tp.turn&&sceneScrubKm*1000>tp.turn); }
+function sceneTramoIdx(){ sceneEditRows.sort((a,b)=>a.km-b.km); const km=sceneCursorIdaKm(); if(km==null||!sceneEditRows.length) return -1;
+  let i=0; for(let k=0;k<sceneEditRows.length;k++){ if(sceneEditRows[k].km<=km+0.006) i=k; else break; } return i; }   // los cortes se guardan redondeados a 0,01 km
+function sceneTramoFin(i){ const tp=sceneEditOutBack?turnPointFor(sceneEditRoute):null;
+  return i+1<sceneEditRows.length? sceneEditRows[i+1].km : (tp&&tp.total>tp.turn? tp.turn/1000 : sceneEditTotal/1000); }
+// dibujito de un escenario (para las tarjetas): cielo, cerros, suelo, camino y lo típico de cada uno
+function sceneThumb(cv,key){ const sc=SCENES[key]||SCENES.rural, ctx=cv.getContext("2d"), w=cv.width, h=cv.height, hy=h*0.5;
+  let g=ctx.createLinearGradient(0,0,0,hy); g.addColorStop(0,sc.sky[0]); g.addColorStop(1,sc.sky[1]); ctx.fillStyle=g; ctx.fillRect(0,0,w,hy+1);
+  const amp=Math.min(1,(sc.mtnAmp||1)/2), mtn=(col,a,ph,base)=>{ ctx.fillStyle=col; ctx.beginPath(); ctx.moveTo(0,hy);
+    for(let x=0;x<=w;x+=4){ ctx.lineTo(x,base-a*(0.55+0.45*Math.sin(x*0.09+ph)*Math.sin(x*0.031+ph*2))); } ctx.lineTo(w,hy); ctx.fill(); };
+  mtn(sc.mtnCol[1],h*0.34*amp+2,1.3,hy); mtn(sc.mtnCol[0],h*0.22*amp+2,4.1,hy);
+  if(sc.snow){ ctx.fillStyle="rgba(255,255,255,.75)"; for(let x=6;x<w;x+=17){ const y=hy-h*0.34*amp*(0.55+0.45*Math.sin(x*0.09+1.3)*Math.sin(x*0.031+2.6)); ctx.beginPath(); ctx.moveTo(x-5,y+5); ctx.lineTo(x,y); ctx.lineTo(x+5,y+5); ctx.fill(); } }
+  if(sc.bruma){ ctx.fillStyle="rgba(220,232,236,.35)"; ctx.fillRect(0,hy-h*0.2,w,h*0.2); }
+  ctx.fillStyle=sc.ground; ctx.fillRect(0,hy,w,h-hy);
+  const water=sc.decor==="waves"||sc.defaultWater;
+  if(water){ ctx.fillStyle="#3f86b5"; ctx.beginPath(); ctx.moveTo(0,hy); ctx.lineTo(w*0.42,hy); ctx.lineTo(w*0.12,h); ctx.lineTo(0,h); ctx.fill(); }
+  ctx.fillStyle=sc.asphalt; ctx.beginPath(); ctx.moveTo(w*0.47,hy); ctx.lineTo(w*0.53,hy); ctx.lineTo(w*0.8,h); ctx.lineTo(w*0.2,h); ctx.fill();
+  ctx.strokeStyle="rgba(255,255,255,.7)"; ctx.lineWidth=1; ctx.setLineDash([3,3]); ctx.beginPath(); ctx.moveTo(w*0.5,hy); ctx.lineTo(w*0.5,h); ctx.stroke(); ctx.setLineDash([]);
+  const D=sc.decor, tri=(x,y,s,c)=>{ ctx.fillStyle=c; ctx.beginPath(); ctx.moveTo(x,y-s); ctx.lineTo(x+s*0.45,y); ctx.lineTo(x-s*0.45,y); ctx.fill(); },
+    blob=(x,y,r,c)=>{ ctx.fillStyle=c; ctx.beginPath(); ctx.ellipse(x,y,r,r*0.75,0,0,7); ctx.fill(); };
+  const R=[[0.08,0.95,1],[0.27,0.66,0.6],[0.73,0.66,0.6],[0.92,0.95,1],[0.36,0.56,0.4],[0.64,0.56,0.4]];
+  if(key==="cornisa"){ ctx.fillStyle="#7d6d5d"; ctx.beginPath(); ctx.moveTo(w*0.75,hy-h*0.25); ctx.lineTo(w,hy-h*0.4); ctx.lineTo(w,h); ctx.lineTo(w*0.8,h); ctx.lineTo(w*0.55,hy); ctx.fill();
+    ctx.fillStyle="#5f5246"; ctx.beginPath(); ctx.moveTo(w*0.86,hy-h*0.15); ctx.lineTo(w,hy-h*0.2); ctx.lineTo(w,h); ctx.lineTo(w*0.9,h); ctx.fill();
+    ctx.fillStyle="#2c4058"; ctx.beginPath(); ctx.moveTo(0,hy+3); ctx.lineTo(w*0.44,hy); ctx.lineTo(w*0.2,h); ctx.lineTo(0,h); ctx.fill(); }
+  else if(D==="trees"||D==="lengas"){ for(const [fx,fy,k] of R) if(!(water&&fx<0.5)) tri(w*fx,h*fy,h*0.3*k,D==="lengas"?"#2f6b35":"#24502b"); }
+  else if(D==="yungas"){ for(const [fx,fy,k] of R){ ctx.fillStyle="#4a3a2a"; ctx.fillRect(w*fx-1,h*fy-h*0.2*k,2,h*0.2*k); blob(w*fx,h*fy-h*0.24*k,h*0.13*k+2,"#1f5a2a"); blob(w*fx+h*0.08*k,h*fy-h*0.3*k,h*0.1*k+1,"#2c7034"); } }
+  else if(D==="nieve"){ for(const [fx,fy,k] of R) tri(w*fx,h*fy,h*0.26*k,"#e9f0f5"); }
+  else if(D==="buildings"){ for(const [fx,fy,k] of R){ const bw=h*0.2*k+3, bh=h*0.5*k+4; ctx.fillStyle="#6b7681"; ctx.fillRect(w*fx-bw/2,h*fy-bh,bw,bh); } }
+  else if(D==="casas"){ const C=["#d9534f","#f0ad4e","#5bc0de","#5cb85c","#9b59b6","#e67e22"]; R.forEach(([fx,fy,k],i)=>{ const bw=h*0.22*k+3, bh=h*0.2*k+3; ctx.fillStyle=C[i]; ctx.fillRect(w*fx-bw/2,h*fy-bh,bw,bh); ctx.fillStyle="#5a3b2e"; ctx.beginPath(); ctx.moveTo(w*fx-bw/2-1,h*fy-bh); ctx.lineTo(w*fx,h*fy-bh-bw*0.45); ctx.lineTo(w*fx+bw/2+1,h*fy-bh); ctx.fill(); }); }
+  else if(D==="rocks"){ for(const [fx,fy,k] of R) blob(w*fx,h*fy-2,h*0.08*k+2,"#7d7468"); }
+  else if(D==="estepa"){ ctx.strokeStyle="#5a4a32"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(w*0.7,hy+2); ctx.lineTo(w,h*0.8); ctx.moveTo(0,h*0.8); ctx.lineTo(w*0.3,hy+2); ctx.stroke();
+    for(const [fx,fy,k] of R) blob(w*fx,h*fy-2,h*0.05*k+1.5,"#b9a46a"); }
+  else if(D==="stands"){ ctx.fillStyle="#3a4350"; ctx.fillRect(0,hy-h*0.18,w,h*0.18); ctx.fillStyle="#8a6a3a"; for(let x=0;x<w;x+=5) ctx.fillRect(x,hy-h*0.16+(x%10?2:0),3,2); }
+  else if(D==="waves"){ ctx.strokeStyle="rgba(255,255,255,.6)"; for(let y=hy+4;y<h;y+=6){ ctx.beginPath(); ctx.moveTo(2,y); ctx.lineTo(w*0.42-(y-hy)*0.6,y); ctx.stroke(); } }
+}
+let sceneTramoRen=null;
+// arma el panel del tramo del cursor; con force (o si cambió el tramo) rehace las tarjetas y "⚙️ Más"
+function renderSceneTramo(force){
+  const info=$("sceneTramoInfo"); if(!info) return;
+  const i=sceneTramoIdx(), row=i>=0?sceneEditRows[i]:null;
+  const cut=$("sceneCut"), join=$("sceneJoin");
+  if(!row){ info.innerHTML="Tocá la franja de colores, el perfil o el mapa para elegir dónde."; cut.disabled=true; join.disabled=true; }
+  else { const sc=SCENES[row.scene]||SCENES.rural, ida=sceneCursorIdaKm();
+    info.innerHTML=`📍 Km <b>${sceneScrubKm.toFixed(2)}</b>${sceneEnVuelta()?" (vuelta = km "+ida.toFixed(2)+" de la ida)":""}<br>Tramo ${i+1} de ${sceneEditRows.length}: <b>${SCENE_ICON[row.scene]||""} ${sc.label}</b> · km ${(+row.km).toFixed(2)}–${sceneTramoFin(i).toFixed(2)}`;
+    const cerca=sceneEditRows.some(r=>Math.abs(r.km-ida)<0.05); cut.disabled=cerca||ida<0.05||ida>sceneTramoFin(sceneEditRows.length-1)-0.05;
+    join.disabled=i===0; }
+  const cards=$("sceneCards"), key=row?row.scene:null, sig=i+"|"+sceneEditRows.length;
+  if(force||!cards.childElementCount||sceneTramoRen!==sig){
+    if(!cards.childElementCount){ for(const k in SCENES){ const b=document.createElement("button"); b.type="button"; b.dataset.k=k;
+        b.style.cssText="flex:0 0 auto;width:96px;padding:4px;border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:3px;min-height:0";
+        const c=document.createElement("canvas"); c.width=88; c.height=56; c.style.cssText="width:88px;height:56px;border-radius:6px;display:block"; try{ sceneThumb(c,k); }catch(e){ console.warn(e); }
+        const t=document.createElement("span"); t.style.cssText="font-size:11px;line-height:1.15;white-space:normal;text-align:center"; t.textContent=SCENES[k].label;
+        b.appendChild(c); b.appendChild(t); b.onclick=()=>sceneElegir(k); cards.appendChild(b); } }
+    const body=$("sceneMasBody"); body.innerHTML="";
+    if(row) body.appendChild(sceneRowExtras(row,()=>{ renderSceneRows(); }));
+    else body.innerHTML='<div style="color:var(--dim);font-size:12px">Primero elegí un punto.</div>';
+    sceneTramoRen=sig; var centrar=true; }
+  cards.querySelectorAll("button").forEach(b=>{ const on=b.dataset.k===key; b.style.outline=on?"3px solid #ffd33d":"none"; b.style.background=on?"rgba(255,211,61,.15)":""; b.disabled=!row;
+    if(on&&centrar) cards.scrollLeft=Math.max(0,b.offsetLeft-cards.offsetLeft-(cards.clientWidth-b.offsetWidth)/2); });
+}
+function sceneElegir(k){ const i=sceneTramoIdx(); if(i<0) return; const row=sceneEditRows[i];
+  row.scene=k; const dw=(SCENES[k]||{}).defaultWall; if(dw&&!row.wall) row.wall=dw;
+  renderSceneRows(); }
+function sceneCortar(){ const i=sceneTramoIdx(); if(i<0) return; const km=+sceneCursorIdaKm().toFixed(2), row=sceneEditRows[i];
+  if(sceneEditRows.some(r=>Math.abs(r.km-km)<0.05)) return;
+  sceneEditRows.push(Object.assign({},row,{km})); renderSceneRows(); updateOutBackInfo(); }
+function sceneUnir(){ const i=sceneTramoIdx(); if(i<=0) return; sceneEditRows.splice(i,1); renderSceneRows(); updateOutBackInfo(); }
+function sceneStripScrub(ev){ if(!sceneEditTotal) return; const rect=$("sceneStrip").getBoundingClientRect();
+  const fr=Math.max(0,Math.min(1,((ev.touches?ev.touches[0].clientX:ev.clientX)-rect.left)/rect.width));
+  sceneScrubKm=Math.min(sceneEditTotal-1,fr*sceneEditTotal)/1000; drawSceneStrip(); updateSceneReadout(); renderSceneTramo(); }
+// v195: agua, pared y costados de un tramo (los usa la lista y "⚙️ Más" del tramo del cursor)
+function sceneRowExtras(row,onCh){ const frag=document.createElement("div"); const ch=()=>{ if(onCh) onCh(); };
     const waterRow=document.createElement("div");
     waterRow.style.cssText="display:flex;align-items:center;gap:8px;margin-top:6px";
     const wLbl=document.createElement("span"); wLbl.style.cssText="font-size:12px;color:var(--dim)"; wLbl.textContent="💧 Agua";
@@ -1813,7 +1908,7 @@ function renderSceneRows(){
     kSel.onchange=()=>{ row.waterKind=kSel.value; };
     wSel.onchange=()=>{ row.water=wSel.value||null; kSel.style.display=row.water?"":"none"; };
     waterRow.appendChild(wLbl); waterRow.appendChild(wSel); waterRow.appendChild(kSel);
-    block.appendChild(waterRow);
+    frag.appendChild(waterRow);
     const wallRow=document.createElement("div");
     wallRow.style.cssText="display:flex;align-items:center;gap:8px;margin-top:6px";
     const gLbl=document.createElement("span"); gLbl.style.cssText="font-size:12px;color:var(--dim)"; gLbl.textContent="🪨 Pared";
@@ -1821,17 +1916,15 @@ function renderSceneRows(){
     [["","Sin pared"],["auto","Automática (según el terreno)"],["left","A la izquierda"],["right","A la derecha"]].forEach(([v,t])=>{ const o=document.createElement("option"); o.value=v; o.textContent=t; if((row.wall||"")===v)o.selected=true; gSel.appendChild(o); });
     gSel.onchange=()=>{ row.wall=gSel.value||null; };
     wallRow.appendChild(gLbl); wallRow.appendChild(gSel);
-    block.appendChild(wallRow);
+    frag.appendChild(wallRow);
     // v172: qué hay a cada costado (casas, edificios, parque, campo, bosque), si no querés lo del mapa
     const ladoRow=document.createElement("div"); ladoRow.style.cssText="display:flex;align-items:center;gap:6px;margin-top:6px";
     const mk=(lbl,key)=>{ const l=document.createElement("span"); l.style.cssText="font-size:12px;color:var(--dim)"; l.textContent=lbl; const s=document.createElement("select"); s.style.flex="1"; s.style.minWidth="0";
       LAND_LADOS.forEach(([v,t])=>{ const o=document.createElement("option"); o.value=v; o.textContent=t; if((row[key]||"")===v)o.selected=true; s.appendChild(o); }); s.onchange=()=>{ row[key]=s.value; }; ladoRow.appendChild(l); ladoRow.appendChild(s); };
     mk("🏘️ Izq.","izq"); mk("Der.","der");
-    block.appendChild(ladoRow);
-    wrap.appendChild(block);
-  });
-  drawSceneStrip();
-}
+    frag.appendChild(ladoRow);
+  frag.querySelectorAll("select").forEach(el=>el.addEventListener("change",ch));
+  return frag; }
 function updateOutBackInfo(){
   const el=$("sceneOutBackInfo"); if(!el) return; const t=turnPointFor(sceneEditRoute);
   if(!t){ el.textContent=sceneEditOutBack?"Sin el trazado guardado no puedo ubicar el giro: se toma la mitad de la ruta.":""; return; }
@@ -1861,6 +1954,15 @@ function drawSceneStrip(){
     const zx0=w*(sceneZoomFromKm/totKm), zx1=w*(sceneZoomToKm/totKm);
     ctx.strokeStyle="#e6edf3"; ctx.lineWidth=2; ctx.strokeRect(zx0+1,1,Math.max(1,zx1-zx0-2),h-2);
   }
+  // v195: cortes, ícono de cada tramo (si entra), el tramo del cursor marcado y el cursor
+  const xtv=tp&&tp.total>tp.turn?w*(tp.turn/1000/totKm):w;
+  ctx.font="14px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+  for(let i=0;i<segs.length;i++){ const x0=w*(segs[i].km/totKm), x1=Math.min(xtv, i+1<segs.length? w*(segs[i+1].km/totKm) : w); if(x0>=xtv) break;
+    if(i>0){ ctx.fillStyle="rgba(4,18,28,.85)"; ctx.fillRect(x0-1,0,2,h); }
+    if(x1-x0>22){ ctx.fillText(SCENE_ICON[segs[i].scene]||"",(x0+x1)/2,h/2+1); } }
+  const ti=sceneTramoIdx(); if(ti>=0&&segs[ti]){ const x0=w*(segs[ti].km/totKm), x1=Math.min(xtv, ti+1<segs.length? w*(segs[ti+1].km/totKm) : w);
+    ctx.strokeStyle="#ffd33d"; ctx.lineWidth=3; ctx.strokeRect(x0+1.5,1.5,Math.max(2,x1-x0-3),h-3); }
+  if(sceneScrubKm!=null){ const x=w*(sceneScrubKm/totKm); ctx.fillStyle="#04121c"; ctx.fillRect(x-2.5,0,5,h); ctx.fillStyle="#fff"; ctx.fillRect(x-1,0,2,h); }
   drawSceneProfile(); drawSceneMap();
 }
 function sceneEleAt(d){ if(!sceneProfData)return 0; const i=Math.max(0,Math.min(sceneProfData.ele.length-1,Math.round(d/sceneProfData.step))); return sceneProfData.ele[i]; }
@@ -1982,7 +2084,7 @@ function drawSceneMap(){
     dot(X(proj),Y(proj),"#e6edf3",6); } }
 }
 function updateSceneReadout(){
-  if(sceneScrubKm==null){ $("sceneReadout").textContent="Deslizá el dedo por el perfil o el mapa para ubicar un punto."; return; }
+  if(sceneScrubKm==null){ $("sceneReadout").textContent="Elegí un punto en la franja de colores, el perfil o el mapa: ahí podés cortar el tramo y cambiarle el escenario."; return; }
   const d=sceneScrubKm*1000;
   $("sceneReadout").innerHTML=`Km <b>${sceneScrubKm.toFixed(2)}</b> · Alt <b>${sceneEleAt(d).toFixed(0)} m</b> · Pend <b>${sceneGradeAt(d).toFixed(1)}%</b>`;
 }
@@ -1992,7 +2094,7 @@ function sceneProfScrub(ev){
   const px=(ev.touches?ev.touches[0].clientX:ev.clientX)-rect.left;
   const frac=Math.max(0,Math.min(1,(px-8)/(rect.width-16)));
   sceneScrubKm=sceneZoomFromKm+frac*(sceneZoomToKm-sceneZoomFromKm);
-  drawSceneProfile(); drawSceneMap(); updateSceneReadout();
+  drawSceneStrip(); updateSceneReadout(); renderSceneTramo();
 }
 function sceneMapScrub(ev){
   if(!sceneRouteGeo)return;
@@ -2012,7 +2114,7 @@ function sceneMapScrub(ev){
   let best=i0,bd=Infinity;
   for(let i=i0;i<=i1;i++){ const dx=X(P[i])-sx, dy=Y(P[i])-sy, dd=dx*dx+dy*dy; if(dd<bd){bd=dd;best=i;} }
   sceneScrubKm=dist[best]/1000;
-  drawSceneProfile(); drawSceneMap(); updateSceneReadout();
+  drawSceneStrip(); updateSceneReadout(); renderSceneTramo();
 }
 function sceneZoomApply(){
   const totKm=sceneEditTotal/1000;
@@ -2057,6 +2159,9 @@ $("sceneZoomAll").onclick=()=>{ $("sceneZoomFrom").value="0"; $("sceneZoomTo").v
 $("sceneProf").addEventListener("pointerdown",sceneProfScrub);
 $("sceneProf").addEventListener("pointermove",e=>{ if(e.pressure>0||e.buttons)sceneProfScrub(e); });
 $("sceneMapCv").addEventListener("pointerdown",sceneMapScrub);
+$("sceneStrip").addEventListener("pointerdown",sceneStripScrub);
+$("sceneStrip").addEventListener("pointermove",e=>{ if(e.pressure>0||e.buttons)sceneStripScrub(e); });
+$("sceneCut").onclick=sceneCortar; $("sceneJoin").onclick=sceneUnir;
 $("sceneMapCv").addEventListener("pointermove",e=>{ if(e.pressure>0||e.buttons)sceneMapScrub(e); });
 $("sceneEditBtn").onclick=()=>openSceneEditor(fname,total,"gpx");
 $("sceneAddBtn").onclick=()=>{
@@ -6743,7 +6848,7 @@ $("fitRestart").onclick=()=>{ fitPoints=[]; fitDrawCanvas(); updateFitPrompt(); 
 $("routesBack").onclick=()=>{ $("routesCard").classList.add("hidden"); $("setup").classList.remove("hidden"); refreshStart(); scrollTop(); };
 $("routesToHistBtn").onclick=()=>{ $("routesCard").classList.add("hidden"); $("historial").classList.remove("hidden"); setSelMode(false); renderHistorial(); scrollTop(); };
 $("sRecovBtn").onclick=()=>{ if(recov){ recov.keep=true; $("sRecovBtn").classList.add("hidden"); $("sRecovMsg").textContent="Se va a guardar al completar los 2 minutos (no entra en la tendencia si no llega al 85% de tu FC máx). Quedate quieto."; } };
-$("sceneOutBack").onchange=()=>{ sceneEditOutBack=$("sceneOutBack").checked; updateOutBackInfo(); drawSceneStrip(); };
+$("sceneOutBack").onchange=()=>{ sceneEditOutBack=$("sceneOutBack").checked; updateOutBackInfo(); drawSceneStrip(); renderSceneTramo(true); };
 $("scenePrevPlay").onclick=()=>{ scenePrevPlaying=!scenePrevPlaying; $("scenePrevPlay").textContent=scenePrevPlaying?"⏸ Pausar":"▶ Recorrer desde acá"; };
 $("manualAddBtn").onclick=()=>{
   $("manualAddPanel").classList.remove("hidden");
