@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v183</title>
+<title>Bici Indoor · v184</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -96,7 +96,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v183</h1>
+  <h1>Bici Indoor · v184</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -744,6 +744,10 @@ function bigPersist(k,v){
     tx.onerror=tx.onabort=()=>{ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+((tx.error&&tx.error.message)||"error"),"#f85149"); } };
   }catch(e){ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+e.message,"#f85149"); } }
 }
+// v184: el retorno (km 4,29-4,42, "sigue el problema en el retome") seguía tapado: el suelo se dibujaba en franjas desde cada tramo del camino y, en un lazo o
+// un cambio de sentido, las franjas de un tramo caían sobre la calzada de otro (a otra altura). Ahora el terreno es una GRILLA FIJA EN EL MUNDO de 4 niveles
+// (celdas de 3, 12, 48 y 192 m) cuya altura sale de la calzada más cercana, con una zanja suave junto al asfalto; la calzada, la banquina y las rayas van en
+// una tanda aparte con polygon offset. El recorrido se integra desde el km 0 (caché por ruta) para que las coordenadas sean absolutas y la grilla no se mueva.
 // v183: (1) en el cambio de sentido (km 4,42, Hugo) el suelo lateral de un tramo caía sobre la calzada de otro y la tapaba: se saltea el suelo cercano que
 // queda a menos de 9 m de la calzada de un tramo lejano de la ruta. (2) "La sensación de desnivel es demasiado leve en el descenso y ascenso": el desnivel se
 // dibuja ×2,6 (EXAG) y la cámara se inclina según la pendiente de los próximos metros, así se ve la loma que sube y el cielo al bajar.
@@ -1685,7 +1689,7 @@ function drawScenePreview(){
     const sc=sceneAt(sceneEditRoute,d);
     let glOk=false;
     if(glRutaOn()){ const rx=routeExtra(sceneEditRoute), land=realLandOn();
-      glOk=GLR.draw(ctx,w,h,{d,bFn:dd=>bearingRoute(sceneRouteGeo,dd),eFn:dd=>sceneEleAt(dd),sc,crank:scenePrevCrank,
+      glOk=GLR.draw(ctx,w,h,{key:sceneEditRoute+"|"+(sceneRouteGeo._glk||(sceneRouteGeo._glk=Math.random().toString(36).slice(2))),d,bFn:dd=>bearingRoute(sceneRouteGeo,dd),eFn:dd=>sceneEleAt(dd),sc,crank:scenePrevCrank,
         gs:land&&rx&&rx.ground?(dd=>groundSides(rx,Math.max(0,dd),sc)):null, hz:land&&rx&&rx.hz?rx.hz:null});
       if($("sceneGlInfo")) $("sceneGlInfo").textContent=glOk?"":(GLR.ok()?"":"WebGL no disponible acá: se ve la vista de siempre. "+GLR.diag()); }
     if(!glOk){
@@ -3309,20 +3313,25 @@ function flush(B,VP,fog,K){
   gl.drawArrays(gl.TRIANGLES,0,B.length/9);
 }
 /* ---- el mundo ---- */
-const HW=2.6, SH=1.6, EXAG=2.6;                // EXAG: el desnivel se dibuja ×2,6 (Hugo: se sentía muy leve en subidas y bajadas)                       // semiancho de la calzada y de la banquina (m)
+const G=4, HW=2.6, SH=1.6, EXAG=2.6;                // EXAG: el desnivel se dibuja ×2,6 (Hugo: se sentía muy leve en subidas y bajadas)                       // semiancho de la calzada y de la banquina (m)
 const hzAngF=a=>a<=0?a*HZ_EX:HZ_MAX*Math.tanh(a*HZ_EX/HZ_MAX);
+const TRZ={};   // integración del recorrido desde el km 0 por ruta (rumbo suavizado, altura y posición cada G m): no cambia al avanzar, solo se extiende
+function traza(key,bFn,eFn,Dend){
+  let c=TRZ[key]; if(!c){ c=TRZ[key]={bs:[],ys:[],px:[0],pz:[0]}; const ks=Object.keys(TRZ); if(ks.length>6)delete TRZ[ks[0]]; }
+  while(c.bs.length*G<=Dend){ const i=c.bs.length, D=i*G; let sx=0,sy=0; for(const k of [-8,-4,0,4,8]){const b=bFn(Math.max(0,D+k));sx+=Math.sin(b);sy+=Math.cos(b);} c.bs.push(Math.atan2(sx,sy));
+    let e=0; for(const k of [-6,-2,2,6])e+=eFn(Math.max(0,D+k)); c.ys.push(e/4*EXAG);
+    if(i>0){const a=c.bs[i-1],b=c.bs[i],bm=Math.atan2(Math.sin(a)+Math.sin(b),Math.cos(a)+Math.cos(b));c.px.push(c.px[i-1]+Math.sin(bm)*G);c.pz.push(c.pz[i-1]+Math.cos(bm)*G);} }
+  return c; }
 function mundo(S){
-  const {d,bFn,eFn,sc,gs,hz,crank}=S, G=4, Ds=Math.floor((d-16)/G)*G, N=Math.ceil((d+700-Ds)/G)+1, SS=[], bs=[], ys=[], px=new Array(N), pz=new Array(N);
-  // v180: grilla FIJA cada 4 m de distancia absoluta: los vértices no cambian cuando avanzás (antes se re-muestraba cada cuadro con la altura
-  // redondeada y el fondo se movía a saltos); solo se interpola la cámara entre dos vértices. Rumbo y altura se suavizan en ventanas fijas.
-  for(let i=0;i<N;i++){ const D=Ds+i*G; SS.push(D-d); let sx=0,sy=0; for(const k of [-8,-4,0,4,8]){const b=bFn(Math.max(0,D+k));sx+=Math.sin(b);sy+=Math.cos(b);} bs.push(Math.atan2(sx,sy));
-    let e=0; for(const k of [-6,-2,2,6])e+=eFn(Math.max(0,D+k)); ys.push(e/4*EXAG); }
-  px[0]=0;pz[0]=0;
-  for(let i=1;i<N;i++){const bm=Math.atan2(Math.sin(bs[i-1])+Math.sin(bs[i]),Math.cos(bs[i-1])+Math.cos(bs[i])),ds=G;px[i]=px[i-1]+Math.sin(bm)*ds;pz[i]=pz[i-1]+Math.cos(bm)*ds;}
+  const {d,bFn,eFn,sc,gs,hz,crank}=S, Ds=Math.max(0,Math.floor((d-16)/G)*G), N=Math.ceil((d+700-Ds)/G)+1, SS=[];
+  // v180: grilla FIJA cada 4 m de distancia absoluta: los vértices no cambian cuando avanzás. v184: además se integra desde el km 0 (con caché por ruta,
+  // `S.key`) para que las coordenadas sean absolutas y la grilla del terreno quede fija en el mundo (no se mueve ni "nada" al avanzar).
+  const T=traza(S.key||'_',bFn,eFn,d+720), i0=Ds/G, bs=T.bs.slice(i0,i0+N), ys=T.ys.slice(i0,i0+N), px=T.px.slice(i0,i0+N), pz=T.pz.slice(i0,i0+N);
+  for(let i=0;i<N;i++)SS.push(Ds+i*G-d);
   const rx=bs.map(b=>Math.cos(b)), rz=bs.map(b=>-Math.sin(b));   // derecha de la marcha
   const atD=(D)=>{ const k=Math.max(0,Math.min(N-1.001,(D-Ds)/G)), i=Math.floor(k), t=k-i;
     return {x:px[i]+(px[i+1]-px[i])*t,y:ys[i]+(ys[i+1]-ys[i])*t,z:pz[i]+(pz[i+1]-pz[i])*t,b:Math.atan2(Math.sin(bs[i])*(1-t)+Math.sin(bs[i+1])*t,Math.cos(bs[i])*(1-t)+Math.cos(bs[i+1])*t)}; };
-  const C=atD(d); for(let i=0;i<N;i++){px[i]-=C.x;pz[i]-=C.z;ys[i]-=C.y;}      // todo relativo a la cámara
+  const C=atD(d), Cx=C.x, Cz=C.z; for(let i=0;i<N;i++){px[i]-=C.x;pz[i]-=C.z;ys[i]-=C.y;}      // todo relativo a la cámara
   const P=(i,o,dy)=>[px[i]+rx[i]*o,ys[i]+(dy||0),pz[i]+rz[i]*o];
   const at=(s)=>{ const a=atD(d+s); return {x:a.x,y:a.y,z:a.z,rx:Math.cos(a.b),rz:-Math.sin(a.b),b:a.b}; };
   const skyA=col(sc.sky[0]), skyB=col(sc.sky[1]), gcol=col(sc.ground), asf=col(sc.asphalt);
@@ -3334,32 +3343,52 @@ function mundo(S){
   const OFS=[HW+SH,HW+SH+2.5,HW+SH+10,40,130,400,1500];
   // v182: el campo de los costados YA NO copia la altura del camino hasta 400 m al costado: en una subida con curva eso armaba un "panel" de tierra delante
   // de la cámara (Hugo). Pasados los 40 m el suelo se aplana hacia el nivel de la cámara y baja de a poco (la altura absoluta es -1,5 a 130 m, -2,5 a 400 m, -3 a 1500 m).
-  const DY={normal:i=>[0,0,0,0,Math.min(0,-.55*ys[i]-.825),Math.min(0,-.85*ys[i]-2.125),Math.min(0,-3-ys[i])],water:()=>[-1.1,-1.2,-1.2,-1.2,-1.2,-1.2,-1.2],wall:()=>[1.2,5,10,17,34,70,120],valley:()=>[-.4,-3,-6,-14,-30,-55,-60]};
-  // v182: en un cambio de sentido o un lazo el suelo lateral de un tramo cae sobre la calzada de otro y la tapa (Hugo, km 4,42): se saltea el suelo cercano
-  // que queda a menos de 9 m de la calzada de un tramo lejano en la ruta (celdas de 16 m)
-  const CELL=16, grid=new Map(), gk=(x,z)=>Math.floor(x/CELL)+','+Math.floor(z/CELL);
-  for(let i=0;i<N;i++){const k=gk(px[i],pz[i]);(grid.get(k)||grid.set(k,[]).get(k)).push(i);}
-  const cubre=(x,z,i)=>{ const cx=Math.floor(x/CELL), cz=Math.floor(z/CELL);
-    for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++){const L=grid.get((cx+a)+','+(cz+b));if(!L)continue;for(const k of L)if(Math.abs(k-i)>10&&Math.hypot(px[k]-x,pz[k]-z)<9)return true;}return false; };
+  const DYF={normal:y=>[0,0,0,0,Math.min(0,-.55*y-.825),Math.min(0,-.85*y-2.125),Math.min(0,-3-y)],water:()=>[-1.1,-1.2,-1.2,-1.2,-1.2,-1.2,-1.2],wall:()=>[1.2,5,10,17,34,70,120],valley:()=>[-.4,-3,-6,-14,-30,-55,-60]};
+  // v184: la altura del suelo en cada vértice sale de la calzada MÁS CERCANA en el plano (no de la del tramo que lo dibuja): en un cambio de sentido o un lazo
+  // el suelo de un tramo caía sobre la calzada de otro (a veces más alto) y la tapaba del todo (Hugo, km 4,29-4,42). Con la altura por posición, todo lo que
+  // está sobre una calzada vale lo de esa calzada (menos 18 cm), y además la calzada, la banquina y las rayas van en una tanda aparte con "polygon offset".
+  const gY=(x,z)=>{ let k=0,bd=1e18; for(let q=0;q<N;q++){const dx=px[q]-x,dz=pz[q]-z,d2=dx*dx+dz*dz;if(d2<bd){bd=d2;k=q;}}
+    const dist=Math.sqrt(bd), s=((x-px[k])*rx[k]+(z-pz[k])*rz[k])>=0?1:-1, dy=DYF[s<0?lT:rT](ys[k]); let y=0;
+    if(dist>OFS[0]){let j=1;while(j<OFS.length-1&&dist>OFS[j])j++;const u=Math.min(1,(dist-OFS[j-1])/(OFS[j]-OFS[j-1]));y=dy[j-1]+(dy[j]-dy[j-1])*u;}
+    return ys[k]+y-(dist<HW+SH+6?.18:.05); };
+  const gT=(x,z,low)=>{ let k=0,bd=1e18; for(let q=0;q<N;q++){const dx=px[q]-x,dz=pz[q]-z,d2=dx*dx+dz*dz;if(d2<bd){bd=d2;k=q;}}
+    const dist=Math.sqrt(bd), s=((x-px[k])*rx[k]+(z-pz[k])*rz[k])>=0?1:-1, dy=DYF[s<0?lT:rT](ys[k]); let y=0;
+    if(dist>OFS[0]){let j=1;while(j<OFS.length-1&&dist>OFS[j])j++;const u=Math.min(1,(dist-OFS[j-1])/(OFS[j]-OFS[j-1]));y=dy[j-1]+(dy[j]-dy[j-1])*u;}
+    // una zanja suave junto a la calzada (-0,55 m a 4 m, 0 a 12 m): los triángulos de 3 m que cruzan la calzada interpolan alturas de vértices que eligieron tramos distintos y,
+    // en una pendiente, podían quedar por encima del asfalto (una cuña de pasto/arena sobre el camino)
+    const zan=dist<HW+SH?.55:(dist<12?.55*(12-dist)/(12-HW-SH):0);
+    return {p:[x,ys[k]+y-.05-zan-low,z],k,dist,s}; };
+  const colTerreno=(a,b)=>{ const k=a.k, s=(a.s+b.s)>=0?1:-1, dist=(a.dist+b.dist)/2, T=s<0?lT:rT; if(!GC[k])GC[k]=gk(k); const gc=GC[k][s<0?0:1];
+    if(T==='water')return dist<OFS[1]?mix(gc,[.8,.74,.55],.6):mix(wcol,wnear,dist<40?.5:0);
+    if(T==='wall')return tone(mix([.54,.49,.43],[.27,.24,.2],Math.min(1,dist/400)),1);
+    if(T==='valley')return mix(gc,[.31,.42,.34],Math.min(1,dist/130));
+    return tone(gc,1-.16*Math.min(1,dist/130)); };
+  const R=[];
   for(let i=0;i<N-1;i++){
     const dd=Ds+i*G, g=gs?gs(dd):null, gL=g?col(g.L):gcol, gR=g?col(g.R):gcol, band=Math.floor(dd/8)%2?1.035:0.965;
-    quad(A,P(i,-HW),P(i,HW),P(i+1,HW),P(i+1,-HW),tone(asf,band));
+    quad(R,P(i,-HW),P(i,HW),P(i+1,HW),P(i+1,-HW),tone(asf,band));
     for(const sg of [-1,1]){
-      const T=sg<0?lT:rT, gc=sg<0?gL:gR, dy=DY[T](i), dy1=DY[T](i+1);
-      quad(A,P(i,sg*HW),P(i,sg*(HW+SH),dy[0]*.0),P(i+1,sg*(HW+SH),dy[0]*.0),P(i+1,sg*HW),tone(gc,.8)); // banquina
-      for(let j=0;j<OFS.length-1;j++){
-        if(j<=3&&T!=='water'){ const o=sg*(OFS[j]+OFS[j+1])/2, ob=sg*OFS[j+1], mx=(px[i]+px[i+1])/2, mz=(pz[i]+pz[i+1])/2, rxx=(rx[i]+rx[i+1])/2, rzz=(rz[i]+rz[i+1])/2;
-          if(cubre(mx+rxx*o,mz+rzz*o,i)||cubre(mx+rxx*ob,mz+rzz*ob,i)||cubre(mx+rxx*sg*OFS[j],mz+rzz*sg*OFS[j],i))continue; }
-        let c;
-        if(T==='water')c=j===0?mix(gc,[.8,.74,.55],.6):mix(wcol,wnear,j<2?.5:0);
-        else if(T==='wall')c=tone(mix([.54,.49,.43],[.27,.24,.2],Math.min(1,j/5)),1);
-        else if(T==='valley')c=mix(gc,[.31,.42,.34],Math.min(1,j/4));
-        else c=tone(gc,1-0.04*j);
-        quad(A,P(i,sg*OFS[j],dy[j]),P(i,sg*OFS[j+1],dy[j+1]),P(i+1,sg*OFS[j+1],dy1[j+1]),P(i+1,sg*OFS[j],dy1[j]),c);
-      }
+      const gc=sg<0?gL:gR;
+      quad(R,P(i,sg*HW),P(i,sg*(HW+SH)),P(i+1,sg*(HW+SH)),P(i+1,sg*HW),tone(gc,.8)); // banquina
     }
-    if(SS[i]<240&&Math.floor(dd/8)%2===0)quad(A,P(i,-.07,.03),P(i,.07,.03),P(i+1,.07,.03),P(i+1,-.07,.03),[.95,.93,.78]);   // raya central
-    for(const sg of [-1,1])quad(A,P(i,sg*(HW-.35),.03),P(i,sg*(HW-.2),.03),P(i+1,sg*(HW-.2),.03),P(i+1,sg*(HW-.35),.03),[.9,.9,.88]);
+    if(SS[i]<240&&Math.floor(dd/8)%2===0)quad(R,P(i,-.07,.03),P(i,.07,.03),P(i+1,.07,.03),P(i+1,-.07,.03),[.95,.93,.78]);   // raya central
+    for(const sg of [-1,1])quad(R,P(i,sg*(HW-.35),.03),P(i,sg*(HW-.2),.03),P(i+1,sg*(HW-.2),.03),P(i+1,sg*(HW-.35),.03),[.9,.9,.88]);
+  }
+  /* terreno: grilla FIJA en el mundo en 4 niveles (celdas de 3, 12, 48 y 192 m); la altura de cada vértice sale de la calzada más cercana */
+  const gk=i=>{ const g=gs?gs(Ds+i*G):null; return g?[col(g.L),col(g.R)]:[gcol,gcol]; };
+  const GC=[];for(let i=0;i<N;i++)GC.push(null);
+  const LVL=[[3,24],[12,20],[48,16],[192,16]];
+  let prev=null;
+  for(let L=0;L<LVL.length;L++){
+    const [cs,hh]=LVL[L], n=2*hh, ox=Math.floor(Cx/cs)*cs-hh*cs, oz=Math.floor(Cz/cs)*cs-hh*cs, V=[], low=0.22*L;
+    for(let iz=0;iz<=n;iz++)for(let ix=0;ix<=n;ix++){const x=ox+ix*cs-Cx, z=oz+iz*cs-Cz; V.push(gT(x,z,low));}
+    for(let iz=0;iz<n;iz++)for(let ix=0;ix<n;ix++){
+      const x0=ox+ix*cs-Cx, z0=oz+iz*cs-Cz;
+      if(prev&&x0>=prev.x0&&x0+cs<=prev.x1&&z0>=prev.z0&&z0+cs<=prev.z1)continue;     // ya lo cubre el nivel de adentro
+      const v00=V[iz*(n+1)+ix],v10=V[iz*(n+1)+ix+1],v11=V[(iz+1)*(n+1)+ix+1],v01=V[(iz+1)*(n+1)+ix];
+      const c=colTerreno(v00,v11); quad(A,v00.p,v01.p,v11.p,v10.p,c);
+    }
+    prev={x0:ox-Cx,x1:ox+n*cs-Cx,z0:oz-Cz,z1:oz+n*cs-Cz};
   }
   /* suelo grande: lo que queda más allá de 400 m a los costados (agua del lado del agua) */
   const c0=at(0), yb=Math.min(-3,Math.min(...ys)-3), BIG=6000, fwd=[Math.sin(c0.b),Math.cos(c0.b)], rgt=[c0.rx,c0.rz];
@@ -3442,7 +3471,7 @@ function mundo(S){
   obox(A,at3(0,1.53,.0),r,up,f,.2,.1,.24,helm);        // casco
   for(const sg of [-1,1])obox(A,at3(sg*.21,1.1,.22),r,up,f,.09,.09,.5,jer);     // brazos
   obox(A,at3(0,1.0,.42),r,up,f,.46,.04,.04,dark);      // manubrio
-  return {A,M,cam:(()=>{const e0=at(-4.6),w=at(16),w2=at(34),gr=(w2.y-e0.y)/38.6, ey=e0.y+2.15; return {eye:[e0.x,ey,e0.z],tgt:[w.x,ey+20.6*gr*.85-.5,w.z]};})(),fog:skyB,skyA,skyB};
+  return {A,M,R,cam:(()=>{const e0=at(-4.6),w=at(16),w2=at(34),gr=(w2.y-e0.y)/38.6, ey=e0.y+2.15; return {eye:[e0.x,ey,e0.z],tgt:[w.x,ey+20.6*gr*.85-.5,w.z]};})(),fog:skyB,skyA,skyB};
 }
 function draw(ctx,w,h,S){
   if(failed)return false;
@@ -3458,6 +3487,7 @@ function draw(ctx,w,h,S){
     // cielo en 2D (degradé hasta la altura del horizonte aproximada) y encima el 3D
     const sg=ctx.createLinearGradient(0,0,0,h*.62);sg.addColorStop(0,S.sc.sky[0]);sg.addColorStop(1,S.sc.sky[1]);ctx.fillStyle=sg;ctx.fillRect(0,0,w,h);
     flush(m.M,VP,m.fog,.00012);flush(m.A,VP,m.fog,.00085);
+    gl.enable(gl.POLYGON_OFFSET_FILL);gl.polygonOffset(-2,-60);flush(m.R,VP,m.fog,.00085);gl.disable(gl.POLYGON_OFFSET_FILL);
     ctx.drawImage(cv,0,0,w,h);
     return true;
   }catch(e){failed=e.message||String(e);note('falló: '+failed);return false;}

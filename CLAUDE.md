@@ -23,6 +23,7 @@ Rodillo BKOOL Smart Pro por ANT+ FE-C (stick USB). Además:
 - v168: 🌬️ clima real del recorrido (Open-Meteo, sin clave): `WX`, `wxActivo()`. El viento de frente/cola según `bearingAt` entra en la física (aire relativo y densidad de ahora) y en el rodillo como pendiente equivalente (igual que el rebufo); se ve en el 3D. Ajustes en `bici_wx`, último dato por ruta en `bici_wx_last`. El bloque `wxTraer`/`wxRelativo`/`wxCielo`/`wxAire`/`wxEspuma`/`wxFlecha` es **el mismo que en Kayak y Correr**.
   - Guarda las escenas en `bici_scenes`, el suavizado por ruta en `bici_route_opts` y el horizonte, los cerros y el suelo en `bici_route_extra`.
   - `drawRealHorizon` usa `HZ_EX=1.5` y comprime con `tanh` (`HZ_MAX=13`).
+- v184: el suelo de la vista WebGL del camino es una grilla fija en el mundo (4 niveles, `traza()` integra el recorrido desde el km 0 con caché por ruta `S.key`) con altura por posición (calzada más cercana): arregla el suelo que tapaba la calzada en retornos y lazos.
 - v183: vista WebGL del camino: desnivel dibujado ×2,6 (`EXAG`) con la cámara inclinada según la pendiente, y el suelo lateral no tapa la calzada de otro tramo (cambios de sentido y lazos).
 - v182: en la vista WebGL del camino el campo de los costados se aplana y baja pasados los 40 m (antes copiaba la altura del camino hasta 400 m y armaba "paneles" de tierra en las subidas con curva); los cerros van en franjas.
 - v181: la vista WebGL del camino arma los vértices en una grilla fija de 4 m de distancia absoluta (no se re-muestrea al avanzar: evita los saltos del fondo).
