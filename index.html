@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v191</title>
+<title>Bici Indoor · v192</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -96,7 +96,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v191</h1>
+  <h1>Bici Indoor · v192</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -401,6 +401,7 @@
 
       <canvas id="sceneProf" height="130" style="width:100%;display:block;border-radius:8px;background:#0a0d12"></canvas>
       <canvas id="sceneMapCv" height="150" style="width:100%;display:block;border-radius:8px;background:#0a0d12;margin-top:6px"></canvas>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:13px"><input type="checkbox" id="sceneSat" style="width:20px;height:20px"> 🛰️ Foto satelital de fondo <span id="sceneSatInfo" style="color:var(--dim);font-size:11px"></span></label>
       <div id="sceneReadout" style="color:var(--dim);font-size:12px;margin-top:4px">Deslizá el dedo por el perfil o el mapa para ubicar un punto.</div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
         <span style="font-size:12px;color:var(--dim)">Zoom</span>
@@ -744,6 +745,7 @@ function bigPersist(k,v){
     tx.onerror=tx.onabort=()=>{ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+((tx.error&&tx.error.message)||"error"),"#f85149"); } };
   }catch(e){ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+e.message,"#f85149"); } }
 }
+// v192: 🛰️ foto satelital de fondo en el plano del Escenario de la ruta (Hugo, 17-nov): teselas Esri, primero de lo que Rumbo ya bajó (IndexedDB rumbo/tiles, sin crearla nunca), si no de internet; tilde bici_mapa_sat (prendido); la línea de pendientes lleva borde oscuro.
 // v191: arroyos y calles cercanas de Rumbo (`lin`, Hugo 17-nov: arroyo con puente y bicisenda junto a la RN3) en la vista WebGL: cauce excavado con agua (cruza por debajo del camino), calles paralelas, de servicio y bicisenda como cintas sobre el suelo; en la vuelta de un ida y vuelta se espejan. Además el puente que va por un costado (lado ≠ 0) ya no hunde el suelo bajo la calzada.
 // v190: el ciclista de la vista WebGL, más real: bici con cuadro (tubo superior, diagonal, caño del sillín, vainas, horquilla), ruedas con tubular y reflector que gira con la distancia, manubrio de
 // carrera con puños, botella y luz trasera; piernas articuladas que pedalean (rodilla resuelta con dos barras a partir del pie en el pedal), torso inclinado, brazos al manubrio, casco aerodinámico y
@@ -1894,6 +1896,62 @@ function drawSceneProfile(){
     ctx.beginPath();ctx.arc(xx,yy,5,0,7);ctx.fillStyle="#e6edf3";ctx.strokeStyle="#04121c";ctx.lineWidth=2;ctx.fill();ctx.stroke();
   }}
 }
+/* v192: 🛰️ foto satelital de fondo en el plano del recorrido (Hugo, 17-nov: "¿se podrá ver la imagen satelital en el recorrido?" → el plano).
+   Teselas Esri World Imagery (las mismas que Rumbo). Primero se buscan en lo que Rumbo ya bajó (IndexedDB "rumbo", almacén "tiles", clave sat/z/x/y:
+   mismo sitio, así anda sin internet en las zonas que bajaste con Rumbo); si no está, de internet. Abrir la base de Rumbo NUNCA la crea: si no existe,
+   se aborta la creación (si no, Rumbo encontraría una base vacía sin almacenes). Clave del tilde: bici_mapa_sat (por defecto prendido). */
+const SAT={key:"bici_mapa_sat",url:(z,x,y)=>`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`,
+  tiles:new Map(),db:null,dbTry:false,pend:0,deRumbo:0,deRed:0,fallas:0,raf:0};
+function satOn(){ try{ return localStorage.getItem(SAT.key)!=="0"; }catch(e){ return true; } }
+function satRumboDB(){
+  if(SAT.dbTry) return SAT.db; SAT.dbTry=true;
+  SAT.db=new Promise(res=>{ try{ const r=indexedDB.open("rumbo",1);
+    r.onupgradeneeded=e=>{ try{ e.target.transaction.abort(); }catch(_){} };   // no existe: no la creo
+    r.onsuccess=()=>{ const db=r.result; res(db.objectStoreNames.contains("tiles")?db:(db.close(),null)); };
+    r.onerror=()=>res(null); r.onblocked=()=>res(null);
+  }catch(e){ console.warn(e); res(null); } });
+  return SAT.db;
+}
+function satRedibujar(){ if(SAT.raf) return; SAT.raf=requestAnimationFrame(()=>{ SAT.raf=0; try{ drawSceneMap(); }catch(e){ console.warn(e); } }); }
+function satTile(z,x,y){
+  const k=z+"/"+x+"/"+y; let T=SAT.tiles.get(k); if(T) return T.ok?T.img:null;
+  T={ok:false,img:new Image()}; SAT.tiles.set(k,T); SAT.pend++;
+  const listo=(fuente)=>{ T.ok=true; SAT.pend--; if(fuente==="r")SAT.deRumbo++; else SAT.deRed++; satRedibujar(); };
+  const red=()=>{ if(!navigator.onLine){ SAT.pend--; SAT.fallas++; satRedibujar(); return; }
+    T.img.crossOrigin="anonymous"; T.img.onload=()=>listo("n"); T.img.onerror=()=>{ SAT.pend--; SAT.fallas++; satRedibujar(); }; T.img.src=SAT.url(z,x,y); };
+  satRumboDB().then(db=>{ if(!db) return red();
+    try{ const q=db.transaction("tiles","readonly").objectStore("tiles").get("sat/"+k);
+      q.onsuccess=()=>{ const b=q.result; if(!b) return red(); const u=URL.createObjectURL(b);
+        T.img.onload=()=>{ URL.revokeObjectURL(u); listo("r"); }; T.img.onerror=()=>{ URL.revokeObjectURL(u); red(); }; T.img.src=u; };
+      q.onerror=()=>red();
+    }catch(e){ console.warn(e); red(); } });
+  if(SAT.tiles.size>400){ for(const [kk,v] of SAT.tiles){ if(v.ok){ SAT.tiles.delete(kk); if(SAT.tiles.size<=300) break; } } }
+  return null;
+}
+// dibuja las teselas que cubren el plano; xr/yr = coordenadas Mercator (radianes) de la proyección del plano
+function satDibujar(ctx,w,h,X,Y,mnx,mxy,ox,oy,scale){
+  const dpr=window.devicePixelRatio||1, TP=2*Math.PI;
+  const z=Math.max(3,Math.min(18,Math.round(Math.log2(TP*scale*dpr/256)))), N=Math.pow(2,z), ts=TP/N;
+  const xr0=mnx+(0-ox)/scale, xr1=mnx+(w-ox)/scale, yrTop=mxy-(0-oy)/scale, yrBot=mxy-(h-oy)/scale;
+  const tx0=Math.floor((xr0+Math.PI)/ts), tx1=Math.floor((xr1+Math.PI)/ts), ty0=Math.floor((Math.PI-yrTop)/ts), ty1=Math.floor((Math.PI-yrBot)/ts);
+  if((tx1-tx0+1)*(ty1-ty0+1)>80) return;
+  ctx.save();
+  for(let ty=ty0;ty<=ty1;ty++) for(let tx=tx0;tx<=tx1;tx++){
+    if(ty<0||ty>=N) continue; const txx=((tx%N)+N)%N;
+    const p0={x:tx*ts-Math.PI,y:Math.PI-ty*ts}, p1={x:(tx+1)*ts-Math.PI,y:Math.PI-(ty+1)*ts};
+    const sx=X(p0), sy=Y(p0), sw=X(p1)-sx, sh=Y(p1)-sy;
+    let img=satTile(z,txx,ty);
+    if(img){ ctx.drawImage(img,sx,sy,sw+0.5,sh+0.5); continue; }
+    for(let up=1;up<=4&&z-up>=3;up++){ const zz=z-up, f=1<<up, px=Math.floor(txx/f), py=Math.floor(ty/f), k=zz+"/"+px+"/"+py, T=SAT.tiles.get(k);   // mientras tanto, la de menos zoom
+      if(T&&T.ok){ const s=256/f; ctx.drawImage(T.img,(txx%f)*s,(ty%f)*s,s,s,sx,sy,sw+0.5,sh+0.5); break; } }
+  }
+  ctx.fillStyle="rgba(0,0,0,.18)"; ctx.fillRect(0,0,w,h);       // un poco más oscura: la línea de pendientes se lee mejor
+  ctx.font="9px system-ui,sans-serif"; ctx.textAlign="right"; ctx.fillStyle="rgba(255,255,255,.75)"; ctx.fillText("Imágenes © Esri",w-6,h-5);
+  ctx.restore();
+  const inf=$("sceneSatInfo"); if(inf) inf.textContent=SAT.pend?"bajando…":(SAT.deRumbo||SAT.deRed||SAT.fallas)?`(${SAT.deRumbo} de Rumbo · ${SAT.deRed} de internet${SAT.fallas?` · ${SAT.fallas} sin foto`:""})`:"";
+}
+$("sceneSat").checked=satOn();
+$("sceneSat").addEventListener("change",e=>{ try{ localStorage.setItem(SAT.key,e.target.checked?"1":"0"); }catch(er){ msg("No pude guardar el ajuste: "+er.message); } $("sceneSatInfo").textContent=""; drawSceneMap(); });
 function drawSceneMap(){
   const cv=$("sceneMapCv"); if(!cv||!sceneRouteGeo||!sceneMapProj)return;
   const r=fit(cv), ctx=r.ctx, w=r.w, h=r.h; if(w<10)return;
@@ -1908,7 +1966,10 @@ function drawSceneMap(){
   const pad=12, cw=w-2*pad, ch=h-2*pad, bw=(mxx-mnx)||1e-9, bh=(mxy-mny)||1e-9;
   const scale=Math.min(cw/bw,ch/bh), ox=pad+(cw-bw*scale)/2, oy=pad+(ch-bh*scale)/2;
   const X=p=>ox+(p.x-mnx)*scale, Y=p=>oy+(mxy-p.y)*scale;
-  ctx.lineWidth=3; ctx.lineJoin="round"; ctx.lineCap="round";
+  const conSat=satOn(); if(conSat){ try{ satDibujar(ctx,w,h,X,Y,mnx,mxy,ox,oy,scale); }catch(e){ console.warn(e); } }   // v192
+  ctx.lineJoin="round"; ctx.lineCap="round";
+  if(conSat){ ctx.lineWidth=5.5; ctx.strokeStyle="rgba(0,0,0,.7)"; ctx.beginPath(); ctx.moveTo(X(P[i0]),Y(P[i0])); for(let i=i0+1;i<=i1;i++) ctx.lineTo(X(P[i]),Y(P[i])); ctx.stroke(); }
+  ctx.lineWidth=3;
   for(let i=i0;i<i1;i++){ ctx.strokeStyle=gradeColor(sceneGradeAt(dist[i])); ctx.beginPath();ctx.moveTo(X(P[i]),Y(P[i]));ctx.lineTo(X(P[i+1]),Y(P[i+1]));ctx.stroke(); }
   const dot=(px,py,f,rr)=>{ctx.beginPath();ctx.arc(px,py,rr||4,0,7);ctx.fillStyle=f;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#04121c";ctx.stroke();};
   if(sceneZoomFromKm<0.001) dot(X(P[0]),Y(P[0]),"#3fb950");
