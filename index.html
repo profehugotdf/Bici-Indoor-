@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v185</title>
+<title>Bici Indoor · v186</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -96,7 +96,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v185</h1>
+  <h1>Bici Indoor · v186</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -744,6 +744,8 @@ function bigPersist(k,v){
     tx.onerror=tx.onabort=()=>{ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+((tx.error&&tx.error.message)||"error"),"#f85149"); } };
   }catch(e){ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+e.message,"#f85149"); } }
 }
+// v186: puentes, túneles, terraplenes y desmontes de Rumbo (`infra`) en la vista WebGL: el puente con barandas, tablero y pilas (el suelo cae debajo); el túnel con paredes, techo,
+// luces y dintel, y un cerro encima; terraplén y desmonte con talud 1:2 del lado que diga Rumbo. Sin árboles ni casas dentro de un túnel o sobre un puente. Solo dibujo.
 // v185: (1) la vista en vivo (#road) también va en WebGL (sin fantasma; con fantasma sigue la 2D; si WebGL falla, vuelve sola a la 2D); (2) usa el `land` de Rumbo:
 // casas, edificios y galpones con su altura y techo a dos aguas, cuadras sintéticas en la ciudad, veredas y cordón, calzada angosta o de tierra según el tipo de camino,
 // color del suelo por uso (bosque, parque, arena…), árboles (hoja, pino, lenga), arbustos, rocas y faroles; (3) la calzada más cercana se busca con una grilla (antes
@@ -1687,7 +1689,7 @@ function sceneEditSegsNormalized(){
 // v185: lo que necesita GLR de la ruta: suelo y horizonte de Rumbo + los costados reales (`land`: casas, veredas, árboles, faroles)
 function glRutaExtra(name,sc){ const rx=routeExtra(name), land=realLandOn(); let LD=null;
   if(land){ const LB=landDeRuta(name,rx&&rx.land); if(LB) LD=Object.assign({},LB,{map:dd=>mirrorD(name,dd)}); }
-  return {land:LD, gs:land&&rx&&rx.ground?(dd=>groundSides(rx,Math.max(0,dd),sc)):null, hz:land&&rx&&rx.hz?rx.hz:null}; }
+  return {land:LD, gs:land&&rx&&rx.ground?(dd=>groundSides(rx,Math.max(0,dd),sc)):null, hz:land&&rx&&rx.hz?rx.hz:null, infra:rx&&rx.infra&&rx.infra.length?(dd=>infraEn(name,Math.max(0,dd))):null}; }
 function drawScenePreview(){
   const cv=$("scenePrev"); if(!cv||!sceneRouteGeo) return;
   const r=fit(cv); if(!r||r.w<10) return; const {ctx,w,h}=r;
@@ -1698,7 +1700,7 @@ function drawScenePreview(){
     let glOk=false;
     if(glRutaOn()){ const ex=glRutaExtra(sceneEditRoute,sc);
       glOk=GLR.draw(ctx,w,h,{key:sceneEditRoute+"|"+(sceneRouteGeo._glk||(sceneRouteGeo._glk=Math.random().toString(36).slice(2))),d,bFn:dd=>bearingRoute(sceneRouteGeo,dd),eFn:dd=>sceneEleAt(dd),sc,crank:scenePrevCrank,
-        gs:ex.gs, hz:ex.hz, land:ex.land});
+        gs:ex.gs, hz:ex.hz, land:ex.land, infra:ex.infra});
       if($("sceneGlInfo")) $("sceneGlInfo").textContent=glOk?"":(GLR.ok()?"":"WebGL no disponible acá: se ve la vista de siempre. "+GLR.diag()); }
     if(!glOk){
       roadBands(ctx,w,h,d,dd=>bearingRoute(sceneRouteGeo,dd),dd=>sceneEleAt(dd),sceneEditRoute);
@@ -3228,7 +3230,7 @@ function drawRoad(){
     const gNow=ghost?ghostDistAt(elapsed+idt):0;
     if(!ghost&&mode==="gpx"&&points.length&&glRutaOn()&&!glVivoFalla){   // v185: vista en vivo en WebGL (con el fantasma sigue la vista 2D)
       const sc=sceneAt(fname,dNow), ex=glRutaExtra(fname,sc);
-      if(GLR.draw(ctx,w,h,{key:"v|"+fname+"|"+total,d:dNow,bFn:bearingAt,eFn:eleAt,sc,crank:roadCrank,gs:ex.gs,hz:ex.hz,land:ex.land})){
+      if(GLR.draw(ctx,w,h,{key:"v|"+fname+"|"+total,d:dNow,bFn:bearingAt,eFn:eleAt,sc,crank:roadCrank,gs:ex.gs,hz:ex.hz,land:ex.land,infra:ex.infra})){
         if(wxActivo()&&wxRelAhora){ const hz=Math.round(h*0.44); wxAire(ctx,w,h,hz,WX,wxRelAhora,performance.now()/1000,v); wxFlecha(ctx,w-36,36,WX,wxRelAhora); }
         roadDrawErrLogged=false; return; }
       if(!GLR.ok()) glVivoFalla=true; }
@@ -3366,6 +3368,14 @@ function mundo(S){
     const dist=Math.sqrt(bd), s=((x-px[k])*rx[k]+(z-pz[k])*rz[k])>=0?1:-1, dy=DYF[s<0?lT:rT](ys[k]); let y=0;
     if(dist>OFS[0]){let j=1;while(j<OFS.length-1&&dist>OFS[j])j++;const u=Math.min(1,(dist-OFS[j-1])/(OFS[j]-OFS[j-1]));y=dy[j-1]+(dy[j]-dy[j-1])*u;}
     return ys[k]+y-(dist<HW+SH+6?.18:.05); };
+  /* v186: infra de Rumbo (puente, túnel, terraplén, desmonte) por muestra, con rampas suaves en los extremos */
+  const IP=new Array(N).fill(0), IT=new Array(N).fill(0), IE=[new Array(N).fill(0),new Array(N).fill(0)], ID=[new Array(N).fill(0),new Array(N).fill(0)];  // lado 0 = izquierda, 1 = derecha
+  let hayInf=false;
+  if(S.infra){ for(let i=0;i<N;i++){ const L=S.infra(Ds+i*G); if(!L)continue; hayInf=true;
+      for(const f of L){ if(f.k==='puente')IP[i]=Math.max(IP[i],f.h>0?f.h:6); else if(f.k==='tunel')IT[i]=1;
+        else if(f.k==='terraplen'||f.k==='desmonte'){ const A=f.k==='terraplen'?IE:ID, h=f.h>0?f.h:4; if(f.lado>=0)A[0][i]=Math.max(A[0][i],h); if(f.lado<=0)A[1][i]=Math.max(A[1][i],h); } } } }
+  const suav=(a,r)=>{ const o=new Array(N).fill(0); for(let i=0;i<N;i++){ let s=0,n=0; for(let k=-r;k<=r;k++){ const j=i+k; if(j<0||j>=N)continue; s+=a[j]; n++; } o[i]=s/n; } return o; };
+  if(hayInf){ const t2=suav(IT,8); for(let i=0;i<N;i++)IT[i]=t2[i]; for(const A of [IE,ID])for(let s=0;s<2;s++){ const q=suav(A[s],4); for(let i=0;i<N;i++)A[s][i]=q[i]; } }
   // v185: la calzada más cercana se busca con una grilla de 16 m (anillos de celdas) y, lejos, con una pasada gruesa (1 de cada 4 muestras): antes era un recorrido de
   // todas las muestras por cada vértice del terreno (unos 5000 por cuadro).
   const CB=16, bk=new Map(), cI=v=>Math.floor(v/CB);
@@ -3382,7 +3392,14 @@ function mundo(S){
     // una zanja suave junto a la calzada (-0,55 m a 4 m, 0 a 12 m): los triángulos de 3 m que cruzan la calzada interpolan alturas de vértices que eligieron tramos distintos y,
     // en una pendiente, podían quedar por encima del asfalto (una cuña de pasto/arena sobre el camino)
     const zan=dist<HW+SH?.55:(dist<12?.55*(12-dist)/(12-HW-SH):0);
-    return {p:[x,ys[k]+y-.05-zan-low,z],k,dist,s}; };
+    let yi=0;
+    if(hayInf){ const e=dist-(HW+SH), si=s<0?0:1;
+      if(IT[k]>0) yi+=15*IT[k]*(dist<HW+SH+8?1:Math.max(0,1-(dist-HW-SH-8)/30));                                         // cerro sobre el túnel
+      if(IP[k]>0) yi-=IP[k]*(e<2?1:Math.max(0,1-(e-2)/22));                                                                // el suelo cae bajo el puente
+      if(IE[si][k]>0&&e>0) yi-=Math.min(IE[si][k],e*.5)*Math.min(1,IE[si][k]/1);                                         // terraplén: talud 1:2
+      if(ID[si][k]>0&&e>0) yi+=Math.min(ID[si][k],e*.5);                                                                    // desmonte
+    }
+    return {p:[x,ys[k]+y-.05-zan-low+yi,z],k,dist,s}; };
   const colTerreno=(a,b)=>{ const k=a.k, s=(a.s+b.s)>=0?1:-1, dist=(a.dist+b.dist)/2, T=s<0?lT:rT; if(!GC[k])GC[k]=gk(k); const gc=GC[k][s<0?0:1];
     if(T==='water')return dist<OFS[1]?mix(gc,[.8,.74,.55],.6):mix(wcol,wnear,dist<40?.5:0);
     if(T==='wall')return tone(mix([.54,.49,.43],[.27,.24,.2],Math.min(1,dist/400)),1);
@@ -3404,6 +3421,16 @@ function mundo(S){
       quad(R,P(i,sg*h0),P(i,sg*(HW+SH)),P(i+1,sg*(HW+SH)),P(i+1,sg*h1),tone(gc,.8)); // banquina
       if(ver){ quad(R,P(i,sg*(h0+.25),.1),P(i,sg*(h0+2.2),.1),P(i+1,sg*(h1+2.2),.1),P(i+1,sg*(h1+.25),.1),[.74,.73,.7]);       // vereda
         quad(R,P(i,sg*h0,.0),P(i,sg*(h0+.25),.0),P(i+1,sg*(h1+.25),.0),P(i+1,sg*h1,.0),[.62,.61,.58]); }                        // cordón
+    }
+    if(hayInf){ const pu=IP[i]>0&&IP[i+1]>0, tu=IT[i]>.9&&IT[i+1]>.9;
+      if(pu){ for(const sg of [-1,1]){ quad(A,P(i,sg*h0,0),P(i+1,sg*h1,0),P(i+1,sg*h1,1.05),P(i,sg*h0,1.05),[.66,.66,.63]);                 // baranda
+          quad(A,P(i,sg*h0,0),P(i+1,sg*h1,0),P(i+1,sg*h1,-1.0),P(i,sg*h0,-1.0),[.45,.45,.43]); }                                       // cara del tablero
+        quad(A,P(i,-h0,-1.0),P(i,h0,-1.0),P(i+1,h1,-1.0),P(i+1,-h1,-1.0),[.38,.38,.37]);
+        if(Math.round((Ds+i*G)/G)%5===0){ const c=P(i,0,-IP[i]/2-.5); obox(A,c,[rx[i],0,rz[i]],[0,1,0],[Math.sin(bs[i]),0,Math.cos(bs[i])],h0*2-.6,IP[i]-1,.9,[.52,.52,.5]); } }   // pila
+      if(tu){ const H=5.2; for(const sg of [-1,1])quad(A,P(i,sg*(h0+.5),0),P(i+1,sg*(h1+.5),0),P(i+1,sg*(h1+.5),H),P(i,sg*(h0+.5),H),[.56,.56,.54]);
+        quad(A,P(i,-(h0+.8),H),P(i,h0+.8,H),P(i+1,h1+.8,H),P(i+1,-(h1+.8),H),[.27,.27,.3]);
+        if(i%3===0)obox(A,P(i,0,H-.12),[rx[i],0,rz[i]],[0,1,0],[Math.sin(bs[i]),0,Math.cos(bs[i])],.5,.1,1.2,[1,.95,.7]); }
+      if(IT[i]>.9&&IT[i+1]>.9&&!(i>0&&IT[i-1]>.9)){ const H=5.2; obox(A,P(i,0,H+.7),[rx[i],0,rz[i]],[0,1,0],[Math.sin(bs[i]),0,Math.cos(bs[i])],2*(h0+1.4),1.4,1.2,[.5,.5,.48]); }   // dintel de la boca
     }
     if((!vl||vl.linea)&&SS[i]<240&&Math.floor(dd/8)%2===0)quad(R,P(i,-.07,.03),P(i,.07,.03),P(i+1,.07,.03),P(i+1,-.07,.03),[.95,.93,.78]);   // raya central
     if(!vl||!vl.unp)for(const sg of [-1,1])quad(R,P(i,sg*(h0-.35),.03),P(i,sg*(h0-.2),.03),P(i+1,sg*(h1-.2),.03),P(i+1,sg*(h1-.35),.03),[.9,.9,.88]);
@@ -3443,6 +3470,7 @@ function mundo(S){
     const gYat=(x,z)=>gT(x,z,0).p[1];
     for(let kc=Math.floor((d-12)/STEP);kc<=Math.floor((d+340)/STEP);kc++){
       const dd=kc*STEP, s0=dd-d; if(s0<-10||s0>340) continue;
+      { const ii=Math.max(0,Math.min(N-1,Math.round((dd-Ds)/G))); if(hayInf&&(IT[ii]>.2||IP[ii]>0)) continue; }
       const lm=landEn(LDm,dd,false), vl=landVia(lm.v,sc.asphalt), w=at(s0), hwi=Math.max(1.4,Math.min(5.5,landAncho(LDm,dd,HW)));
       for(const side of [-1,1]){
         const s=side<0?0:1, seed=kc*1.37+side*0.71+lm.q*0.013; if(SKIP(side)) continue;
