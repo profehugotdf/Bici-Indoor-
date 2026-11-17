@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v196</title>
+<title>Bici Indoor · v197</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -96,7 +96,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v196</h1>
+  <h1>Bici Indoor · v197</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -756,6 +756,7 @@ function bigPersist(k,v){
     tx.onerror=tx.onabort=()=>{ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+((tx.error&&tx.error.message)||"error"),"#f85149"); } };
   }catch(e){ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+e.message,"#f85149"); } }
 }
+// v197: 🌅 cambios de escenario graduales y con el cielo de la zona (Hugo, 17-nov, dos capturas a 80 m de distancia: en el km 3,17 —Rural— ningún árbol y en el 3,25 —Yungas— selva cerrada, cielo gris y bruma: "me gustaría que el cambio sea más gradual y que se respete el clima o cielo de la zona"). (1) En la vista WebGL cada planta toma el escenario de SU lugar (`scFn` → sceneAt), no el de la cámara, y en el borde entre tramos se mezclan las dos vegetaciones en ±55 m. (2) Cielo, cerros, suelo, asfalto y bruma se funden en ±150 m alrededor de cada cambio (`sceneSuave`). (3) Yungas es vegetación, no clima: hereda el cielo, los cerros y la nieve del tramo de al lado (`heredaCielo`; si toda la ruta es Yungas, usa su propio cielo, ahora más despejado y con menos bruma).
 // v196: 🌿 Yungas también en rutas de Rumbo (Hugo, 17-nov, captura: tramo Yungas en la ruta de Ixtapa y "¿cómo hago para que aparezca la vegetación de Yungas?": no aparecía ninguna planta). Con `land` de Rumbo, el escenario no ponía su decorado: los costados salían solo del uso del suelo (pradera, matorral o sin dato = casi nada). Ahora, con escenario Yungas, donde Rumbo no dice casas, barrio, agua, arena, roca, cementerio ni nieve (clases 0, 4–8 y 12), el monte lo pone el escenario: WebGL (`vegE` en `mundo`: landGL deja esos costados y el bucle de decor corre también con land) y 2D (`landDecorFranja` con el parámetro nuevo `veg` = decor del tramo, `landVegEscena`; bloque land: copiar a Correr).
 // v195: ✂️ editar los tramos del escenario mirando (Hugo, 17-nov: "¿se te ocurre alguna forma más intuitiva para editar los tramos?"; antes había que saber el km de memoria y tocar varios desplegables por tramo). El punto que se elige en la franja de colores (ahora se toca o se arrastra), el perfil o el plano es el cursor: "✂️ Cortar acá" parte el tramo en ese km (el nuevo copia el escenario, agua, pared y costados del que partió) y "🔗 Unir con el anterior" borra el corte. El escenario del tramo del cursor se elige tocando una tarjeta con dibujito (fila que se desliza de costado, sceneThumb); agua, pared y costados quedan plegados en "⚙️ Más" (los mismos controles que la lista, sceneRowExtras). La lista con km exactos sigue, plegada abajo. En ida y vuelta, un punto de la vuelta edita el km espejado de la ida. No cambia cómo se guarda (bici_scenes).
 // v194: 🌳 escenario "Yungas (selva de montaña)" en el editor (Hugo, 17-nov: "¿podría representar la vegetación tipo Yungas?"): decor yungas. WebGL: selva densa con árboles altos de copa ancha e irregular en varios bultos (algunos de corteza clara, como la tipa), helechos arborescentes, sotobosque y matas al borde de la banquina, y copas grandes atrás; más bruma (sc.bruma = 2,2, multiplica la niebla). 2D: landArbol con tipos yunga, helecho y mata (bloque land: copiar a Correr). Con `cost` de Rumbo las plantas van sobre la ladera real y solo donde la foto es verde.
@@ -1663,7 +1664,7 @@ const SCENES={
   canal:{ label:"Costa del canal", sky:["#5a9fd0","#c9e4f2"], ground:"#4c6a45", asphalt:"#525a63", mtnCol:["#9aaec2","#7d93a9"], mtnAmp:1.4, snow:0.55, decor:"lengas", defaultWater:"left" },
   montana:{ label:"Montaña nevada", sky:["#5f9fcf","#d3e7f2"], ground:"#6f7c72", asphalt:"#545b62", mtnCol:["#aebbc8","#8494a6"], mtnAmp:2.0, snow:0.75, decor:"nieve" },
   ciudad:{ label:"Casas de colores", sky:["#6aa8d6","#d6e8f1"], ground:"#4a4f55", asphalt:"#555c63", mtnCol:["#8aa0b6","#6a8198"], mtnAmp:1.3, snow:0.4, decor:"casas" },
-  yungas:{ label:"Yungas (selva de montaña)", sky:["#7fa3bb","#d3e0e4"], ground:"#1d4a24", asphalt:"#4d5458", mtnCol:["#5d7c68","#41604e"], mtnAmp:1.7, snow:0, decor:"yungas", bruma:2.2 },   // v194
+  yungas:{ label:"Yungas (selva de montaña)", sky:["#6ea8d2","#d2e4ec"], ground:"#1d4a24", asphalt:"#4d5458", mtnCol:["#5d7c68","#41604e"], mtnAmp:1.7, snow:0, decor:"yungas", bruma:1.5, heredaCielo:true },   // v194; v197: hereda el cielo de la zona
   estepa:{ label:"Estepa y alambrado", sky:["#6fb3e3","#dceef7"], ground:"#9c8a56", asphalt:"#5a5650", mtnCol:["#aaa190","#8f8674"], mtnAmp:0.5, snow:0, decor:"estepa" },
   velodromo:{ label:"Velódromo cubierto", sky:["#171b22","#2a323d"], ground:"#2e4a2f", asphalt:"#c9a768", mtnCol:["#333a44","#242931"], mtnAmp:0.6, decor:"stands" },
   velodromo_open:{ label:"Velódromo al aire libre", sky:["#5bb0e6","#bfe6f5"], ground:"#3a6b3d", asphalt:"#b8956a", mtnCol:["#7492ad","#54718d"], mtnAmp:0.5, decor:"stands" },
@@ -1733,7 +1734,7 @@ function drawScenePreview(){
     const sc=sceneAt(sceneEditRoute,d);
     let glOk=false;
     if(glRutaOn()){ const ex=glRutaExtra(sceneEditRoute,sc);
-      glOk=GLR.draw(ctx,w,h,{key:sceneEditRoute+"|"+(sceneRouteGeo._glk||(sceneRouteGeo._glk=Math.random().toString(36).slice(2))),d,bFn:dd=>bearingRoute(sceneRouteGeo,dd),eFn:dd=>sceneEleAt(dd),sc,crank:scenePrevCrank,
+      glOk=GLR.draw(ctx,w,h,{key:sceneEditRoute+"|"+(sceneRouteGeo._glk||(sceneRouteGeo._glk=Math.random().toString(36).slice(2))),d,bFn:dd=>bearingRoute(sceneRouteGeo,dd),eFn:dd=>sceneEleAt(dd),sc:sceneSuave(sceneEditRoute,d,sc),scFn:dd=>sceneAt(sceneEditRoute,Math.max(0,dd)),crank:scenePrevCrank,
         gs:ex.gs, hz:ex.hz, land:ex.land, infra:ex.infra, lin:ex.lin, cost:ex.cost, luz:ex.luz, wx:ex.wx, v:6});
       if($("sceneGlInfo")) $("sceneGlInfo").textContent=glOk?"":(GLR.ok()?"":"WebGL no disponible acá: se ve la vista de siempre. "+GLR.diag()); }
     if(!glOk){
@@ -2282,7 +2283,25 @@ function sceneAt(routeName,d){
   const wallChoice=cur.wall||base.defaultWall||null; // "Camino de cornisa" trae pared automática aunque el tramo no la tenga elegida
   const wall=wallChoice==="auto"?uphillSideAt(routeName,d):(mir.back?flipSide(wallChoice):wallChoice); // la automática ya usa la geometría real
   const water=cur.water||base.defaultWater||null;
-  return Object.assign({},base,{waterSide:mir.back?flipSide(water):water, waterKind:cur.waterKind||"mar", wallSide:wall});
+  let cielo=null;
+  if(base.heredaCielo){ // v197: una vegetación (Yungas) no cambia el cielo: toma el del tramo anterior (o el siguiente) que sí lo define
+    const i=segs.indexOf(cur); let q=null;
+    for(let k=i-1;k>=0&&!q;k--){ const b=SCENES[segs[k].scene]; if(b&&!b.heredaCielo) q=b; }
+    for(let k=i+1;k<segs.length&&!q;k++){ const b=SCENES[segs[k].scene]; if(b&&!b.heredaCielo) q=b; }
+    if(q) cielo={sky:q.sky, mtnCol:q.mtnCol, mtnAmp:q.mtnAmp, snow:q.snow||0, bruma:q.bruma}; }
+  return Object.assign({},base,cielo||{},{waterSide:mir.back?flipSide(water):water, waterKind:cur.waterKind||"mar", wallSide:wall});
+}
+// v197: cielo, cerros, suelo, asfalto y bruma fundidos en ±150 m alrededor de un cambio de tramo (para la vista WebGL)
+function sceneSuave(name,d,sc){
+  const R=150, P=[]; let dif=false;
+  for(let k=-3;k<=3;k++){ const q=k?sceneAt(name,Math.max(0,d+k*R/3)):sc; P.push([q,1-Math.abs(k)/4]);
+    if(q.sky[0]!==sc.sky[0]||q.sky[1]!==sc.sky[1]||q.ground!==sc.ground||q.asphalt!==sc.asphalt||q.mtnCol[0]!==sc.mtnCol[0]||(q.bruma||1)!==(sc.bruma||1)) dif=true; }
+  if(!dif) return sc;
+  const hx=f=>{ let r=0,g=0,b=0,W=0; for(const [q,w] of P){ const n=parseInt(f(q).slice(1),16); r+=w*(n>>16&255); g+=w*(n>>8&255); b+=w*(n&255); W+=w; }
+      return "#"+((1<<24)|(Math.round(r/W)<<16)|(Math.round(g/W)<<8)|Math.round(b/W)).toString(16).slice(1); },
+    nu=f=>{ let a=0,W=0; for(const [q,w] of P){ a+=w*f(q); W+=w; } return a/W; };
+  return Object.assign({},sc,{sky:[hx(q=>q.sky[0]),hx(q=>q.sky[1])], mtnCol:[hx(q=>q.mtnCol[0]),hx(q=>q.mtnCol[1])], ground:hx(q=>q.ground), asphalt:hx(q=>q.asphalt),
+    mtnAmp:nu(q=>q.mtnAmp||1), snow:nu(q=>q.snow||0), bruma:nu(q=>q.bruma||1)});
 }
 // ---------- Puentes / rampas manuales (para tramos que el DEM no capta, ej. puentes de autopista) ----------
 function loadBridges(){ try{return JSON.parse(localStorage.getItem("bici_bridges")||"{}");}catch(_){ return {}; } }
@@ -3460,7 +3479,7 @@ function drawRoad(){
     const gNow=ghost?ghostDistAt(elapsed+idt):0;
     if(!ghost&&mode==="gpx"&&points.length&&glRutaOn()&&!glVivoFalla){   // v185: vista en vivo en WebGL (con el fantasma sigue la vista 2D)
       const sc=sceneAt(fname,dNow), ex=glRutaExtra(fname,sc);
-      if(GLR.draw(ctx,w,h,{key:"v|"+fname+"|"+total,d:dNow,bFn:bearingAt,eFn:eleAt,sc,crank:roadCrank,gs:ex.gs,hz:ex.hz,land:ex.land,infra:ex.infra,lin:ex.lin,cost:ex.cost,luz:ex.luz,wx:ex.wx,v:v})){
+      if(GLR.draw(ctx,w,h,{key:"v|"+fname+"|"+total,d:dNow,bFn:bearingAt,eFn:eleAt,sc:sceneSuave(fname,dNow,sc),scFn:dd=>sceneAt(fname,Math.max(0,dd)),crank:roadCrank,gs:ex.gs,hz:ex.hz,land:ex.land,infra:ex.infra,lin:ex.lin,cost:ex.cost,luz:ex.luz,wx:ex.wx,v:v})){
         if(wxActivo()&&wxRelAhora){ const hz=Math.round(h*0.44); wxAire(ctx,w,h,hz,WX,wxRelAhora,performance.now()/1000,v); wxFlecha(ctx,w-36,36,WX,wxRelAhora); }
         roadDrawErrLogged=false; return; }
       if(!GLR.ok()) glVivoFalla=true; }
@@ -3754,7 +3773,11 @@ function mundo(S){
   /* v185: costados REALES de Rumbo (`land`, cada 25 m): casas, edificios y galpones con su altura, cuadras sintéticas en la ciudad, árboles, faroles y veredas.
      Es la misma lógica que `landDecorFranja` (2D), pero con cajas 3D sobre el terreno. */
   const dec0=sc.decor||'trees';
-  const vegE=c=>dec0==='yungas'&&(c===0||c===4||c===5||c===6||c===7||c===8||c===12);   // v196: con escenario Yungas, el monte de los costados lo pone el escenario (no el uso del suelo de Rumbo)
+  /* v197: el decorado de cada lugar sale del escenario de ese lugar (S.scFn), no del de la cámara, y en los cambios de tramo
+     se mezcla: cada planta toma el escenario de un punto corrido hasta ±MEZ m (borde gradual, como un ecotono). */
+  const MEZ=55, decAt=(dd,key)=>{ if(!S.scFn) return dec0; const q=S.scFn(dd+(hash(key)-.5)*2*MEZ); return (q&&q.decor)||dec0; };
+  const vegC=c=>c===0||c===4||c===5||c===6||c===7||c===8||c===12;
+  const vegE=(c,dd,key)=>vegC(c)&&decAt(dd,key)==='yungas';   // v196: con escenario Yungas, el monte de los costados lo pone el escenario (no el uso del suelo de Rumbo)
   function landGL(){
     const STEP=12.5, sur=!!LDm.sur, SKIP=s=>{ const T=s<0?lT:rT; return T!=='normal'; };
     const arbol=(x,y,z,hh,tipo,r)=>{ const trunk=[.30,.21,.14]; shTree(x,z,hh); const [wx1,wz1]=sway(x,z,hh,.8), [wx2,wz2]=sway(x,z,hh,1), [wx0,wz0]=sway(x,z,hh,.5);
@@ -3801,7 +3824,7 @@ function mundo(S){
         const c=lm.c[s], r=landHash(seed), ox=side*(borde+2+6*landHash(seed*1.9));
         if(vl&&(vl.farol||vl.calle&&landUrbano(vl,c))&&kc%3===0&&(side>0)===(kc%2===0)){
           const x=w.x+w.rx*side*(borde-.4), z=w.z+w.rz*side*(borde-.4), y=gYat(x,z); obox(A,[x,y+3.5,z],[1,0,0],[0,1,0],[0,0,1],.16,7,.16,[.29,.31,.33]); obox(A,[x,y+7,z],[1,0,0],[0,1,0],[0,0,1],.5,.18,.3,[.9,.9,.8]); }
-        if(vegE(c)&&!landUrbano(vl,c)) continue;
+        if(!landUrbano(vl,c)&&vegE(c,dd,kc*3.17+side*.53)) continue;
         if(!c) continue;
         const at1=(o)=>{ const x=w.x+w.rx*side*o, z=w.z+w.rz*side*o; return [x,gYat(x,z),z]; };
         if(c===7){ for(const [o,f] of [[11,0.37],[5.5,0.71],[0,0.13]]){ const rr=landHash(seed*f+o), [x,y,z]=at1(borde+2+6*landHash(seed*1.9)+o+3*rr); arbol(x,y,z,(sur?8:9)+7*rr,sur?'lenga':rr>.55?'pino':'hoja',rr); } }
@@ -3825,10 +3848,11 @@ function mundo(S){
     for(const e of LNa){ const nw=mix(wcol,wnear,.35); cinta(e.pts,e.w+1.6,e.dep*.4,tone(nw,wet?.85:1),true); }
     for(const e of LNc){ const k=e.k===10?tone(asf,1.05):e.k===11?mix(asf,gcol,.12):e.k===12?[.6,.5,.36]:[.72,.7,.65]; cinta(e.pts,e.w,0,k,false); } }
   if(LDm){ landGL(); }
-  if((!LDm||dec==='yungas')&&dec!=='waves'&&dec!=='stands'){
+  if(S.scFn||(!LDm||dec==='yungas')&&dec!=='waves'&&dec!=='stands'){
     for(let kc=Math.floor((d-10)/14);kc<=Math.floor((d+330)/14);kc++)for(const sg of [-1,1]){
       const T=sg<0?lT:rT; if(T!=='normal')continue;
-      if(LDm){ const lm=landEn(LDm,kc*14+7,false), sI=sg<0?0:1; if(lm.b[sI]||!vegE(lm.c[sI])||landUrbano(landVia(lm.v,sc.asphalt),lm.c[sI])) continue; }   // v196: casas, agua, arena o roca de Rumbo mandan
+      const dec=decAt(kc*14+7,kc*3.17+sg*.53); if(dec==='waves'||dec==='stands') continue;
+      if(LDm){ if(dec!=='yungas') continue; const lm=landEn(LDm,kc*14+7,false), sI=sg<0?0:1; if(lm.b[sI]||!vegC(lm.c[sI])||landUrbano(landVia(lm.v,sc.asphalt),lm.c[sI])) continue; }   // v196: casas, agua, arena o roca de Rumbo mandan
       const h1=hash(kc*2+(sg>0?1:0)), h2=hash(kc*7.31+sg), h3=hash(kc*3.7+sg*5);
       const s=kc*14+7-d; if(s<-8||s>330)continue;
       const dens=(dec==='casas'||dec==='buildings')?.55:(dec==='estepa'?.25:dec==='yungas'?.97:.78); if(h1>dens)continue;
