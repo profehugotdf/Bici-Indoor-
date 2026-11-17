@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v180</title>
+<title>Bici Indoor · v181</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -96,7 +96,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v180</h1>
+  <h1>Bici Indoor · v181</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -744,6 +744,9 @@ function bigPersist(k,v){
     tx.onerror=tx.onabort=()=>{ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+((tx.error&&tx.error.message)||"error"),"#f85149"); } };
   }catch(e){ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+e.message,"#f85149"); } }
 }
+// v181: la vista WebGL del camino se movía a saltos en el fondo (Hugo: "se ve muy de a saltos el desplazamiento del escenario al fondo"): el mundo se
+// re-muestreaba en cada cuadro, relativo a la cámara y con la altura redondeada por tramos. Ahora los vértices están en una grilla FIJA de 4 m de
+// distancia absoluta (rumbo y altura suavizados en ventanas fijas) y solo se interpola la cámara y el ciclista entre dos vértices.
 // v180: vista WebGL del camino en la vista previa del "Escenario de la ruta" (Hugo: "¿cómo puedo tener una vista previa de los escenarios en modo WebGL?").
 // `GLR` arma un mundo 3D alrededor del punto elegido (calzada con la pendiente y las curvas reales, banquinas, costados según el escenario:
 // agua, pared, valle o campo con el color de la foto satelital; árboles, lengas, casas, edificios o rocas según `decor`; el horizonte real de
@@ -3302,18 +3305,19 @@ function flush(B,VP,fog,K){
 const HW=2.6, SH=1.6;                       // semiancho de la calzada y de la banquina (m)
 const hzAngF=a=>a<=0?a*HZ_EX:HZ_MAX*Math.tanh(a*HZ_EX/HZ_MAX);
 function mundo(S){
-  const {d,bFn,eFn,sc,gs,hz,crank}=S, e0=eFn(d), SS=[];
-  for(let s=-10;s<=60;s+=2)SS.push(s);for(let s=64;s<=200;s+=4)SS.push(s);for(let s=210;s<=700;s+=10)SS.push(s);
-  const N=SS.length, i0=SS.indexOf(0), bs=[], ys=[], px=new Array(N), pz=new Array(N);
-  for(let i=0;i<N;i++){ let sx=0,sy=0; for(const k of [-8,-4,0,4,8]){const b=bFn(Math.max(0,d+SS[i]+k));sx+=Math.sin(b);sy+=Math.cos(b);} bs.push(Math.atan2(sx,sy));
-    let e=0; for(const k of [-6,0,6])e+=eFn(Math.max(0,d+SS[i]+k)); ys.push(e/3-e0); }
-  px[i0]=0;pz[i0]=0;
-  for(let i=i0+1;i<N;i++){const bm=Math.atan2(Math.sin(bs[i-1])+Math.sin(bs[i]),Math.cos(bs[i-1])+Math.cos(bs[i])),ds=SS[i]-SS[i-1];px[i]=px[i-1]+Math.sin(bm)*ds;pz[i]=pz[i-1]+Math.cos(bm)*ds;}
-  for(let i=i0-1;i>=0;i--){const bm=Math.atan2(Math.sin(bs[i+1])+Math.sin(bs[i]),Math.cos(bs[i+1])+Math.cos(bs[i])),ds=SS[i+1]-SS[i];px[i]=px[i+1]-Math.sin(bm)*ds;pz[i]=pz[i+1]-Math.cos(bm)*ds;}
+  const {d,bFn,eFn,sc,gs,hz,crank}=S, G=4, Ds=Math.floor((d-16)/G)*G, N=Math.ceil((d+700-Ds)/G)+1, SS=[], bs=[], ys=[], px=new Array(N), pz=new Array(N);
+  // v180: grilla FIJA cada 4 m de distancia absoluta: los vértices no cambian cuando avanzás (antes se re-muestraba cada cuadro con la altura
+  // redondeada y el fondo se movía a saltos); solo se interpola la cámara entre dos vértices. Rumbo y altura se suavizan en ventanas fijas.
+  for(let i=0;i<N;i++){ const D=Ds+i*G; SS.push(D-d); let sx=0,sy=0; for(const k of [-8,-4,0,4,8]){const b=bFn(Math.max(0,D+k));sx+=Math.sin(b);sy+=Math.cos(b);} bs.push(Math.atan2(sx,sy));
+    let e=0; for(const k of [-6,-2,2,6])e+=eFn(Math.max(0,D+k)); ys.push(e/4); }
+  px[0]=0;pz[0]=0;
+  for(let i=1;i<N;i++){const bm=Math.atan2(Math.sin(bs[i-1])+Math.sin(bs[i]),Math.cos(bs[i-1])+Math.cos(bs[i])),ds=G;px[i]=px[i-1]+Math.sin(bm)*ds;pz[i]=pz[i-1]+Math.cos(bm)*ds;}
   const rx=bs.map(b=>Math.cos(b)), rz=bs.map(b=>-Math.sin(b));   // derecha de la marcha
+  const atD=(D)=>{ const k=Math.max(0,Math.min(N-1.001,(D-Ds)/G)), i=Math.floor(k), t=k-i;
+    return {x:px[i]+(px[i+1]-px[i])*t,y:ys[i]+(ys[i+1]-ys[i])*t,z:pz[i]+(pz[i+1]-pz[i])*t,b:Math.atan2(Math.sin(bs[i])*(1-t)+Math.sin(bs[i+1])*t,Math.cos(bs[i])*(1-t)+Math.cos(bs[i+1])*t)}; };
+  const C=atD(d); for(let i=0;i<N;i++){px[i]-=C.x;pz[i]-=C.z;ys[i]-=C.y;}      // todo relativo a la cámara
   const P=(i,o,dy)=>[px[i]+rx[i]*o,ys[i]+(dy||0),pz[i]+rz[i]*o];
-  const at=(s)=>{ let i=0; while(i<N-2&&SS[i+1]<s)i++; const t=Math.max(0,Math.min(1,(s-SS[i])/(SS[i+1]-SS[i])));
-    return {x:px[i]+(px[i+1]-px[i])*t,y:ys[i]+(ys[i+1]-ys[i])*t,z:pz[i]+(pz[i+1]-pz[i])*t,rx:rx[i],rz:rz[i],b:bs[i]}; };
+  const at=(s)=>{ const a=atD(d+s); return {x:a.x,y:a.y,z:a.z,rx:Math.cos(a.b),rz:-Math.sin(a.b),b:a.b}; };
   const skyA=col(sc.sky[0]), skyB=col(sc.sky[1]), gcol=col(sc.ground), asf=col(sc.asphalt);
   const lT=sc.wallSide==='left'?'wall':(sc.waterSide==='left'?'water':(sc.wallSide==='right'?'valley':'normal'));
   const rT=sc.wallSide==='right'?'wall':(sc.waterSide==='right'?'water':(sc.wallSide==='left'?'valley':'normal'));
@@ -3323,7 +3327,7 @@ function mundo(S){
   const OFS=[HW+SH,HW+SH+2.5,HW+SH+10,40,130,400];
   const DY={normal:[0,0,0,0,0,0],water:[-1.1,-1.2,-1.2,-1.2,-1.2,-1.2],wall:[1.2,5,10,17,34,70],valley:[-.4,-3,-6,-14,-30,-55]};
   for(let i=0;i<N-1;i++){
-    const dd=d+SS[i], g=gs?gs(dd):null, gL=g?col(g.L):gcol, gR=g?col(g.R):gcol, band=Math.floor(dd/6)%2?1.035:0.965;
+    const dd=Ds+i*G, g=gs?gs(dd):null, gL=g?col(g.L):gcol, gR=g?col(g.R):gcol, band=Math.floor(dd/8)%2?1.035:0.965;
     quad(A,P(i,-HW),P(i,HW),P(i+1,HW),P(i+1,-HW),tone(asf,band));
     for(const sg of [-1,1]){
       const T=sg<0?lT:rT, gc=sg<0?gL:gR, dy=DY[T];
@@ -3337,7 +3341,7 @@ function mundo(S){
         quad(A,P(i,sg*OFS[j],dy[j]),P(i,sg*OFS[j+1],dy[j+1]),P(i+1,sg*OFS[j+1],dy[j+1]),P(i+1,sg*OFS[j],dy[j]),c);
       }
     }
-    if(SS[i]<200&&Math.floor((dd+0.5)/6)%2===0)quad(A,P(i,-.07,.03),P(i,.07,.03),P(i+1,.07,.03),P(i+1,-.07,.03),[.95,.93,.78]);   // raya central
+    if(SS[i]<240&&Math.floor(dd/8)%2===0)quad(A,P(i,-.07,.03),P(i,.07,.03),P(i+1,.07,.03),P(i+1,-.07,.03),[.95,.93,.78]);   // raya central
     for(const sg of [-1,1])quad(A,P(i,sg*(HW-.35),.03),P(i,sg*(HW-.2),.03),P(i+1,sg*(HW-.2),.03),P(i+1,sg*(HW-.35),.03),[.9,.9,.88]);
   }
   /* suelo grande: lo que queda más allá de 400 m a los costados (agua del lado del agua) */
@@ -3372,8 +3376,8 @@ function mundo(S){
     }
   }
   /* cerros del horizonte */
-  const cam={b:bs[i0],y:e0};
-  const camY=ys[i0]+2.15, mc0=col(sc.mtnCol[0]), mc1=col(sc.mtnCol[1]);
+  const cam={b:C.b};
+  const camY=2.15, mc0=col(sc.mtnCol[0]), mc1=col(sc.mtnCol[1]);
   const farC=mix(mc0,skyB,.45), midC=mc0, nearC=mix(mc1,gcol,.35);
   const COLS=70, A0=cam.b-1.25, A1=cam.b+1.25;                         // ±72° alrededor de donde se mira (rad)
   const layer=(R,fn,k,snowFn)=>{
@@ -3389,7 +3393,7 @@ function mundo(S){
   const deg=180/Math.PI;
   if(hz){
     const smp=a=>hzSample(hz,d,a), snow=hz.snow;
-    const sn=(ie,id)=>a=>{ if(!snow)return null; const v=smp(a), e=v[ie], dd=v[id]; return (e>snow&&dd>0)?Math.atan((snow-e0)/dd)*deg:null; };
+    const sn=(ie,id)=>a=>{ if(!snow)return null; const v=smp(a), e=v[ie], dd=v[id]; return (e>snow&&dd>0)?Math.atan((snow-C.y)/dd)*deg:null; };
     layer(3700,a=>({a:smp(a)[4]}),farC,snow?sn(5,6):null);
     layer(3400,a=>({a:smp(a)[1]}),midC,snow?sn(2,3):null);
     layer(3100,a=>({a:smp(a)[0]}),nearC,null);
@@ -3399,8 +3403,8 @@ function mundo(S){
     layer(3200,a=>({a:1+amp*(1.4+1.6*Math.sin(a*4.3+2.1)+.9*Math.sin(a*11.3+1.1))}),nearC,null);
   }
   /* el ciclista, visto de atrás */
-  const f=[Math.sin(bs[i0]),0,Math.cos(bs[i0])], r=[rx[i0],0,rz[i0]], up=[0,1,0], by=ys[i0];
-  const at3=(l,h,fw)=>[px[i0]+r[0]*l+f[0]*fw,by+h,pz[i0]+r[2]*l+f[2]*fw];
+  const f=[Math.sin(C.b),0,Math.cos(C.b)], r=[Math.cos(C.b),0,-Math.sin(C.b)], up=[0,1,0], by=0;
+  const at3=(l,h,fw)=>[r[0]*l+f[0]*fw,by+h,r[2]*l+f[2]*fw];
   const jer=[.18,.44,.62], skin=[.82,.62,.5], dark=[.1,.11,.14], helm=[.12,.13,.16];
   obox(A,at3(0,.33,-.5),r,up,f,.04,.66,.1,dark);       // rueda trasera (de canto)
   obox(A,at3(0,.33,.45),r,up,f,.04,.66,.1,dark);       // delantera
@@ -3416,7 +3420,7 @@ function mundo(S){
   obox(A,at3(0,1.53,.0),r,up,f,.2,.1,.24,helm);        // casco
   for(const sg of [-1,1])obox(A,at3(sg*.21,1.1,.22),r,up,f,.09,.09,.5,jer);     // brazos
   obox(A,at3(0,1.0,.42),r,up,f,.46,.04,.04,dark);      // manubrio
-  return {A,M,cam:{eye:[-f[0]*4.6,ys[i0]+2.15,-f[2]*4.6],tgt:(()=>{const w=at(16);return [w.x,w.y+1.2,w.z];})()},fog:skyB,skyA,skyB};
+  return {A,M,cam:{eye:(()=>{const w=at(-4.6);return [w.x,w.y+2.15,w.z];})(),tgt:(()=>{const w=at(16);return [w.x,w.y+1.2,w.z];})()},fog:skyB,skyA,skyB};
 }
 function draw(ctx,w,h,S){
   if(failed)return false;
