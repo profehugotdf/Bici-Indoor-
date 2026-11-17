@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v182</title>
+<title>Bici Indoor · v183</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -96,7 +96,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v182</h1>
+  <h1>Bici Indoor · v183</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -744,6 +744,9 @@ function bigPersist(k,v){
     tx.onerror=tx.onabort=()=>{ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+((tx.error&&tx.error.message)||"error"),"#f85149"); } };
   }catch(e){ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+e.message,"#f85149"); } }
 }
+// v183: (1) en el cambio de sentido (km 4,42, Hugo) el suelo lateral de un tramo caía sobre la calzada de otro y la tapaba: se saltea el suelo cercano que
+// queda a menos de 9 m de la calzada de un tramo lejano de la ruta. (2) "La sensación de desnivel es demasiado leve en el descenso y ascenso": el desnivel se
+// dibuja ×2,6 (EXAG) y la cámara se inclina según la pendiente de los próximos metros, así se ve la loma que sube y el cielo al bajar.
 // v182: paneles planos que tapaban el cielo en la vista WebGL del camino (Hugo, 3 capturas del km 3,87): el campo de los costados copiaba la altura del
 // camino hasta 400 m al costado, y en una subida con curva eso armaba una pared de tierra delante de la cámara. Ahora, pasados los 40 m, el suelo se
 // aplana hacia el nivel de la cámara y baja (sin subir nunca por encima del camino en las bajadas). Además los cerros (horizonte real o inventado) van en
@@ -3306,14 +3309,14 @@ function flush(B,VP,fog,K){
   gl.drawArrays(gl.TRIANGLES,0,B.length/9);
 }
 /* ---- el mundo ---- */
-const HW=2.6, SH=1.6;                       // semiancho de la calzada y de la banquina (m)
+const HW=2.6, SH=1.6, EXAG=2.6;                // EXAG: el desnivel se dibuja ×2,6 (Hugo: se sentía muy leve en subidas y bajadas)                       // semiancho de la calzada y de la banquina (m)
 const hzAngF=a=>a<=0?a*HZ_EX:HZ_MAX*Math.tanh(a*HZ_EX/HZ_MAX);
 function mundo(S){
   const {d,bFn,eFn,sc,gs,hz,crank}=S, G=4, Ds=Math.floor((d-16)/G)*G, N=Math.ceil((d+700-Ds)/G)+1, SS=[], bs=[], ys=[], px=new Array(N), pz=new Array(N);
   // v180: grilla FIJA cada 4 m de distancia absoluta: los vértices no cambian cuando avanzás (antes se re-muestraba cada cuadro con la altura
   // redondeada y el fondo se movía a saltos); solo se interpola la cámara entre dos vértices. Rumbo y altura se suavizan en ventanas fijas.
   for(let i=0;i<N;i++){ const D=Ds+i*G; SS.push(D-d); let sx=0,sy=0; for(const k of [-8,-4,0,4,8]){const b=bFn(Math.max(0,D+k));sx+=Math.sin(b);sy+=Math.cos(b);} bs.push(Math.atan2(sx,sy));
-    let e=0; for(const k of [-6,-2,2,6])e+=eFn(Math.max(0,D+k)); ys.push(e/4); }
+    let e=0; for(const k of [-6,-2,2,6])e+=eFn(Math.max(0,D+k)); ys.push(e/4*EXAG); }
   px[0]=0;pz[0]=0;
   for(let i=1;i<N;i++){const bm=Math.atan2(Math.sin(bs[i-1])+Math.sin(bs[i]),Math.cos(bs[i-1])+Math.cos(bs[i])),ds=G;px[i]=px[i-1]+Math.sin(bm)*ds;pz[i]=pz[i-1]+Math.cos(bm)*ds;}
   const rx=bs.map(b=>Math.cos(b)), rz=bs.map(b=>-Math.sin(b));   // derecha de la marcha
@@ -3332,6 +3335,12 @@ function mundo(S){
   // v182: el campo de los costados YA NO copia la altura del camino hasta 400 m al costado: en una subida con curva eso armaba un "panel" de tierra delante
   // de la cámara (Hugo). Pasados los 40 m el suelo se aplana hacia el nivel de la cámara y baja de a poco (la altura absoluta es -1,5 a 130 m, -2,5 a 400 m, -3 a 1500 m).
   const DY={normal:i=>[0,0,0,0,Math.min(0,-.55*ys[i]-.825),Math.min(0,-.85*ys[i]-2.125),Math.min(0,-3-ys[i])],water:()=>[-1.1,-1.2,-1.2,-1.2,-1.2,-1.2,-1.2],wall:()=>[1.2,5,10,17,34,70,120],valley:()=>[-.4,-3,-6,-14,-30,-55,-60]};
+  // v182: en un cambio de sentido o un lazo el suelo lateral de un tramo cae sobre la calzada de otro y la tapa (Hugo, km 4,42): se saltea el suelo cercano
+  // que queda a menos de 9 m de la calzada de un tramo lejano en la ruta (celdas de 16 m)
+  const CELL=16, grid=new Map(), gk=(x,z)=>Math.floor(x/CELL)+','+Math.floor(z/CELL);
+  for(let i=0;i<N;i++){const k=gk(px[i],pz[i]);(grid.get(k)||grid.set(k,[]).get(k)).push(i);}
+  const cubre=(x,z,i)=>{ const cx=Math.floor(x/CELL), cz=Math.floor(z/CELL);
+    for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++){const L=grid.get((cx+a)+','+(cz+b));if(!L)continue;for(const k of L)if(Math.abs(k-i)>10&&Math.hypot(px[k]-x,pz[k]-z)<9)return true;}return false; };
   for(let i=0;i<N-1;i++){
     const dd=Ds+i*G, g=gs?gs(dd):null, gL=g?col(g.L):gcol, gR=g?col(g.R):gcol, band=Math.floor(dd/8)%2?1.035:0.965;
     quad(A,P(i,-HW),P(i,HW),P(i+1,HW),P(i+1,-HW),tone(asf,band));
@@ -3339,6 +3348,8 @@ function mundo(S){
       const T=sg<0?lT:rT, gc=sg<0?gL:gR, dy=DY[T](i), dy1=DY[T](i+1);
       quad(A,P(i,sg*HW),P(i,sg*(HW+SH),dy[0]*.0),P(i+1,sg*(HW+SH),dy[0]*.0),P(i+1,sg*HW),tone(gc,.8)); // banquina
       for(let j=0;j<OFS.length-1;j++){
+        if(j<=3&&T!=='water'){ const o=sg*(OFS[j]+OFS[j+1])/2, ob=sg*OFS[j+1], mx=(px[i]+px[i+1])/2, mz=(pz[i]+pz[i+1])/2, rxx=(rx[i]+rx[i+1])/2, rzz=(rz[i]+rz[i+1])/2;
+          if(cubre(mx+rxx*o,mz+rzz*o,i)||cubre(mx+rxx*ob,mz+rzz*ob,i)||cubre(mx+rxx*sg*OFS[j],mz+rzz*sg*OFS[j],i))continue; }
         let c;
         if(T==='water')c=j===0?mix(gc,[.8,.74,.55],.6):mix(wcol,wnear,j<2?.5:0);
         else if(T==='wall')c=tone(mix([.54,.49,.43],[.27,.24,.2],Math.min(1,j/5)),1);
@@ -3431,7 +3442,7 @@ function mundo(S){
   obox(A,at3(0,1.53,.0),r,up,f,.2,.1,.24,helm);        // casco
   for(const sg of [-1,1])obox(A,at3(sg*.21,1.1,.22),r,up,f,.09,.09,.5,jer);     // brazos
   obox(A,at3(0,1.0,.42),r,up,f,.46,.04,.04,dark);      // manubrio
-  return {A,M,cam:{eye:(()=>{const w=at(-4.6);return [w.x,w.y+2.15,w.z];})(),tgt:(()=>{const w=at(16);return [w.x,w.y+1.2,w.z];})()},fog:skyB,skyA,skyB};
+  return {A,M,cam:(()=>{const e0=at(-4.6),w=at(16),w2=at(34),gr=(w2.y-e0.y)/38.6, ey=e0.y+2.15; return {eye:[e0.x,ey,e0.z],tgt:[w.x,ey+20.6*gr*.85-.5,w.z]};})(),fog:skyB,skyA,skyB};
 }
 function draw(ctx,w,h,S){
   if(failed)return false;
