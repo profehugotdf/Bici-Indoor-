@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v192</title>
+<title>Bici Indoor · v193</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -96,7 +96,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v192</h1>
+  <h1>Bici Indoor · v193</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -745,6 +745,7 @@ function bigPersist(k,v){
     tx.onerror=tx.onabort=()=>{ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+((tx.error&&tx.error.message)||"error"),"#f85149"); } };
   }catch(e){ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+e.message,"#f85149"); } }
 }
+// v193: 🏞️ terreno REAL a los costados en la vista WebGL (Hugo, 17-nov, Ixtapa–Zihuatanejo: "no se parece al recorrido": pared de roca pelada y agua donde hay ladera de selva). Rumbo manda `cost` (cada 25 m, 7 alturas por lado y colores cerca/lejos de la foto satelital); costEn lo da en el sentido de la marcha (vuelta espejada) y GLR lo usa en vez de la pared/valle/agua del escenario: ladera y barranca reales (×1,3), colores de la foto, agua solo al nivel del mar con color de agua, árboles sobre la ladera y solo donde la foto es verde, banquina con el color del costado. Hay que volver a mandar la ruta desde Rumbo.
 // v192: 🛰️ foto satelital de fondo en el plano del Escenario de la ruta (Hugo, 17-nov): teselas Esri, primero de lo que Rumbo ya bajó (IndexedDB rumbo/tiles, sin crearla nunca), si no de internet; tilde bici_mapa_sat (prendido); la línea de pendientes lleva borde oscuro.
 // v191: arroyos y calles cercanas de Rumbo (`lin`, Hugo 17-nov: arroyo con puente y bicisenda junto a la RN3) en la vista WebGL: cauce excavado con agua (cruza por debajo del camino), calles paralelas, de servicio y bicisenda como cintas sobre el suelo; en la vuelta de un ida y vuelta se espejan. Además el puente que va por un costado (lado ≠ 0) ya no hunde el suelo bajo la calzada.
 // v190: el ciclista de la vista WebGL, más real: bici con cuadro (tubo superior, diagonal, caño del sillín, vainas, horquilla), ruedas con tubular y reflector que gira con la distancia, manubrio de
@@ -1707,7 +1708,7 @@ function sceneEditSegsNormalized(){
 function glRutaExtra(name,sc){ const rx=routeExtra(name), land=realLandOn(); let LD=null;
   const Wv=(wxActivo()&&name===fname&&state!=="idle")?WX:null; luzCuadro(0,400,Wv); const luz={az:LUZ.az,k:sc.decor==="stands"&&parseInt(sc.sky[0].slice(1,3),16)<60?LUZ.k*0.2:LUZ.k};
   if(land){ const LB=landDeRuta(name,rx&&rx.land); if(LB) LD=Object.assign({},LB,{map:dd=>mirrorD(name,dd)}); }
-  return {luz, wx:Wv?{W:Wv,t:performance.now()/1000}:null, land:LD, gs:land&&rx&&rx.ground?(dd=>groundSides(rx,Math.max(0,dd),sc)):null, hz:land&&rx&&rx.hz?rx.hz:null, infra:rx&&rx.infra&&rx.infra.length?(dd=>infraEn(name,Math.max(0,dd))):null, lin:rx&&rx.lin&&rx.lin.length?((a,b)=>linEn(name,a,b)):null}; }
+  return {luz, wx:Wv?{W:Wv,t:performance.now()/1000}:null, land:LD, gs:land&&rx&&rx.ground?(dd=>groundSides(rx,Math.max(0,dd),sc)):null, hz:land&&rx&&rx.hz?rx.hz:null, infra:rx&&rx.infra&&rx.infra.length?(dd=>infraEn(name,Math.max(0,dd))):null, lin:rx&&rx.lin&&rx.lin.length?((a,b)=>linEn(name,a,b)):null, cost:land&&rx&&rx.cost?(dd=>costEn(name,Math.max(0,dd))):null}; }
 function drawScenePreview(){
   const cv=$("scenePrev"); if(!cv||!sceneRouteGeo) return;
   const r=fit(cv); if(!r||r.w<10) return; const {ctx,w,h}=r;
@@ -1718,7 +1719,7 @@ function drawScenePreview(){
     let glOk=false;
     if(glRutaOn()){ const ex=glRutaExtra(sceneEditRoute,sc);
       glOk=GLR.draw(ctx,w,h,{key:sceneEditRoute+"|"+(sceneRouteGeo._glk||(sceneRouteGeo._glk=Math.random().toString(36).slice(2))),d,bFn:dd=>bearingRoute(sceneRouteGeo,dd),eFn:dd=>sceneEleAt(dd),sc,crank:scenePrevCrank,
-        gs:ex.gs, hz:ex.hz, land:ex.land, infra:ex.infra, lin:ex.lin, luz:ex.luz, wx:ex.wx, v:6});
+        gs:ex.gs, hz:ex.hz, land:ex.land, infra:ex.infra, lin:ex.lin, cost:ex.cost, luz:ex.luz, wx:ex.wx, v:6});
       if($("sceneGlInfo")) $("sceneGlInfo").textContent=glOk?"":(GLR.ok()?"":"WebGL no disponible acá: se ve la vista de siempre. "+GLR.diag()); }
     if(!glOk){
       roadBands(ctx,w,h,d,dd=>bearingRoute(sceneRouteGeo,dd),dd=>sceneEleAt(dd),sceneEditRoute);
@@ -2229,7 +2230,7 @@ function b64u8(s){ const b=atob(s.replace(/-/g,"+").replace(/_/g,"/")+"===".slic
 function routeExtra(name){
   if(!name) return null; if(RX_DEC[name]!==undefined) return RX_DEC[name];
   const o=loadRouteExtra()[name]; let r=null;
-  if(o){ try{ r={hz:o.hz&&o.hz.d?Object.assign({},o.hz,{u:b64u8(o.hz.d)}):null, peaks:(o.peaks||[]).filter(p=>p&&p.e>0), ground:o.ground&&o.ground.d?Object.assign({},o.ground,{u:b64u8(o.ground.d)}):null, land:landDec(o.land), infra:Array.isArray(o.infra)?o.infra.filter(x=>x&&x.length>=4&&x[2]>x[1]):null, lin:Array.isArray(o.lin)?o.lin.filter(x=>x&&x.length>=3&&Array.isArray(x[2])&&x[2].length>=4):null, geo:undefined}; }catch(_){ r=null; } }
+  if(o){ try{ r={hz:o.hz&&o.hz.d?Object.assign({},o.hz,{u:b64u8(o.hz.d)}):null, peaks:(o.peaks||[]).filter(p=>p&&p.e>0), ground:o.ground&&o.ground.d?Object.assign({},o.ground,{u:b64u8(o.ground.d)}):null, land:landDec(o.land), infra:Array.isArray(o.infra)?o.infra.filter(x=>x&&x.length>=4&&x[2]>x[1]):null, lin:Array.isArray(o.lin)?o.lin.filter(x=>x&&x.length>=3&&Array.isArray(x[2])&&x[2].length>=4):null, cost:o.cost&&o.cost.d&&o.cost.n>1?Object.assign({},o.cost,{u:b64u8(o.cost.d)}):null, geo:undefined}; }catch(_){ r=null; } }
   RX_DEC[name]=r; return r;
 }
 const realLandOn=()=>{ try{ return localStorage.getItem("bici_real_land")!=="0"; }catch(_){ return true; } };
@@ -2789,6 +2790,19 @@ function landDecorFranja(ctx,S,i,L,flip,sc,skip,hwM,d0,asf,fallback){
 const INFRA_TALUD=2, INFRA_H={terraplen:4,desmonte:4,tunel:5.2};
 // v191: arroyos y calles cercanas (`lin` de Rumbo: [tipo, ancho, [d, costado, …]], d desde el inicio, costado + = izquierda). En ida y vuelta, la pasada de vuelta usa las mismas líneas
 // con la distancia espejada y el costado cambiado. Devuelve las que tocan [d0,d1] ya en el sentido de la marcha: [{k,w,p:[D,l,…]}].
+// v193: terreno real a los costados (`cost` de Rumbo, cada 25 m: 7 alturas por lado y color cerca/lejos de la foto satelital), en el sentido de la marcha:
+// {off, h:[izq[7], der[7]] (m respecto del camino), c:[[cerca,lejos] izq, [cerca,lejos] der] en rgb 0–1 o null, agua:[izq,der]}. En la vuelta de un ida y vuelta,
+// la distancia se espeja y se cambian los lados.
+function costEn(routeName,d){
+  const rx=routeName?routeExtra(routeName):null, C=rx&&rx.cost; if(!C||!C.u) return null;
+  const m=mirrorD(routeName,d), k=Math.max(0,Math.min(C.n-1,m.d/C.sp)), i0=Math.floor(k), i1=Math.min(C.n-1,i0+1), t=k-i0, U=C.u, B=26;
+  const lado=si=>{ const h=[], o0=i0*B+si*13, o1=i1*B+si*13; for(let j=0;j<7;j++) h.push((U[o0+j]-128)*(1-t)+(U[o1+j]-128)*t);
+    const cc=b=>{ const r=[0,1,2].map(q=>(U[o0+7+b*3+q]*(1-t)+U[o1+7+b*3+q]*t)/255); return r[0]+r[1]+r[2]>0.02?r.map(v=>Math.min(1,v*1.15)):null; };
+    const cn=cc(0), cf=cc(1), azul=c=>!!c&&c[2]>c[1]*.95&&c[2]>c[0]*1.2;
+    return {h, c:cn&&cf?[cn,cf]:null, agua:azul(cf)||azul(cn)}; };
+  let L=lado(0), R=lado(1); if(m.back){ const x=L; L=R; R=x; }
+  return {off:C.off||[6,12,20,35,60,100,180], h:[L.h,R.h], c:L.c&&R.c?[L.c,R.c]:null, agua:[L.agua,R.agua]};
+}
 function linEn(routeName,d0,d1){
   const rx=routeName?routeExtra(routeName):null; if(!rx||!rx.lin||!rx.lin.length) return null;
   const t=outBackFor(routeName)?turnPointFor(routeName):null, tp=t&&t.total>t.turn?t:null, key=tp?tp.turn+"/"+tp.total:"-";
@@ -3319,7 +3333,7 @@ function drawRoad(){
     const gNow=ghost?ghostDistAt(elapsed+idt):0;
     if(!ghost&&mode==="gpx"&&points.length&&glRutaOn()&&!glVivoFalla){   // v185: vista en vivo en WebGL (con el fantasma sigue la vista 2D)
       const sc=sceneAt(fname,dNow), ex=glRutaExtra(fname,sc);
-      if(GLR.draw(ctx,w,h,{key:"v|"+fname+"|"+total,d:dNow,bFn:bearingAt,eFn:eleAt,sc,crank:roadCrank,gs:ex.gs,hz:ex.hz,land:ex.land,infra:ex.infra,lin:ex.lin,luz:ex.luz,wx:ex.wx,v:v})){
+      if(GLR.draw(ctx,w,h,{key:"v|"+fname+"|"+total,d:dNow,bFn:bearingAt,eFn:eleAt,sc,crank:roadCrank,gs:ex.gs,hz:ex.hz,land:ex.land,infra:ex.infra,lin:ex.lin,cost:ex.cost,luz:ex.luz,wx:ex.wx,v:v})){
         if(wxActivo()&&wxRelAhora){ const hz=Math.round(h*0.44); wxAire(ctx,w,h,hz,WX,wxRelAhora,performance.now()/1000,v); wxFlecha(ctx,w-36,36,WX,wxRelAhora); }
         roadDrawErrLogged=false; return; }
       if(!GLR.ok()) glVivoFalla=true; }
@@ -3457,8 +3471,15 @@ function mundo(S){
   const wDir=W?(W.dir+180)*Math.PI/180:0, wAmp=W?Math.min(1,(W.v||0)/11):0;
   const sway=(x,z,hh,fr)=>{ if(!wAmp)return [0,0]; const ph=x*.37+z*.21, g=.65+.35*Math.sin(TW*1.9+ph)+.25*Math.sin(TW*.7+ph*1.7), a=wAmp*g*hh*.07*fr; return [Math.sin(wDir)*a,Math.cos(wDir)*a]; };
   const skyA=col(sc.sky[0]), skyB=mix(col(sc.sky[1]),[.5,.54,.58],gris*.8), gcol=tone(col(sc.ground),wet?.86:1), asf=tone(col(sc.asphalt),wet?.8:1);
-  const lT=sc.wallSide==='left'?'wall':(sc.waterSide==='left'?'water':(sc.wallSide==='right'?'valley':'normal'));
-  const rT=sc.wallSide==='right'?'wall':(sc.waterSide==='right'?'water':(sc.wallSide==='left'?'valley':'normal'));
+  /* v193: terreno REAL a los costados que manda Rumbo (`cost`: 7 alturas por lado respecto del camino y colores de la foto satelital, cada 25 m). Con eso el suelo
+     de los costados sigue la ladera y la barranca de verdad y toma su color (verde selva, casas, arena); no se usan la pared, el valle ni el agua del escenario
+     (Hugo, 17-nov, Ixtapa–Zihuatanejo: "no se parece al recorrido": había pared de roca pelada y agua donde hay ladera de selva). Lo que queda al nivel del mar
+     y con color de agua se dibuja como agua. Alturas ×1,3 (el camino va ×EXAG). */
+  const CO=S.cost?[]:null, CSX=1.3;
+  if(CO){ for(let i=0;i<N;i++){ const D=Ds+i*G, q=S.cost(D); if(q) q.e=eFn(D); CO.push(q); } if(!CO.some(Boolean)) CO.length=0; }
+  const hayCO=!!(CO&&CO.length);
+  const lT=hayCO?'normal':sc.wallSide==='left'?'wall':(sc.waterSide==='left'?'water':(sc.wallSide==='right'?'valley':'normal'));
+  const rT=hayCO?'normal':sc.wallSide==='right'?'wall':(sc.waterSide==='right'?'water':(sc.wallSide==='left'?'valley':'normal'));
   const WL=(typeof WATER_LOOK!=='undefined'&&WATER_LOOK[sc.waterKind||'mar'])||{mid:'#2d7ea8',top:'#7fc4e0'}, wcol=col(WL.mid), wnear=col(WL.top||WL.mid);
   const A=[], M=[];                              // A: el mundo; M: cerros lejanos
   /* calzada, banquinas, costados */
@@ -3516,8 +3537,15 @@ function mundo(S){
     for(const s of L){ const dx=s[2]-s[0], dz=s[3]-s[1], l2=dx*dx+dz*dz||1e-9; let u=((x-s[0])*dx+(z-s[1])*dz)/l2; u=u<0?0:u>1?1:u; const qx=s[0]+dx*u-x, qz=s[1]+dz*u-z, d2=qx*qx+qz*qz; if(d2<bd){bd=d2;be=s[4];} }
     return be?{d:Math.sqrt(bd),e:be}:null; };
   const gT=(x,z,low)=>{ const [k,bd]=near(x,z);
-    const dist=Math.sqrt(bd), s=((x-px[k])*rx[k]+(z-pz[k])*rz[k])>=0?1:-1, dy=DYF[s<0?lT:rT](ys[k]); let y=0;
-    if(dist>OFS[0]){let j=1;while(j<OFS.length-1&&dist>OFS[j])j++;const u=Math.min(1,(dist-OFS[j-1])/(OFS[j]-OFS[j-1]));y=dy[j-1]+(dy[j]-dy[j-1])*u;}
+    const dist=Math.sqrt(bd), s=((x-px[k])*rx[k]+(z-pz[k])*rz[k])>=0?1:-1, dy=DYF[s<0?lT:rT](ys[k]); let y=0, agua=false;
+    const cq=hayCO?CO[k]:null;
+    if(cq&&dist>OFS[0]){ const H=cq.h[s<0?0:1], O=cq.off; let hh;                                            // v193: ladera real
+      if(dist<=O[0]) hh=H[0]*(dist-OFS[0])/Math.max(.5,O[0]-OFS[0]);
+      else if(dist>=O[O.length-1]) hh=H[H.length-1];
+      else { let j=1; while(j<O.length-1&&dist>O[j])j++; const u=(dist-O[j-1])/(O[j]-O[j-1]); hh=H[j-1]+(H[j]-H[j-1])*u; }
+      if(cq.e+hh<=.8&&cq.agua[s<0?0:1]){ hh=Math.max(-cq.e,-60); agua=true; }
+      y=hh*CSX; }
+    else if(dist>OFS[0]){let j=1;while(j<OFS.length-1&&dist>OFS[j])j++;const u=Math.min(1,(dist-OFS[j-1])/(OFS[j]-OFS[j-1]));y=dy[j-1]+(dy[j]-dy[j-1])*u;}
     // una zanja suave junto a la calzada (-0,55 m a 4 m, 0 a 12 m): los triángulos de 3 m que cruzan la calzada interpolan alturas de vértices que eligieron tramos distintos y,
     // en una pendiente, podían quedar por encima del asfalto (una cuña de pasto/arena sobre el camino)
     const zan=dist<HW+SH?.55:(dist<12?.55*(12-dist)/(12-HW-SH):0);
@@ -3529,8 +3557,14 @@ function mundo(S){
       if(ID[si][k]>0&&e>0) yi+=Math.min(ID[si][k],e*.5);                                                                    // desmonte
     }
     if(hayAgua&&dist>HW+SH){ const q=aguaD(x,z); if(q){ const ee=q.d-q.e.w/2; if(ee<3.5){ const u=ee<=0?1:1-ee/3.5, pr=u*u*(3-2*u); yi-=q.e.dep*pr*Math.min(1,(dist-HW-SH)/2); } } }   // cauce (no corta la calzada)
-    return {p:[x,ys[k]+y-.05-zan-low+yi,z],k,dist,s}; };
+    return {p:[x,ys[k]+y-.05-zan-low+yi,z],k,dist,s,agua}; };
   const colTerreno=(a,b)=>{ const k=a.k, s=(a.s+b.s)>=0?1:-1, dist=(a.dist+b.dist)/2, T=s<0?lT:rT; if(!GC[k])GC[k]=gk(k); const gc=GC[k][s<0?0:1];
+    const cq=hayCO?CO[k]:null;
+    if(cq&&dist>OFS[0]){ if(a.agua&&b.agua) return mix(wcol,wnear,dist<60?.4:0);                                // v193: color de la foto satelital, cerca y lejos
+      const si=s<0?0:1, cn=cq.c?cq.c[si][0]:gc, cf=cq.c?cq.c[si][1]:gc, u=Math.max(0,Math.min(1,(dist-20)/90)); let c=mix(cn,cf,u);
+      const st=Math.abs(a.p[1]-b.p[1])/Math.max(.5,Math.hypot(a.p[0]-b.p[0],a.p[2]-b.p[2]));                      // muy empinado: tierra y roca del corte
+      if(st>.9) c=mix(c,[.5,.44,.37],Math.min(.7,(st-.9)*.8));
+      return tone(c,1-.1*Math.min(1,dist/180)); }
     if(T==='water')return dist<OFS[1]?mix(gc,[.8,.74,.55],.6):mix(wcol,wnear,dist<40?.5:0);
     if(T==='wall')return tone(mix([.54,.49,.43],[.27,.24,.2],Math.min(1,dist/400)),1);
     if(T==='valley')return mix(gc,[.31,.42,.34],Math.min(1,dist/130));
@@ -3548,7 +3582,7 @@ function mundo(S){
     const h0=HWi[i], h1=HWi[i+1], vl=VL[i], acol=vl&&vl.unp?col(vl.col):asf, GCi=LDm?(GC[i]||(GC[i]=gk(i))):[gL,gR];
     qR(P(i,-h0),P(i,h0),P(i+1,h1),P(i+1,-h1),tone(acol,band));
     for(const sg of [-1,1]){
-      const gc=GCi[sg<0?0:1], ver=LDm&&landHayVereda(vl,LM[i],sg<0?0:1);
+      const cq=hayCO?CO[i]:null, gc=cq&&cq.c?mix(cq.c[sg<0?0:1][0],[.46,.44,.4],.45):GCi[sg<0?0:1], ver=LDm&&landHayVereda(vl,LM[i],sg<0?0:1);   // v193: banquina con el color del costado real
       qR(P(i,sg*h0),P(i,sg*(HW+SH)),P(i+1,sg*(HW+SH)),P(i+1,sg*h1),tone(gc,.8)); // banquina
       if(ver){ qR(P(i,sg*(h0+.25),.1),P(i,sg*(h0+2.2),.1),P(i+1,sg*(h1+2.2),.1),P(i+1,sg*(h1+.25),.1),[.74,.73,.7]);       // vereda
         qR(P(i,sg*h0,.0),P(i,sg*(h0+.25),.0),P(i+1,sg*(h1+.25),.0),P(i+1,sg*h1,.0),[.62,.61,.58]); }                        // cordón
@@ -3582,10 +3616,12 @@ function mundo(S){
     prev={x0:ox-Cx,x1:ox+n*cs-Cx,z0:oz-Cz,z1:oz+n*cs-Cz};
   }
   /* suelo grande: lo que queda más allá de 400 m a los costados (agua del lado del agua) */
-  const c0=at(0), yb=Math.min(-3,Math.min(...ys)-3), BIG=6000, fwd=[Math.sin(c0.b),Math.cos(c0.b)], rgt=[c0.rx,c0.rz];
+  const minCO=hayCO?Math.min(0,...CO.filter(Boolean).map(q=>Math.min(...q.h[0],...q.h[1],-q.e)))*CSX:0;   // v193: el piso de abajo va debajo de la barranca más honda
+  const c0=at(0), yb=Math.min(-3,Math.min(...ys)-3+minCO), BIG=6000, fwd=[Math.sin(c0.b),Math.cos(c0.b)], rgt=[c0.rx,c0.rz];
   const big=(sg,c)=>{const o0=sg*350,o1=sg*BIG;quad(A,[rgt[0]*o0-fwd[0]*BIG,yb,rgt[1]*o0-fwd[1]*BIG],[rgt[0]*o1-fwd[0]*BIG,yb,rgt[1]*o1-fwd[1]*BIG],[rgt[0]*o1+fwd[0]*BIG,yb,rgt[1]*o1+fwd[1]*BIG],[rgt[0]*o0+fwd[0]*BIG,yb,rgt[1]*o0+fwd[1]*BIG],c);};
-  big(-1,lT==='water'?wcol:(lT==='valley'?[.25,.36,.3]:tone(gcol,.9)));big(1,rT==='water'?wcol:(rT==='valley'?[.25,.36,.3]:tone(gcol,.9)));
-  quad(A,[-BIG,yb,-BIG],[BIG,yb,-BIG],[BIG,yb,BIG],[-BIG,yb,BIG],tone(gcol,.88)); // por debajo, por si algún hueco
+  if(hayCO&&CO[0]&&CO[0].c){ big(-1,tone(CO[0].c[0][1],.92)); big(1,tone(CO[0].c[1][1],.92)); } else {
+  big(-1,lT==='water'?wcol:(lT==='valley'?[.25,.36,.3]:tone(gcol,.9)));big(1,rT==='water'?wcol:(rT==='valley'?[.25,.36,.3]:tone(gcol,.9))); }
+  quad(A,[-BIG,yb,-BIG],[BIG,yb,-BIG],[BIG,yb,BIG],[-BIG,yb,BIG],hayCO&&CO[0]&&CO[0].c?tone(CO[0].c[1][1],.8):tone(gcol,.88)); // por debajo, por si algún hueco
   /* árboles, casas, rocas */
 
   /* v185: costados REALES de Rumbo (`land`, cada 25 m): casas, edificios y galpones con su altura, cuadras sintéticas en la ciudad, árboles, faroles y veredas.
@@ -3665,20 +3701,23 @@ function mundo(S){
       const h1=hash(kc*2+(sg>0?1:0)), h2=hash(kc*7.31+sg), h3=hash(kc*3.7+sg*5);
       const s=kc*14+7-d; if(s<-8||s>330)continue;
       const dens=(dec==='casas'||dec==='buildings')?.55:(dec==='estepa'?.25:.78); if(h1>dens)continue;
-      const o=sg*(HW+SH+4+h2*(dec==='casas'||dec==='buildings'?22:30)), w=at(s), x=w.x+w.rx*o, z=w.z+w.rz*o, y=w.y;
-      if(dec==='trees'||dec==='lengas'||dec==='nieve'||dec==='estepa'){
-        const hh=(dec==='estepa'?1.6:4.5)+h3*5.5, r=hh*.3;
-        const trunk=[.30,.21,.14], leaf=dec==='nieve'?mix([.2,.4,.28],[.92,.95,.97],.55+h3*.3):(dec==='lengas'?mix([.20,.40,.16],[.78,.45,.14],h3<.25?.8:h3*.3):mix([.13,.36,.18],[.22,.5,.2],h3));
-        if(dec==='estepa'){cone(A,x,y,z,r*1.4,hh,mix([.55,.5,.28],[.45,.45,.25],h3),6);continue;}
+      const o=sg*(HW+SH+4+h2*(dec==='casas'||dec==='buildings'?22:30)), w=at(s), x=w.x+w.rx*o, z=w.z+w.rz*o; let y=w.y, dk=dec;
+      if(hayCO){ const q=gT(x,z,0); if(q.agua)continue; y=q.p[1]+.05;                                              // v193: sobre la ladera real, no a la altura del camino
+        const cq=CO[q.k], cc=cq&&cq.c?cq.c[sg<0?0:1][0]:null, verde=cc&&cc[1]>cc[0]*1.08&&cc[1]>cc[2]*1.05;     // y según la foto: verde = árboles; si no, lo del escenario sin árboles
+        if(cc) dk=verde?(dk==='lengas'||dk==='nieve'?dec:'trees'):(dk==='trees'||dk==='lengas'?'rocks':dec); }
+      if(dk==='trees'||dk==='lengas'||dk==='nieve'||dk==='estepa'){
+        const hh=(dk==='estepa'?1.6:4.5)+h3*5.5, r=hh*.3;
+        const trunk=[.30,.21,.14], leaf=dk==='nieve'?mix([.2,.4,.28],[.92,.95,.97],.55+h3*.3):(dk==='lengas'?mix([.20,.40,.16],[.78,.45,.14],h3<.25?.8:h3*.3):mix([.13,.36,.18],[.22,.5,.2],h3));
+        if(dk==='estepa'){cone(A,x,y,z,r*1.4,hh,mix([.55,.5,.28],[.45,.45,.25],h3),6);continue;}
         shTree(x,z,hh); obox(A,[x,y+hh*.12,z],[1,0,0],[0,1,0],[0,0,1],.35,hh*.25,.35,trunk);
         { const [a1,b1]=sway(x,z,hh,.5), [a2,b2]=sway(x,z,hh,1); cone(A,x,y+hh*.18,z,r*1.15,hh*.55,leaf,7,a1,b1);cone(A,x+a1*.7,y+hh*.5,z+b1*.7,r*.85,hh*.5,tone(leaf,1.08),7,a2-a1*.7,b2-b1*.7); }
-      }else if(dec==='casas'||dec==='buildings'){
-        const hh=dec==='buildings'?7+h3*18:3.2+h3*2.6, ww=dec==='buildings'?8+h2*5:6+h2*3, fx=[Math.sin(w.b),0,Math.cos(w.b)], rr=[w.rx,0,w.rz];
-        const pal=dec==='buildings'?[[.36,.4,.44],[.3,.33,.37]]:[[.85,.35,.3],[.9,.75,.35],[.35,.6,.75],[.88,.85,.78],[.45,.68,.45]];
+      }else if(dk==='casas'||dk==='buildings'){
+        const hh=dk==='buildings'?7+h3*18:3.2+h3*2.6, ww=dk==='buildings'?8+h2*5:6+h2*3, fx=[Math.sin(w.b),0,Math.cos(w.b)], rr=[w.rx,0,w.rz];
+        const pal=dk==='buildings'?[[.36,.4,.44],[.3,.33,.37]]:[[.85,.35,.3],[.9,.75,.35],[.35,.6,.75],[.88,.85,.78],[.45,.68,.45]];
         const wc=pal[Math.floor(h1*997)%pal.length];
         obox(A,[x,y+hh/2,z],rr,[0,1,0],fx,ww,hh,ww*.9,wc);
-        if(dec==='casas')obox(A,[x,y+hh+.5,z],rr,[0,1,0],fx,ww*1.05,1.0,ww*.95,[.42,.2,.17]);
-      }else if(dec==='rocks'){
+        if(dk==='casas')obox(A,[x,y+hh+.5,z],rr,[0,1,0],fx,ww*1.05,1.0,ww*.95,[.42,.2,.17]);
+      }else if(dk==='rocks'){
         const hh=1.6+h3*3.4;cone(A,x,y,z,hh*.9,hh,mix([.5,.46,.4],[.4,.37,.32],h3),5);
       }
     }
@@ -6963,7 +7002,7 @@ async function rumboImport(){
     const o=JSON.parse(txt); if(!o||!o.gpx||!o.name) throw new Error("datos incompletos");
     const name=o.name, ro=loadRouteOpts(); ro[name]={smoothM:o.smoothM!=null?o.smoothM:20,src:"rumbo"}; saveRouteOpts(ro);
     if(Array.isArray(o.scenes)&&o.scenes.length) setRouteScenes(name,o.scenes);
-    setRouteExtra(name,(o.hz||o.ground||o.land||o.infra||o.lin)?{hz:o.hz||null,peaks:o.peaks||[],ground:o.ground||null,land:o.land||null,infra:Array.isArray(o.infra)&&o.infra.length?o.infra:null,lin:Array.isArray(o.lin)&&o.lin.length?o.lin:null,osm:o.osm||""}:null); // v173: + infra (puentes, túneles, terraplenes y desmontes)
+    setRouteExtra(name,(o.hz||o.ground||o.land||o.infra||o.lin||o.cost)?{hz:o.hz||null,peaks:o.peaks||[],ground:o.ground||null,land:o.land||null,infra:Array.isArray(o.infra)&&o.infra.length?o.infra:null,lin:Array.isArray(o.lin)&&o.lin.length?o.lin:null,cost:o.cost&&o.cost.d?o.cost:null,osm:o.osm||""}:null); // v173: + infra (puentes, túneles, terraplenes y desmontes)
      // v167: + land · v171: + osm
     $("modeSel").value="gpx"; toggleMode();
     fname=name; parseGpx(o.gpx);
