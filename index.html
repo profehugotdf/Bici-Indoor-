@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v189</title>
+<title>Bici Indoor · v190</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -96,7 +96,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v189</h1>
+  <h1>Bici Indoor · v190</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -744,6 +744,9 @@ function bigPersist(k,v){
     tx.onerror=tx.onabort=()=>{ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+((tx.error&&tx.error.message)||"error"),"#f85149"); } };
   }catch(e){ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+e.message,"#f85149"); } }
 }
+// v190: el ciclista de la vista WebGL, más real: bici con cuadro (tubo superior, diagonal, caño del sillín, vainas, horquilla), ruedas con tubular y reflector que gira con la distancia, manubrio de
+// carrera con puños, botella y luz trasera; piernas articuladas que pedalean (rodilla resuelta con dos barras a partir del pie en el pedal), torso inclinado, brazos al manubrio, casco aerodinámico y
+// bolsillos en la camiseta. Sigue la pendiente dibujada (cabeceo) y se inclina en las curvas según velocidad y curvatura (tope 12°, como el 2D). Pedido de Hugo: "luego el ciclista".
 // v189: el clima real (`WX`, solo en tu recorrido en vivo con el clima prendido) en la vista WebGL: nubes que derivan con el viento y velo gris (`wxCielo`), niebla más densa con lluvia
 // y nubes (se pierden los cerros), asfalto y suelo mojados (más oscuros), árboles que se mecen para donde sopla, con ráfagas; la lluvia, las rachas y la flecha del viento siguen siendo
 // la capa 2D de siempre (`wxAire`, `wxFlecha`) encima de todo. Pedido de Hugo: "vamos con el clima y luego el ciclista".
@@ -1712,7 +1715,7 @@ function drawScenePreview(){
     let glOk=false;
     if(glRutaOn()){ const ex=glRutaExtra(sceneEditRoute,sc);
       glOk=GLR.draw(ctx,w,h,{key:sceneEditRoute+"|"+(sceneRouteGeo._glk||(sceneRouteGeo._glk=Math.random().toString(36).slice(2))),d,bFn:dd=>bearingRoute(sceneRouteGeo,dd),eFn:dd=>sceneEleAt(dd),sc,crank:scenePrevCrank,
-        gs:ex.gs, hz:ex.hz, land:ex.land, infra:ex.infra, luz:ex.luz, wx:ex.wx});
+        gs:ex.gs, hz:ex.hz, land:ex.land, infra:ex.infra, luz:ex.luz, wx:ex.wx, v:6});
       if($("sceneGlInfo")) $("sceneGlInfo").textContent=glOk?"":(GLR.ok()?"":"WebGL no disponible acá: se ve la vista de siempre. "+GLR.diag()); }
     if(!glOk){
       roadBands(ctx,w,h,d,dd=>bearingRoute(sceneRouteGeo,dd),dd=>sceneEleAt(dd),sceneEditRoute);
@@ -3242,7 +3245,7 @@ function drawRoad(){
     const gNow=ghost?ghostDistAt(elapsed+idt):0;
     if(!ghost&&mode==="gpx"&&points.length&&glRutaOn()&&!glVivoFalla){   // v185: vista en vivo en WebGL (con el fantasma sigue la vista 2D)
       const sc=sceneAt(fname,dNow), ex=glRutaExtra(fname,sc);
-      if(GLR.draw(ctx,w,h,{key:"v|"+fname+"|"+total,d:dNow,bFn:bearingAt,eFn:eleAt,sc,crank:roadCrank,gs:ex.gs,hz:ex.hz,land:ex.land,infra:ex.infra,luz:ex.luz,wx:ex.wx})){
+      if(GLR.draw(ctx,w,h,{key:"v|"+fname+"|"+total,d:dNow,bFn:bearingAt,eFn:eleAt,sc,crank:roadCrank,gs:ex.gs,hz:ex.hz,land:ex.land,infra:ex.infra,luz:ex.luz,wx:ex.wx,v:v})){
         if(wxActivo()&&wxRelAhora){ const hz=Math.round(h*0.44); wxAire(ctx,w,h,hz,WX,wxRelAhora,performance.now()/1000,v); wxFlecha(ctx,w-36,36,WX,wxRelAhora); }
         roadDrawErrLogged=false; return; }
       if(!GLR.ok()) glVivoFalla=true; }
@@ -3613,25 +3616,67 @@ function mundo(S){
     layer(3600,a=>({a:2+amp*(2.4+2.2*Math.sin(a*3.1+1.3)+1.4*Math.sin(a*7.7+.4))}),farC,null);
     layer(3200,a=>({a:1+amp*(1.4+1.6*Math.sin(a*4.3+2.1)+.9*Math.sin(a*11.3+1.1))}),nearC,null);
   }
-  /* el ciclista, visto de atrás */
+  const iCi=Math.max(0,Math.min(N-1,Math.round((d-Ds)/G)));
+  /* el ciclista, visto de atrás (v190): bici con cuadro, horquilla, ruedas con tubular y un reflector que gira, manubrio de carrera con puños, botella y luz trasera;
+     piernas articuladas que pedalean (muslo y pantorrilla con la rodilla resuelta a partir del pie en el pedal), torso inclinado, brazos al manubrio, casco aerodinámico y
+     bolsillos en la camiseta. Acompaña la pendiente dibujada (cabeceo) y se inclina en las curvas (tope 12°, con la velocidad `S.v`). */
   const f=[Math.sin(C.b),0,Math.cos(C.b)], r=[Math.cos(C.b),0,-Math.sin(C.b)], up=[0,1,0], by=0;
-  const at3=(l,h,fw)=>[r[0]*l+f[0]*fw,by+h,r[2]*l+f[2]*fw];
-  const jer=[.18,.44,.62], skin=[.82,.62,.5], dark=[.1,.11,.14], helm=[.12,.13,.16];
+  const jer=[.18,.44,.62], jer2=[.12,.3,.46], skin=[.82,.62,.5], dark=[.1,.11,.14], helm=[.93,.93,.95], frm=[.78,.8,.84], sho=[.08,.08,.09], tire=[.07,.07,.08];
+  // pendiente dibujada bajo la bici y curvatura (cuánto gira el rumbo por metro) para la inclinación
+  const pa=at(-1.2), pb=at(1.2), pitch=Math.atan2(pb.y-pa.y,2.4);
+  const kap=(bs[Math.min(N-1,iCi+1)]-bs[Math.max(0,iCi-1)]), kap1=Math.atan2(Math.sin(kap),Math.cos(kap))/(2*G), vv=Math.max(0,S.v!=null?S.v:6);
+  let lean=Math.atan(vv*vv*kap1/9.81); lean=Math.max(-.21,Math.min(.21,lean));
+  const cp=Math.cos(pitch), sp=Math.sin(pitch), cl=Math.cos(lean), sl2=Math.sin(lean);
+  const F1=[f[0]*cp,sp,f[2]*cp], U1=[-f[0]*sp,cp,-f[2]*sp];
+  const R2=[r[0]*cl-U1[0]*sl2,-U1[1]*sl2,r[2]*cl-U1[2]*sl2], U2=[U1[0]*cl+r[0]*sl2,U1[1]*cl,U1[2]*cl+r[2]*sl2], F2=F1;
+  const a1=crank||0, bal=.012*Math.sin(a1);
+  const P3=(l,h,fw)=>{ l+=bal*h; return [R2[0]*l+U2[0]*h+F2[0]*fw,by+R2[1]*l+U2[1]*h+F2[1]*fw,R2[2]*l+U2[2]*h+F2[2]*fw]; };
+  const nrm=v=>{const m=Math.hypot(v[0],v[1],v[2])||1;return [v[0]/m,v[1]/m,v[2]/m];};
+  const crs=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+  const limb=(p,q,wl,wd,k)=>{ const A_=P3(...p), B_=P3(...q), Y=nrm([B_[0]-A_[0],B_[1]-A_[1],B_[2]-A_[2]]), dd=R2[0]*Y[0]+R2[1]*Y[1]+R2[2]*Y[2];
+    const X=nrm([R2[0]-Y[0]*dd,R2[1]-Y[1]*dd,R2[2]-Y[2]*dd]), Z=crs(X,Y), L=Math.hypot(B_[0]-A_[0],B_[1]-A_[1],B_[2]-A_[2]);
+    obox(A,[(A_[0]+B_[0])/2,(A_[1]+B_[1])/2,(A_[2]+B_[2])/2],X,Y,Z,wl,L,wd,k); };
+  const bx=(l,h,fw,sx,sy,sz,k)=>obox(A,P3(l,h,fw),R2,U2,F2,sx,sy,sz,k);
   if(shOn){ const o=offS(1.7), pts=[]; for(const a of [-1,1])for(const b of [-.55,.55]){ const bx=r[0]*a*.22+f[0]*b, bz=r[2]*a*.22+f[2]*b; pts.push([bx,bz]); pts.push([bx+o[0]*.9+r[0]*a*.05,bz+o[1]*.9]); } shad(pts); }
-  obox(A,at3(0,.33,-.5),r,up,f,.04,.66,.1,dark);       // rueda trasera (de canto)
-  obox(A,at3(0,.33,.45),r,up,f,.04,.66,.1,dark);       // delantera
-  obox(A,at3(0,.62,0),r,up,f,.05,.05,1.0,[.55,.58,.62]); // cuadro
-  obox(A,at3(0,.9,-.1),r,up,f,.3,.07,.22,dark);        // asiento
-  const a1=crank||0;
+  // ruedas: disco fino (14 lados) con tubular negro y llanta clara; el reflector da vuelta con la distancia (radio 0,34 m)
+  const wheel=(fw)=>{ const Rw=.34, n=14, cy=.34; for(let i=0;i<n;i++){ const a0=i/n*6.2832, a1_=(i+1)/n*6.2832;
+      for(const [rad,w,k] of [[Rw,.045,tire],[Rw-.035,.03,[.62,.64,.68]]]){
+        const p0=[rad*Math.sin(a0),cy+rad*Math.cos(a0)], p1=[rad*Math.sin(a1_),cy+rad*Math.cos(a1_)];
+        quad(A,P3(-w/2,p0[1],fw+p0[0]),P3(w/2,p0[1],fw+p0[0]),P3(w/2,p1[1],fw+p1[0]),P3(-w/2,p1[1],fw+p1[0]),k,0,P3(0,cy,fw));
+        quad(A,P3(-w/2,p1[1],fw+p1[0]),P3(-w/2,p0[1],fw+p0[0]),P3(-w/2,cy,fw),P3(-w/2,cy,fw),k,0,P3(0,cy,fw)); } }
+    const ang=(S.d||0)/Rw; bx(.03,cy+Math.cos(ang)*(Rw-.05),fw+Math.sin(ang)*(Rw-.05),.03,.06,.06,[1,.85,.2]); };
+  wheel(-.5); wheel(.5);
+  // cuadro: tubo superior, caño del sillín, vainas y horquilla (en diagonal, con las dos patas separadas)
+  const tube=(p,q,w,k)=>limb(p,q,w,w,k);
+  tube([0,.93,.40],[0,.9,-.13],.035,frm);          // tubo superior
+  tube([0,.92,.4],[0,.32,.06],.045,frm);           // tubo diagonal
+  tube([0,.92,-.13],[0,.3,.05],.04,frm);           // caño del sillín
+  for(const sg of [-1,1]){ tube([sg*.015,.9,-.13],[sg*.055,.34,-.5],.022,frm);    // vainas altas
+    tube([sg*.02,.3,.05],[sg*.06,.34,-.5],.022,frm);                                // vainas bajas
+    tube([sg*.02,.9,.43],[sg*.04,.34,.5],.026,frm); }                               // horquilla
+  bx(0,.95,-.14,.12,.05,.26,dark); tube([0,.9,-.13],[0,.96,-.14],.028,dark);        // sillín y tija
+  bx(0,.12+.62,.14,.07,.2,.07,[.85,.2,.2]);                                         // botella en el tubo diagonal
+  bx(0,.56,-.50,.05,.07,.04,[.9,.1,.1]);                                            // luz trasera (en la vaina)
+  // manubrio de carrera: potencia, barra y puños
+  tube([0,.95,.42],[0,1.0,.5],.03,dark); bx(0,1.0,.5,.42,.03,.03,dark); for(const sg of [-1,1]){ bx(sg*.21,.95,.54,.04,.1,.04,dark); bx(sg*.21,1.0,.56,.05,.05,.1,[.15,.15,.17]); }
+  // piernas: cadera fija, pie en el pedal (círculo de 17 cm alrededor del pedalier); la rodilla sale de resolver las dos barras (muslo 0,43 m, pantorrilla 0,42 m)
   for(const [sg,ph] of [[-1,0],[1,Math.PI]]){
-    const lift=.13*Math.sin(a1+ph); obox(A,at3(sg*.13,.62+lift*.9,-.05),r,up,f,.11,.52,.12,dark);          // pierna
-    obox(A,at3(sg*.13,.32+lift,-.02),r,up,f,.1,.12,.2,[.08,.08,.09]);                                      // zapato
+    const ph1=a1+ph, hip=[sg*.1,.98,-.13], foot=[sg*.115,.3+.175*Math.sin(ph1),.05+.175*Math.cos(ph1)];
+    let dx=foot[2]-hip[2], dy=foot[1]-hip[1], dl=Math.hypot(dx,dy); const L1=.43, L2=.42; dl=Math.min(dl,L1+L2-.005);
+    const u=[dx/Math.hypot(dx,dy),dy/Math.hypot(dx,dy)], aa=(L1*L1-L2*L2+dl*dl)/(2*dl), hh=Math.sqrt(Math.max(0,L1*L1-aa*aa));
+    let nf=-u[1], nh=u[0]; if(nf<0){nf=-nf;nh=-nh;}
+    const knee=[sg*.15,hip[1]+u[1]*aa+nh*hh,hip[2]+u[0]*aa+nf*hh];
+    limb(hip,knee,.15,.14,[.11,.12,.15]); limb(knee,[foot[0],foot[1]+.04,foot[2]],.1,.1,[.82,.64,.52]);    // muslo (calza negra) y pantorrilla
+    bx(foot[0],foot[1]-.01,foot[2]+.03,.1,.07,.26,sho);                                                       // zapato
+    bx(foot[0],foot[1]-.06,foot[2],.04,.02,.18,[.35,.35,.38]);                                                // pedal
   }
-  obox(A,at3(0,1.14,-.06),r,up,f,.36,.5,.24,jer);      // torso
-  obox(A,at3(0,1.46,.02),r,up,f,.17,.19,.2,skin);      // cabeza
-  obox(A,at3(0,1.53,.0),r,up,f,.2,.1,.24,helm);        // casco
-  for(const sg of [-1,1])obox(A,at3(sg*.21,1.1,.22),r,up,f,.09,.09,.5,jer);     // brazos
-  obox(A,at3(0,1.0,.42),r,up,f,.46,.04,.04,dark);      // manubrio
+  // torso inclinado hacia adelante, bolsillos, cuello, cabeza y casco; brazos al manubrio
+  const hipC=[0,1.0,-.13], shC=[0,1.4,.27];
+  limb(hipC,shC,.37,.22,jer); bx(0,1.0,-.13,.34,.13,.22,[.1,.12,.16]);                                   // camiseta y short
+  for(const sg of [-1,1]) bx(sg*.1,1.17,-.07,.1,.1,.04,jer2); bx(0,1.2,-.06,.1,.1,.04,jer2);         // bolsillos de atrás
+  bx(0,1.5,.36,.12,.12,.12,skin);                                                                       // nuca
+  bx(0,1.56,.42,.2,.15,.28,helm); bx(0,1.5,.31,.15,.1,.2,[.88,.88,.92]); bx(0,1.55,.24,.1,.06,.12,helm);   // casco (con cola)
+  for(const sg of [-1,1]){ const sh_=[sg*.19,1.37,.3], el=[sg*.25,1.18,.4], hd=[sg*.2,1.02,.54]; limb(sh_,el,.09,.09,jer); limb(el,hd,.075,.075,skin); bx(sg*.19,1.02,.56,.07,.07,.07,[.1,.1,.12]); }
   const iC=Math.max(0,Math.min(N-1,Math.round((d-Ds)/G))); return {A,M,R,Sh,sun:sunV,luzK:(S.luz?LZ.k:1)*(hayInf?(1-.65*IT[iC]):1),camB:C.b,cam:(()=>{const e0=at(-4.6),w=at(16),w2=at(34),gr=(w2.y-e0.y)/38.6, ey=e0.y+2.15; return {eye:[e0.x,ey,e0.z],tgt:[w.x,ey+20.6*gr*.85-.5,w.z]};})(),fog:skyB,skyA,skyB,fogK:W?1+(wet?1.6+Math.min(2,W.lluvia*.5):0)+(W.nubes||0)/100*.35:1,W,TW};
 }
 function draw(ctx,w,h,S){
