@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v198</title>
+<title>Bici Indoor · v199</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -96,7 +96,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v198</h1>
+  <h1>Bici Indoor · v199</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -404,6 +404,7 @@
           <button id="sceneCut" style="min-height:40px;padding:6px 12px;font-size:14px">✂️ Cortar acá</button>
           <button id="sceneJoin" style="min-height:40px;padding:6px 10px;font-size:13px">🔗 Unir con el anterior</button>
           <button id="sceneCornisa" style="min-height:40px;padding:6px 10px;font-size:13px">⛰️ Cornisa: no</button>
+          <button id="sceneCasas" style="min-height:40px;padding:6px 10px;font-size:13px">🏡 Casas: no</button>
         </div>
         <div id="sceneCards" style="display:flex;gap:8px;overflow-x:auto;padding:8px 0 4px;-webkit-overflow-scrolling:touch"></div>
         <details id="sceneMas" style="margin-top:4px"><summary style="font-size:13px;color:var(--dim);cursor:pointer;padding:4px 0">⚙️ Más: agua, pared y costados de este tramo</summary><div id="sceneMasBody"></div></details>
@@ -757,6 +758,7 @@ function bigPersist(k,v){
     tx.onerror=tx.onabort=()=>{ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+((tx.error&&tx.error.message)||"error"),"#f85149"); } };
   }catch(e){ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+e.message,"#f85149"); } }
 }
+// v199: 🏡 casas dispersas en el monte (Hugo, 17-nov, foto satelital de su barrio: "¿convendría un escenario suburbano? mi barrio tiene casas espaciadas en medio de lengas, o la casa de mi hermano en Andorra, o el pie del cerro yendo a San Javier en Tucumán"). En vez de un escenario más, un botón por tramo "🏡 Casas" (no / dispersas, campo `casas` en bici_scenes; lo viejo no lo trae = no) que se combina con cualquier vegetación y con la cornisa. WebGL: algunas celdas del monte pasan a ser un claro con una casa retirada del camino (10–28 m), su entrada de tierra y, a veces, un auto; en la ladera de una cornisa, con cimiento. Estilo según dónde queda la ruta (`casaEstilo`, por la latitud del inicio): sur = chapa de colores; Europa = piedra con techo de pizarra y balcón de madera; resto = paredes claras y techo de tejas. 2D: casas espaciadas con `landCasa`.
 // v198: ⛰️🌿 cornisa con monte (además: arreglado un índice negativo en las Yungas cerca del km 0, que apagaba la vista WebGL hasta recargar) (Hugo, 17-nov: "que se pueda combinar camino de cornisa con Yunga, para Tucumán, o camino de cornisa con bosque para Andorra"). Botón "⛰️ Cornisa" en el tramo del cursor (pared automática sí/no, `sceneCornisa`) para cualquier escenario. Con Yungas, Rural, Bosque de lengas o el nuevo "Bosque de pinos (montaña)" (`pinar`: coníferas altas y juntas, hereda el cielo como Yungas), la vista WebGL cubre la pared de monte (corte de roca solo junto al camino) y pone plantas arriba en la ladera y abajo en el barranco (`VEGW`, `enLadera`). `pinar` también manda sobre el uso del suelo de Rumbo, como Yungas (`VEGL`, `landVegEscena`). En 2D la pared sigue de roca.
 // v197: 🌅 cambios de escenario graduales y con el cielo de la zona (Hugo, 17-nov, dos capturas a 80 m de distancia: en el km 3,17 —Rural— ningún árbol y en el 3,25 —Yungas— selva cerrada, cielo gris y bruma: "me gustaría que el cambio sea más gradual y que se respete el clima o cielo de la zona"). (1) En la vista WebGL cada planta toma el escenario de SU lugar (`scFn` → sceneAt), no el de la cámara, y en el borde entre tramos se mezclan las dos vegetaciones en ±55 m. (2) Cielo, cerros, suelo, asfalto y bruma se funden en ±150 m alrededor de cada cambio (`sceneSuave`). (3) Yungas es vegetación, no clima: hereda el cielo, los cerros y la nieve del tramo de al lado (`heredaCielo`; si toda la ruta es Yungas, usa su propio cielo, ahora más despejado y con menos bruma).
 // v196: 🌿 Yungas también en rutas de Rumbo (Hugo, 17-nov, captura: tramo Yungas en la ruta de Ixtapa y "¿cómo hago para que aparezca la vegetación de Yungas?": no aparecía ninguna planta). Con `land` de Rumbo, el escenario no ponía su decorado: los costados salían solo del uso del suelo (pradera, matorral o sin dato = casi nada). Ahora, con escenario Yungas, donde Rumbo no dice casas, barrio, agua, arena, roca, cementerio ni nieve (clases 0, 4–8 y 12), el monte lo pone el escenario: WebGL (`vegE` en `mundo`: landGL deja esos costados y el bucle de decor corre también con land) y 2D (`landDecorFranja` con el parámetro nuevo `veg` = decor del tramo, `landVegEscena`; bloque land: copiar a Correr).
@@ -1720,14 +1722,19 @@ function glRutaOn(){ try{ return localStorage.getItem(GL_RUTA_KEY)!=="0"; }catch
 let scenePrevRAF=null, scenePrevLast=0, scenePrevPlaying=false, scenePrevCrank=0, scenePrevFrame=0;
 const SCENE_PREV_SPEED=25/3.6;
 function sceneEditSegsNormalized(){
-  const segs=sceneEditRows.map(s=>Object.assign({km:+(+s.km||0).toFixed(2),scene:s.scene,water:s.water||null,waterKind:s.waterKind||"mar",wall:s.wall||null},s.izq?{izq:s.izq}:{},s.der?{der:s.der}:{})).sort((a,b)=>a.km-b.km);
+  const segs=sceneEditRows.map(s=>Object.assign({km:+(+s.km||0).toFixed(2),scene:s.scene,water:s.water||null,waterKind:s.waterKind||"mar",wall:s.wall||null},s.izq?{izq:s.izq}:{},s.der?{der:s.der}:{},s.casas?{casas:s.casas}:{})).sort((a,b)=>a.km-b.km);
   if(!segs.length||segs[0].km!==0) segs.unshift({km:0,scene:"rural",water:null,wall:null});
   return segs; }
 // v185: lo que necesita GLR de la ruta: suelo y horizonte de Rumbo + los costados reales (`land`: casas, veredas, árboles, faroles)
+// v199: estilo de las casas dispersas según dónde queda la ruta (latitud y longitud del inicio)
+const casaEstiloCache={};
+function casaEstilo(name){ if(name in casaEstiloCache) return casaEstiloCache[name]; let e="teja";
+  try{ const g=routeGeoFor(name), p=g&&g.pts&&g.pts[0]; if(p){ if(p.lat<-45) e="sur"; else if(p.lat>35&&p.lon>-12&&p.lon<45) e="piedra"; } }catch(err){ console.warn(err); }
+  return casaEstiloCache[name]=e; }
 function glRutaExtra(name,sc){ const rx=routeExtra(name), land=realLandOn(); let LD=null;
   const Wv=(wxActivo()&&name===fname&&state!=="idle")?WX:null; luzCuadro(0,400,Wv); const luz={az:LUZ.az,k:sc.decor==="stands"&&parseInt(sc.sky[0].slice(1,3),16)<60?LUZ.k*0.2:LUZ.k};
   if(land){ const LB=landDeRuta(name,rx&&rx.land); if(LB) LD=Object.assign({},LB,{map:dd=>mirrorD(name,dd)}); }
-  return {luz, wx:Wv?{W:Wv,t:performance.now()/1000}:null, land:LD, gs:land&&rx&&rx.ground?(dd=>groundSides(rx,Math.max(0,dd),sc)):null, hz:land&&rx&&rx.hz?rx.hz:null, infra:rx&&rx.infra&&rx.infra.length?(dd=>infraEn(name,Math.max(0,dd))):null, lin:rx&&rx.lin&&rx.lin.length?((a,b)=>linEn(name,a,b)):null, cost:land&&rx&&rx.cost?(dd=>costEn(name,Math.max(0,dd))):null}; }
+  return {estilo:casaEstilo(name), luz, wx:Wv?{W:Wv,t:performance.now()/1000}:null, land:LD, gs:land&&rx&&rx.ground?(dd=>groundSides(rx,Math.max(0,dd),sc)):null, hz:land&&rx&&rx.hz?rx.hz:null, infra:rx&&rx.infra&&rx.infra.length?(dd=>infraEn(name,Math.max(0,dd))):null, lin:rx&&rx.lin&&rx.lin.length?((a,b)=>linEn(name,a,b)):null, cost:land&&rx&&rx.cost?(dd=>costEn(name,Math.max(0,dd))):null}; }
 function drawScenePreview(){
   const cv=$("scenePrev"); if(!cv||!sceneRouteGeo) return;
   const r=fit(cv); if(!r||r.w<10) return; const {ctx,w,h}=r;
@@ -1737,7 +1744,7 @@ function drawScenePreview(){
     const sc=sceneAt(sceneEditRoute,d);
     let glOk=false;
     if(glRutaOn()){ const ex=glRutaExtra(sceneEditRoute,sc);
-      glOk=GLR.draw(ctx,w,h,{key:sceneEditRoute+"|"+(sceneRouteGeo._glk||(sceneRouteGeo._glk=Math.random().toString(36).slice(2))),d,bFn:dd=>bearingRoute(sceneRouteGeo,dd),eFn:dd=>sceneEleAt(dd),sc:sceneSuave(sceneEditRoute,d,sc),scFn:dd=>sceneAt(sceneEditRoute,Math.max(0,dd)),crank:scenePrevCrank,
+      glOk=GLR.draw(ctx,w,h,{key:sceneEditRoute+"|"+(sceneRouteGeo._glk||(sceneRouteGeo._glk=Math.random().toString(36).slice(2))),d,bFn:dd=>bearingRoute(sceneRouteGeo,dd),eFn:dd=>sceneEleAt(dd),sc:sceneSuave(sceneEditRoute,d,sc),scFn:dd=>sceneAt(sceneEditRoute,Math.max(0,dd)),estilo:ex.estilo,crank:scenePrevCrank,
         gs:ex.gs, hz:ex.hz, land:ex.land, infra:ex.infra, lin:ex.lin, cost:ex.cost, luz:ex.luz, wx:ex.wx, v:6});
       if($("sceneGlInfo")) $("sceneGlInfo").textContent=glOk?"":(GLR.ok()?"":"WebGL no disponible acá: se ve la vista de siempre. "+GLR.diag()); }
     if(!glOk){
@@ -1768,7 +1775,7 @@ function openSceneEditor(routeName,totalM,returnTo){
   routeName = routeName || fname; totalM = totalM || total; returnTo = returnTo || "gpx";
   if(!routeName || !totalM){ alert("Cargá primero un recorrido (GPX)."); return; }
   sceneEditRoute=routeName; sceneEditTotal=totalM; sceneReturnTo=returnTo;
-  sceneEditRows=getRouteScenes(routeName).map(s=>({km:s.km,scene:s.scene,water:s.water||null,waterKind:s.waterKind||"mar",wall:s.wall||null,izq:s.izq||"",der:s.der||""}));
+  sceneEditRows=getRouteScenes(routeName).map(s=>({km:s.km,scene:s.scene,water:s.water||null,waterKind:s.waterKind||"mar",wall:s.wall||null,izq:s.izq||"",der:s.der||"",casas:s.casas||null}));
   sceneEditOutBack=!!((loadSceneOpts()[routeName]||{}).outBack); $("sceneOutBack").checked=sceneEditOutBack;
   bridgeEditRows=getRouteBridges(routeName).map(b=>({fromKm:b.fromKm,toKm:b.toKm,peakPct:b.peakPct}));
   $("sceneRouteInfo").textContent=routeName+" · "+(totalM/1000).toFixed(2)+" km";
@@ -1878,6 +1885,8 @@ function renderSceneTramo(force){
     const cerca=sceneEditRows.some(r=>Math.abs(r.km-ida)<0.05); cut.disabled=cerca||ida<0.05||ida>sceneTramoFin(sceneEditRows.length-1)-0.05;
     join.disabled=i===0; }
   { const bc=$("sceneCornisa"), esC=!!(row&&(SCENES[row.scene]||{}).defaultWall); bc.disabled=!row||esC;   // v198: pared y barranco con cualquier escenario
+    const bk=$("sceneCasas"), sinC=!!(row&&/^(urbana|ciudad|velodromo|velodromo_open|mar)$/.test(row.scene)); bk.disabled=!row||sinC;   // v199
+    bk.textContent=sinC?"🏡 Casas: —":"🏡 Casas: "+(row&&row.casas?"dispersas":"no");
     bc.textContent=esC?"⛰️ Cornisa: ya es":"⛰️ Cornisa: "+(row&&row.wall?(row.wall==="auto"?"sí":row.wall==="left"?"pared izq.":"pared der."):"no"); }
   const cards=$("sceneCards"), key=row?row.scene:null, sig=i+"|"+sceneEditRows.length;
   if(force||!cards.childElementCount||sceneTramoRen!==sig){
@@ -2170,6 +2179,7 @@ $("sceneMapCv").addEventListener("pointerdown",sceneMapScrub);
 $("sceneStrip").addEventListener("pointerdown",sceneStripScrub);
 $("sceneStrip").addEventListener("pointermove",e=>{ if(e.pressure>0||e.buttons)sceneStripScrub(e); });
 $("sceneCut").onclick=sceneCortar; $("sceneJoin").onclick=sceneUnir;
+$("sceneCasas").onclick=()=>{ const i=sceneTramoIdx(); if(i<0) return; const row=sceneEditRows[i]; row.casas=row.casas?null:"disp"; renderSceneRows(); renderSceneTramo(true); };
 $("sceneCornisa").onclick=()=>{ const i=sceneTramoIdx(); if(i<0) return; const row=sceneEditRows[i]; row.wall=row.wall?null:"auto"; renderSceneRows(); renderSceneTramo(true); };
 $("sceneMapCv").addEventListener("pointermove",e=>{ if(e.pressure>0||e.buttons)sceneMapScrub(e); });
 $("sceneEditBtn").onclick=()=>openSceneEditor(fname,total,"gpx");
@@ -2180,7 +2190,7 @@ $("sceneAddBtn").onclick=()=>{
 };
 $("sceneCancel").onclick=closeSceneEditor;
 $("sceneSave").onclick=()=>{
-  const segs=sceneEditRows.map(s=>Object.assign({km:+s.km.toFixed(2),scene:s.scene,water:s.water||null,waterKind:s.waterKind||"mar",wall:s.wall||null},s.izq?{izq:s.izq}:{},s.der?{der:s.der}:{})).sort((a,b)=>a.km-b.km);
+  const segs=sceneEditRows.map(s=>Object.assign({km:+s.km.toFixed(2),scene:s.scene,water:s.water||null,waterKind:s.waterKind||"mar",wall:s.wall||null},s.izq?{izq:s.izq}:{},s.der?{der:s.der}:{},s.casas?{casas:s.casas}:{})).sort((a,b)=>a.km-b.km);
   if(!segs.length||segs[0].km!==0) segs.unshift({km:0,scene:"rural",water:null,wall:null});
   const bridges=bridgeEditRows.map(b=>({fromKm:+b.fromKm.toFixed(3),toKm:+b.toKm.toFixed(3),peakPct:+b.peakPct.toFixed(1)}))
     .filter(b=>b.toKm>b.fromKm).sort((a,b)=>a.fromKm-b.fromKm);
@@ -2296,7 +2306,7 @@ function sceneAt(routeName,d){
     for(let k=i-1;k>=0&&!q;k--){ const b=SCENES[segs[k].scene]; if(b&&!b.heredaCielo) q=b; }
     for(let k=i+1;k<segs.length&&!q;k++){ const b=SCENES[segs[k].scene]; if(b&&!b.heredaCielo) q=b; }
     if(q) cielo={sky:q.sky, mtnCol:q.mtnCol, mtnAmp:q.mtnAmp, snow:q.snow||0, bruma:q.bruma}; }
-  return Object.assign({},base,cielo||{},{waterSide:mir.back?flipSide(water):water, waterKind:cur.waterKind||"mar", wallSide:wall});
+  return Object.assign({},base,cielo||{},{waterSide:mir.back?flipSide(water):water, waterKind:cur.waterKind||"mar", wallSide:wall, casas:cur.casas||null});
 }
 // v197: cielo, cerros, suelo, asfalto y bruma fundidos en ±150 m alrededor de un cambio de tramo (para la vista WebGL)
 function sceneSuave(name,d,sc){
@@ -3218,6 +3228,8 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
           landArbol(ctx,tx+side*(8+7*r2)*mm,ty,mm,14+9*r2,"yunga",r2,bsc,b.d,d0);
           landArbol(ctx,tx+side*(2+3*r3)*mm,ty,mm,r3<.4?5+3*r3:3,r3<.4?"helecho":"mata",r3,bsc,b.d,d0);
           landArbol(ctx,tx,ty,mm,12+8*r1,"yunga",r1,bsc,b.d,d0); continue; }
+        if(!isWaterSide&&!isWallSide&&!isValleySide&&bsc.casas&&landHash(seed*3.3+0.7)<0.32){ // v199: casa dispersa, retirada del camino
+          const r=landHash(seed*6.1); landCasa(ctx,S,b.d,side,wRoad+9+16*r,(0<<5)|(r>0.7?2:1),seed,casaEstilo(routeName)==="sur",bsc,d0); continue; }
         if(!isWaterSide&&!isWallSide&&!isValleySide&&bsc.decor==="pinar"){ // v198: bosque de pinos de montaña en 2D
           const mm=b.m||b.hw/wRoad, r1=Math.abs(seed), r2=landHash(seed*5.7);
           landArbol(ctx,tx+side*(6+7*r2)*mm,ty,mm,12+8*r2,"pino",r2,bsc,b.d,d0); landArbol(ctx,tx,ty,mm,10+7*r1,"pino",r1,bsc,b.d,d0); continue; }
@@ -3491,7 +3503,7 @@ function drawRoad(){
     const gNow=ghost?ghostDistAt(elapsed+idt):0;
     if(!ghost&&mode==="gpx"&&points.length&&glRutaOn()&&!glVivoFalla){   // v185: vista en vivo en WebGL (con el fantasma sigue la vista 2D)
       const sc=sceneAt(fname,dNow), ex=glRutaExtra(fname,sc);
-      if(GLR.draw(ctx,w,h,{key:"v|"+fname+"|"+total,d:dNow,bFn:bearingAt,eFn:eleAt,sc:sceneSuave(fname,dNow,sc),scFn:dd=>sceneAt(fname,Math.max(0,dd)),crank:roadCrank,gs:ex.gs,hz:ex.hz,land:ex.land,infra:ex.infra,lin:ex.lin,cost:ex.cost,luz:ex.luz,wx:ex.wx,v:v})){
+      if(GLR.draw(ctx,w,h,{key:"v|"+fname+"|"+total,d:dNow,bFn:bearingAt,eFn:eleAt,sc:sceneSuave(fname,dNow,sc),scFn:dd=>sceneAt(fname,Math.max(0,dd)),estilo:ex.estilo,crank:roadCrank,gs:ex.gs,hz:ex.hz,land:ex.land,infra:ex.infra,lin:ex.lin,cost:ex.cost,luz:ex.luz,wx:ex.wx,v:v})){
         if(wxActivo()&&wxRelAhora){ const hz=Math.round(h*0.44); wxAire(ctx,w,h,hz,WX,wxRelAhora,performance.now()/1000,v); wxFlecha(ctx,w-36,36,WX,wxRelAhora); }
         roadDrawErrLogged=false; return; }
       if(!GLR.ok()) glVivoFalla=true; }
@@ -3863,14 +3875,38 @@ function mundo(S){
     for(const e of LNa){ const nw=mix(wcol,wnear,.35); cinta(e.pts,e.w+1.6,e.dep*.4,tone(nw,wet?.85:1),true); }
     for(const e of LNc){ const k=e.k===10?tone(asf,1.05):e.k===11?mix(asf,gcol,.12):e.k===12?[.6,.5,.36]:[.72,.7,.65]; cinta(e.pts,e.w,0,k,false); } }
   if(LDm){ landGL(); }
+  /* v199: casa dispersa en un claro del monte, retirada del camino, con entrada de tierra; estilo según la zona (S.estilo):
+     sur = chapa de colores, piedra = muros de piedra y pizarra (Pirineos), teja = paredes claras y tejas */
+  const casaGL=(s,sg,T,h1,h2,h3)=>{
+    const est=S.estilo||'teja', lat=HW+SH+10+h2*18, w0=at(s); if(!w0) return;
+    const rr=[w0.rx,0,w0.rz], fx=[Math.sin(w0.b),0,Math.cos(w0.b)], cx=w0.x+w0.rx*sg*lat, cz=w0.z+w0.rz*sg*lat;
+    const len=8+h3*5, dep=7+h1*3, pisos=est==='piedra'?(h3>.4?2:1):(h3>.75?2:1), Hh=pisos*2.9;
+    let gy, base=.3; if(hayCO){ const q=gT(cx,cz,0); if(q.agua) return; gy=q.p[1]; base=4; } else if(T!=='normal'){ gy=gY(cx,cz); base=4; } else gy=w0.y-.05;
+    const pk=a=>a[Math.floor(h2*97)%a.length];
+    const wall=est==='sur'?col(pk(LAND_COL.casaSur)):est==='piedra'?pk([[.62,.58,.52],[.56,.53,.48],[.68,.63,.55]]):pk([[.93,.9,.84],[.96,.93,.86],[.86,.78,.66],[.9,.84,.74]]);
+    const roof=est==='sur'?col(pk(LAND_COL.techoSur)):est==='piedra'?[.27,.28,.3]:pk([[.66,.3,.2],[.6,.27,.18],[.7,.36,.24]]);
+    obox(A,[cx,gy+(Hh-base)/2+.3,cz],rr,[0,1,0],fx,dep,Hh+base,len,wall); shBox(cx,cz,rr,fx,dep,len,Hh+2);
+    const rh=est==='piedra'?2.1:2.6, yb=gy+Hh+.3, hd=dep/2+.5, hl=len/2+.3, Pq=(l,f,yy)=>[cx+rr[0]*l+fx[0]*f,yy,cz+rr[2]*l+fx[2]*f];
+    quad(A,Pq(-hd,-hl,yb),Pq(-hd,hl,yb),Pq(0,hl,yb+rh),Pq(0,-hl,yb+rh),tone(roof,1)); quad(A,Pq(hd,hl,yb),Pq(hd,-hl,yb),Pq(0,-hl,yb+rh),Pq(0,hl,yb+rh),tone(roof,.8));
+    tri(A,Pq(-hd+.5,-hl+.3,yb),Pq(hd-.5,-hl+.3,yb),Pq(0,-hl+.3,yb+rh),tone(wall,.9)); tri(A,Pq(hd-.5,hl-.3,yb),Pq(-hd+.5,hl-.3,yb),Pq(0,hl-.3,yb+rh),tone(wall,.9));
+    if(est!=='teja'||h1>.5){ const ch=Pq(-sg*dep*.2,len*.25,yb); obox(A,[ch[0],yb+rh*.8,ch[2]],rr,[0,1,0],fx,.7,rh*1.4,.7,est==='sur'?[.6,.6,.62]:tone(wall,.8)); }   // chimenea
+    const pf=(a,yy)=>[cx+rr[0]*(-sg)*(dep/2+.04)+fx[0]*a,gy+.3+yy,cz+rr[2]*(-sg)*(dep/2+.04)+fx[2]*a];
+    for(let f=0;f<pisos;f++){ const v0=f*2.9+.9, v1=f*2.9+2.2; for(const a of [-len*.3,len*.1,len*.32]) quad(A,pf(a-.6,v0),pf(a+.6,v0),pf(a+.6,v1),pf(a-.6,v1),[.25,.32,.38]); }
+    if(est==='piedra'&&pisos>1) obox(A,[cx-sg*rr[0]*(dep/2+.6),gy+3.3,cz-sg*rr[2]*(dep/2+.6)],rr,[0,1,0],fx,1.2,.25,len*.7,[.42,.28,.17]);   // balcón de madera
+    if(T==='normal'&&!hayCO){ const ent=(l,f)=>[w0.x+w0.rx*sg*l+fx[0]*f,w0.y-.02,w0.z+w0.rz*sg*l+fx[2]*f];                      // entrada de tierra hasta el camino
+      quad(A,ent(HW+SH,-1.4),ent(HW+SH,1.4),ent(lat-dep/2,1.4),ent(lat-dep/2,-1.4),[.55,.49,.4]);
+      if(h1>.55){ const cp=ent(lat-dep/2-3,len*.25), cc=pk([[.75,.12,.1],[.85,.85,.86],[.2,.3,.5],[.15,.15,.16]]); obox(A,[cp[0],cp[1]+.7,cp[2]],rr,[0,1,0],fx,1.8,1.1,4.2,cc); obox(A,[cp[0],cp[1]+1.45,cp[2]],rr,[0,1,0],fx,1.6,.6,2.2,tone(cc,.6)); } }
+  };
   if(S.scFn||(!LDm||dec==='yungas')&&dec!=='waves'&&dec!=='stands'){
     for(let kc=Math.floor((d-10)/14);kc<=Math.floor((d+330)/14);kc++)for(const sg of [-1,1]){
       const T=sg<0?lT:rT; if(T==='water')continue;
       const dec=decAt(kc*14+7,kc*3.17+sg*.53); if(dec==='waves'||dec==='stands') continue;
-      if(T!=='normal'&&!VEGW[dec]) continue;                                                          // v198: en la pared y el barranco de una cornisa, solo monte (yungas, bosque, pinar)
-      if(LDm&&T==='normal'){ if(!VEGL[dec]) continue; const lm=landEn(LDm,kc*14+7,false), sI=sg<0?0:1; if(lm.b[sI]||!vegC(lm.c[sI])||landUrbano(landVia(lm.v,sc.asphalt),lm.c[sI])) continue; }   // v196: casas, agua, arena o roca de Rumbo mandan
+      const cqC=S.scFn?S.scFn(kc*14+7+(hash(kc*1.91+sg)-.5)*2*MEZ):sc, conCasa=!!(cqC&&cqC.casas)&&hash(kc*4.13+sg*2.7)<.3&&hash((kc-1)*4.13+sg*2.7)>=.3;   // v199: casas dispersas (nunca dos en celdas seguidas del mismo lado)
+      if(T!=='normal'&&!VEGW[dec]&&!conCasa) continue;                                                // v198: en la pared y el barranco de una cornisa, solo monte (yungas, bosque, pinar)
+      if(LDm&&T==='normal'){ if(!VEGL[dec]&&!conCasa) continue; const lm=landEn(LDm,kc*14+7,false), sI=sg<0?0:1; if(lm.b[sI]||!vegC(lm.c[sI])||landUrbano(landVia(lm.v,sc.asphalt),lm.c[sI])) continue; }   // v196: casas, agua, arena o roca de Rumbo mandan
       const h1=hash(kc*2+(sg>0?1:0)), h2=hash(kc*7.31+sg), h3=hash(kc*3.7+sg*5);
       const s=kc*14+7-d; if(s<-8||s>330)continue;
+      if(conCasa){ casaGL(s,sg,T,h1,h2,h3); continue; }
       const dens=(dec==='casas'||dec==='buildings')?.55:(dec==='estepa'?.25:dec==='yungas'?.97:.78); if(h1>dens)continue;
       const o=sg*(T==='wall'?HW+SH+9+h2*45:T==='valley'?HW+SH+6+h2*40:HW+SH+(dec==='yungas'?2.5:4)+h2*(dec==='casas'||dec==='buildings'?22:dec==='yungas'?16:30)), w=at(s), x=w.x+w.rx*o, z=w.z+w.rz*o; let y=w.y, dk=dec;
       const enLadera=!hayCO&&T!=='normal'; if(enLadera) y=gY(x,z)-.1;                                // v198: sobre la ladera de la cornisa (arriba o abajo del camino)
