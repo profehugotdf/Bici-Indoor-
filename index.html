@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v197</title>
+<title>Bici Indoor · v198</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -96,7 +96,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v197</h1>
+  <h1>Bici Indoor · v198</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -403,6 +403,7 @@
           <span id="sceneTramoInfo" style="font-size:13px;flex:1;min-width:150px"></span>
           <button id="sceneCut" style="min-height:40px;padding:6px 12px;font-size:14px">✂️ Cortar acá</button>
           <button id="sceneJoin" style="min-height:40px;padding:6px 10px;font-size:13px">🔗 Unir con el anterior</button>
+          <button id="sceneCornisa" style="min-height:40px;padding:6px 10px;font-size:13px">⛰️ Cornisa: no</button>
         </div>
         <div id="sceneCards" style="display:flex;gap:8px;overflow-x:auto;padding:8px 0 4px;-webkit-overflow-scrolling:touch"></div>
         <details id="sceneMas" style="margin-top:4px"><summary style="font-size:13px;color:var(--dim);cursor:pointer;padding:4px 0">⚙️ Más: agua, pared y costados de este tramo</summary><div id="sceneMasBody"></div></details>
@@ -756,6 +757,7 @@ function bigPersist(k,v){
     tx.onerror=tx.onabort=()=>{ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+((tx.error&&tx.error.message)||"error"),"#f85149"); } };
   }catch(e){ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+e.message,"#f85149"); } }
 }
+// v198: ⛰️🌿 cornisa con monte (además: arreglado un índice negativo en las Yungas cerca del km 0, que apagaba la vista WebGL hasta recargar) (Hugo, 17-nov: "que se pueda combinar camino de cornisa con Yunga, para Tucumán, o camino de cornisa con bosque para Andorra"). Botón "⛰️ Cornisa" en el tramo del cursor (pared automática sí/no, `sceneCornisa`) para cualquier escenario. Con Yungas, Rural, Bosque de lengas o el nuevo "Bosque de pinos (montaña)" (`pinar`: coníferas altas y juntas, hereda el cielo como Yungas), la vista WebGL cubre la pared de monte (corte de roca solo junto al camino) y pone plantas arriba en la ladera y abajo en el barranco (`VEGW`, `enLadera`). `pinar` también manda sobre el uso del suelo de Rumbo, como Yungas (`VEGL`, `landVegEscena`). En 2D la pared sigue de roca.
 // v197: 🌅 cambios de escenario graduales y con el cielo de la zona (Hugo, 17-nov, dos capturas a 80 m de distancia: en el km 3,17 —Rural— ningún árbol y en el 3,25 —Yungas— selva cerrada, cielo gris y bruma: "me gustaría que el cambio sea más gradual y que se respete el clima o cielo de la zona"). (1) En la vista WebGL cada planta toma el escenario de SU lugar (`scFn` → sceneAt), no el de la cámara, y en el borde entre tramos se mezclan las dos vegetaciones en ±55 m. (2) Cielo, cerros, suelo, asfalto y bruma se funden en ±150 m alrededor de cada cambio (`sceneSuave`). (3) Yungas es vegetación, no clima: hereda el cielo, los cerros y la nieve del tramo de al lado (`heredaCielo`; si toda la ruta es Yungas, usa su propio cielo, ahora más despejado y con menos bruma).
 // v196: 🌿 Yungas también en rutas de Rumbo (Hugo, 17-nov, captura: tramo Yungas en la ruta de Ixtapa y "¿cómo hago para que aparezca la vegetación de Yungas?": no aparecía ninguna planta). Con `land` de Rumbo, el escenario no ponía su decorado: los costados salían solo del uso del suelo (pradera, matorral o sin dato = casi nada). Ahora, con escenario Yungas, donde Rumbo no dice casas, barrio, agua, arena, roca, cementerio ni nieve (clases 0, 4–8 y 12), el monte lo pone el escenario: WebGL (`vegE` en `mundo`: landGL deja esos costados y el bucle de decor corre también con land) y 2D (`landDecorFranja` con el parámetro nuevo `veg` = decor del tramo, `landVegEscena`; bloque land: copiar a Correr).
 // v195: ✂️ editar los tramos del escenario mirando (Hugo, 17-nov: "¿se te ocurre alguna forma más intuitiva para editar los tramos?"; antes había que saber el km de memoria y tocar varios desplegables por tramo). El punto que se elige en la franja de colores (ahora se toca o se arrastra), el perfil o el plano es el cursor: "✂️ Cortar acá" parte el tramo en ese km (el nuevo copia el escenario, agua, pared y costados del que partió) y "🔗 Unir con el anterior" borra el corte. El escenario del tramo del cursor se elige tocando una tarjeta con dibujito (fila que se desliza de costado, sceneThumb); agua, pared y costados quedan plegados en "⚙️ Más" (los mismos controles que la lista, sceneRowExtras). La lista con km exactos sigue, plegada abajo. En ida y vuelta, un punto de la vuelta edita el km espejado de la ida. No cambia cómo se guarda (bici_scenes).
@@ -1664,6 +1666,7 @@ const SCENES={
   canal:{ label:"Costa del canal", sky:["#5a9fd0","#c9e4f2"], ground:"#4c6a45", asphalt:"#525a63", mtnCol:["#9aaec2","#7d93a9"], mtnAmp:1.4, snow:0.55, decor:"lengas", defaultWater:"left" },
   montana:{ label:"Montaña nevada", sky:["#5f9fcf","#d3e7f2"], ground:"#6f7c72", asphalt:"#545b62", mtnCol:["#aebbc8","#8494a6"], mtnAmp:2.0, snow:0.75, decor:"nieve" },
   ciudad:{ label:"Casas de colores", sky:["#6aa8d6","#d6e8f1"], ground:"#4a4f55", asphalt:"#555c63", mtnCol:["#8aa0b6","#6a8198"], mtnAmp:1.3, snow:0.4, decor:"casas" },
+  pinar:{ label:"Bosque de pinos (montaña)", sky:["#5d9fd6","#cfe6f3"], ground:"#2b4a2c", asphalt:"#4f565d", mtnCol:["#8aa0b4","#64798e"], mtnAmp:1.8, snow:0.45, decor:"pinar", heredaCielo:true },   // v198: Pirineos, Alpes
   yungas:{ label:"Yungas (selva de montaña)", sky:["#6ea8d2","#d2e4ec"], ground:"#1d4a24", asphalt:"#4d5458", mtnCol:["#5d7c68","#41604e"], mtnAmp:1.7, snow:0, decor:"yungas", bruma:1.5, heredaCielo:true },   // v194; v197: hereda el cielo de la zona
   estepa:{ label:"Estepa y alambrado", sky:["#6fb3e3","#dceef7"], ground:"#9c8a56", asphalt:"#5a5650", mtnCol:["#aaa190","#8f8674"], mtnAmp:0.5, snow:0, decor:"estepa" },
   velodromo:{ label:"Velódromo cubierto", sky:["#171b22","#2a323d"], ground:"#2e4a2f", asphalt:"#c9a768", mtnCol:["#333a44","#242931"], mtnAmp:0.6, decor:"stands" },
@@ -1822,7 +1825,7 @@ function renderSceneRows(){
   drawSceneStrip(); renderSceneTramo(true);
 }
 // ---------- v195: editar el tramo donde está el cursor ----------
-const SCENE_ICON={rural:"🌾",urbana:"🏙️",cornisa:"🪨",mar:"🌊",bosque:"🌲",canal:"⛵",montana:"🏔️",ciudad:"🏘️",yungas:"🌿",estepa:"🐑",velodromo:"🏟️",velodromo_open:"🚴"};
+const SCENE_ICON={rural:"🌾",urbana:"🏙️",cornisa:"🪨",mar:"🌊",bosque:"🍁",pinar:"🌲",canal:"⛵",montana:"🏔️",ciudad:"🏘️",yungas:"🌿",estepa:"🐑",velodromo:"🏟️",velodromo_open:"🚴"};
 // km de la ida que corresponde al cursor (en ida y vuelta, un punto de la vuelta es el km espejado de la ida)
 function sceneCursorIdaKm(){ if(sceneScrubKm==null) return null; let km=sceneScrubKm;
   if(sceneEditOutBack){ const tp=turnPointFor(sceneEditRoute); if(tp&&tp.total>tp.turn&&km*1000>tp.turn){ const fr=Math.min(1,(km*1000-tp.turn)/(tp.total-tp.turn)); km=tp.turn*(1-fr)/1000; } }
@@ -1852,6 +1855,7 @@ function sceneThumb(cv,key){ const sc=SCENES[key]||SCENES.rural, ctx=cv.getConte
     ctx.fillStyle="#5f5246"; ctx.beginPath(); ctx.moveTo(w*0.86,hy-h*0.15); ctx.lineTo(w,hy-h*0.2); ctx.lineTo(w,h); ctx.lineTo(w*0.9,h); ctx.fill();
     ctx.fillStyle="#2c4058"; ctx.beginPath(); ctx.moveTo(0,hy+3); ctx.lineTo(w*0.44,hy); ctx.lineTo(w*0.2,h); ctx.lineTo(0,h); ctx.fill(); }
   else if(D==="trees"||D==="lengas"){ for(const [fx,fy,k] of R) if(!(water&&fx<0.5)) tri(w*fx,h*fy,h*0.3*k,D==="lengas"?"#2f6b35":"#24502b"); }
+  else if(D==="pinar"){ for(const [fx,fy,k] of R){ tri(w*fx,h*fy,h*0.46*k+3,"#163d22"); tri(w*fx,h*fy-h*0.12*k,h*0.3*k+2,"#1f4d2a"); } }
   else if(D==="yungas"){ for(const [fx,fy,k] of R){ ctx.fillStyle="#4a3a2a"; ctx.fillRect(w*fx-1,h*fy-h*0.2*k,2,h*0.2*k); blob(w*fx,h*fy-h*0.24*k,h*0.13*k+2,"#1f5a2a"); blob(w*fx+h*0.08*k,h*fy-h*0.3*k,h*0.1*k+1,"#2c7034"); } }
   else if(D==="nieve"){ for(const [fx,fy,k] of R) tri(w*fx,h*fy,h*0.26*k,"#e9f0f5"); }
   else if(D==="buildings"){ for(const [fx,fy,k] of R){ const bw=h*0.2*k+3, bh=h*0.5*k+4; ctx.fillStyle="#6b7681"; ctx.fillRect(w*fx-bw/2,h*fy-bh,bw,bh); } }
@@ -1873,6 +1877,8 @@ function renderSceneTramo(force){
     info.innerHTML=`📍 Km <b>${sceneScrubKm.toFixed(2)}</b>${sceneEnVuelta()?" (vuelta = km "+ida.toFixed(2)+" de la ida)":""}<br>Tramo ${i+1} de ${sceneEditRows.length}: <b>${SCENE_ICON[row.scene]||""} ${sc.label}</b> · km ${(+row.km).toFixed(2)}–${sceneTramoFin(i).toFixed(2)}`;
     const cerca=sceneEditRows.some(r=>Math.abs(r.km-ida)<0.05); cut.disabled=cerca||ida<0.05||ida>sceneTramoFin(sceneEditRows.length-1)-0.05;
     join.disabled=i===0; }
+  { const bc=$("sceneCornisa"), esC=!!(row&&(SCENES[row.scene]||{}).defaultWall); bc.disabled=!row||esC;   // v198: pared y barranco con cualquier escenario
+    bc.textContent=esC?"⛰️ Cornisa: ya es":"⛰️ Cornisa: "+(row&&row.wall?(row.wall==="auto"?"sí":row.wall==="left"?"pared izq.":"pared der."):"no"); }
   const cards=$("sceneCards"), key=row?row.scene:null, sig=i+"|"+sceneEditRows.length;
   if(force||!cards.childElementCount||sceneTramoRen!==sig){
     if(!cards.childElementCount){ for(const k in SCENES){ const b=document.createElement("button"); b.type="button"; b.dataset.k=k;
@@ -2164,6 +2170,7 @@ $("sceneMapCv").addEventListener("pointerdown",sceneMapScrub);
 $("sceneStrip").addEventListener("pointerdown",sceneStripScrub);
 $("sceneStrip").addEventListener("pointermove",e=>{ if(e.pressure>0||e.buttons)sceneStripScrub(e); });
 $("sceneCut").onclick=sceneCortar; $("sceneJoin").onclick=sceneUnir;
+$("sceneCornisa").onclick=()=>{ const i=sceneTramoIdx(); if(i<0) return; const row=sceneEditRows[i]; row.wall=row.wall?null:"auto"; renderSceneRows(); renderSceneTramo(true); };
 $("sceneMapCv").addEventListener("pointermove",e=>{ if(e.pressure>0||e.buttons)sceneMapScrub(e); });
 $("sceneEditBtn").onclick=()=>openSceneEditor(fname,total,"gpx");
 $("sceneAddBtn").onclick=()=>{
@@ -2891,7 +2898,7 @@ function landFarol(ctx,x,y,m,side,sc,dd,d0){ luzSombra(ctx,x,y,m,7,0.12); const 
 // DECORADO de la franja: cada 12,5 m, de cada lado, la casa real (a su distancia, con sus pisos) o lo que corresponda al
 // uso del suelo; faroles en las calles. hwM(d) = medio ancho del camino en metros.
 // v196: con un escenario de selva (Yungas), el monte lo pone el escenario donde el uso del suelo no dice casas, agua, arena, roca, cementerio ni nieve
-function landVegEscena(veg,c){ return veg==="yungas"&&(c===0||c===4||c===5||c===6||c===7||c===8||c===12); }
+function landVegEscena(veg,c){ return (veg==="yungas"||veg==="pinar")&&(c===0||c===4||c===5||c===6||c===7||c===8||c===12); }
 function landDecorFranja(ctx,S,i,L,flip,sc,skip,hwM,d0,asf,fallback,veg){
   const b=S[i], a=S[i+1], STEP=12.5;
   for(let dd=Math.ceil(b.d/STEP)*STEP; dd<a.d; dd+=STEP){
@@ -2915,6 +2922,8 @@ function landDecorFranja(ctx,S,i,L,flip,sc,skip,hwM,d0,asf,fallback,veg){
         continue;
       }
       const c=lm.c[s];
+      if(veg==="pinar"&&landVegEscena(veg,c)&&!landUrbano(vl,c)){ const x0=cx+side*(borde+1.5)*m, r1=landHash(seed*1.9), r2=landHash(seed*5.7);   // v198
+        landArbol(ctx,x0+side*(8+7*r2)*m,y,m,12+9*r2,"pino",r2,sc,dd,d0); landArbol(ctx,x0+side*(2+4*r1)*m,y,m,10+8*r1,"pino",r1,sc,dd,d0); continue; }
       if(landVegEscena(veg,c)&&!landUrbano(vl,c)){ const x0=cx+side*(borde+1.5)*m, r1=landHash(seed*1.9), r2=landHash(seed*5.7), r3=landHash(seed*2.3);   // v196
         landArbol(ctx,x0+side*(9+7*r2)*m,y,m,14+9*r2,"yunga",r2,sc,dd,d0);
         landArbol(ctx,x0+side*(4+3*r1)*m,y,m,12+8*r1,"yunga",r1,sc,dd,d0);
@@ -3209,6 +3218,9 @@ function roadBands(ctx,w,h,d0,bFn,eFn,routeName,sceneOverride,geom){
           landArbol(ctx,tx+side*(8+7*r2)*mm,ty,mm,14+9*r2,"yunga",r2,bsc,b.d,d0);
           landArbol(ctx,tx+side*(2+3*r3)*mm,ty,mm,r3<.4?5+3*r3:3,r3<.4?"helecho":"mata",r3,bsc,b.d,d0);
           landArbol(ctx,tx,ty,mm,12+8*r1,"yunga",r1,bsc,b.d,d0); continue; }
+        if(!isWaterSide&&!isWallSide&&!isValleySide&&bsc.decor==="pinar"){ // v198: bosque de pinos de montaña en 2D
+          const mm=b.m||b.hw/wRoad, r1=Math.abs(seed), r2=landHash(seed*5.7);
+          landArbol(ctx,tx+side*(6+7*r2)*mm,ty,mm,12+8*r2,"pino",r2,bsc,b.d,d0); landArbol(ctx,tx,ty,mm,10+7*r1,"pino",r1,bsc,b.d,d0); continue; }
         if(!isWaterSide&&!isWallSide&&!isValleySide&&(bsc.decor==="trees"||bsc.decor==="lengas")){ // v176: árboles con copa, volumen y sombra (los mismos que en los costados reales), dos por lado
           const mm=b.m||b.hw/wRoad, r1=Math.abs(seed), r2=landHash(seed*5.7), len=bsc.decor==="lengas";
           landArbol(ctx,tx+side*(5+6*r2)*mm,ty,mm,(len?8:9)+6*r2,len?"lenga":r2>0.6?"pino":"hoja",r2,bsc,b.d,d0);
@@ -3624,6 +3636,7 @@ function mundo(S){
   const CO=S.cost?[]:null, CSX=1.3;
   if(CO){ for(let i=0;i<N;i++){ const D=Ds+i*G, q=S.cost(D); if(q) q.e=eFn(D); CO.push(q); } if(!CO.some(Boolean)) CO.length=0; }
   const hayCO=!!(CO&&CO.length);
+  const VEGW={yungas:1,trees:1,lengas:1,pinar:1}, VEGL={yungas:1,pinar:1}, vegW=!!VEGW[sc.decor];   // v198: vegetación que cubre la pared y el barranco de una cornisa / que manda sobre el uso del suelo de Rumbo
   const lT=hayCO?'normal':sc.wallSide==='left'?'wall':(sc.waterSide==='left'?'water':(sc.wallSide==='right'?'valley':'normal'));
   const rT=hayCO?'normal':sc.wallSide==='right'?'wall':(sc.waterSide==='right'?'water':(sc.wallSide==='left'?'valley':'normal'));
   const WL=(typeof WATER_LOOK!=='undefined'&&WATER_LOOK[sc.waterKind||'mar'])||{mid:'#2d7ea8',top:'#7fc4e0'}, wcol=col(WL.mid), wnear=col(WL.top||WL.mid);
@@ -3712,7 +3725,9 @@ function mundo(S){
       if(st>.9) c=mix(c,[.5,.44,.37],Math.min(.7,(st-.9)*.8));
       return tone(c,1-.1*Math.min(1,dist/180)); }
     if(T==='water')return dist<OFS[1]?mix(gc,[.8,.74,.55],.6):mix(wcol,wnear,dist<40?.5:0);
-    if(T==='wall')return tone(mix([.54,.49,.43],[.27,.24,.2],Math.min(1,dist/400)),1);
+    if(T==='wall'){ const roca=tone(mix([.54,.49,.43],[.27,.24,.2],Math.min(1,dist/400)),1);
+      if(vegW){ const u=Math.max(0,Math.min(1,(dist-HW-SH-.5)/2.5)); return mix(roca,tone(mix(gc,[.15,.29,.15],.45),1-.14*Math.min(1,dist/300)),u*.95); }   // v198: cornisa con monte: un corte de roca junto al camino y la ladera cubierta
+      return roca; }
     if(T==='valley')return mix(gc,[.31,.42,.34],Math.min(1,dist/130));
     return tone(gc,1-.16*Math.min(1,dist/130)); };
   const gk=i=>{ const dd=Ds+i*G, g=gs?gs(dd):null;
@@ -3777,7 +3792,7 @@ function mundo(S){
      se mezcla: cada planta toma el escenario de un punto corrido hasta ±MEZ m (borde gradual, como un ecotono). */
   const MEZ=55, decAt=(dd,key)=>{ if(!S.scFn) return dec0; const q=S.scFn(dd+(hash(key)-.5)*2*MEZ); return (q&&q.decor)||dec0; };
   const vegC=c=>c===0||c===4||c===5||c===6||c===7||c===8||c===12;
-  const vegE=(c,dd,key)=>vegC(c)&&decAt(dd,key)==='yungas';   // v196: con escenario Yungas, el monte de los costados lo pone el escenario (no el uso del suelo de Rumbo)
+  const vegE=(c,dd,key)=>vegC(c)&&!!VEGL[decAt(dd,key)];   // v196: con escenario Yungas, el monte de los costados lo pone el escenario (no el uso del suelo de Rumbo)
   function landGL(){
     const STEP=12.5, sur=!!LDm.sur, SKIP=s=>{ const T=s<0?lT:rT; return T!=='normal'; };
     const arbol=(x,y,z,hh,tipo,r)=>{ const trunk=[.30,.21,.14]; shTree(x,z,hh); const [wx1,wz1]=sway(x,z,hh,.8), [wx2,wz2]=sway(x,z,hh,1), [wx0,wz0]=sway(x,z,hh,.5);
@@ -3850,22 +3865,33 @@ function mundo(S){
   if(LDm){ landGL(); }
   if(S.scFn||(!LDm||dec==='yungas')&&dec!=='waves'&&dec!=='stands'){
     for(let kc=Math.floor((d-10)/14);kc<=Math.floor((d+330)/14);kc++)for(const sg of [-1,1]){
-      const T=sg<0?lT:rT; if(T!=='normal')continue;
+      const T=sg<0?lT:rT; if(T==='water')continue;
       const dec=decAt(kc*14+7,kc*3.17+sg*.53); if(dec==='waves'||dec==='stands') continue;
-      if(LDm){ if(dec!=='yungas') continue; const lm=landEn(LDm,kc*14+7,false), sI=sg<0?0:1; if(lm.b[sI]||!vegC(lm.c[sI])||landUrbano(landVia(lm.v,sc.asphalt),lm.c[sI])) continue; }   // v196: casas, agua, arena o roca de Rumbo mandan
+      if(T!=='normal'&&!VEGW[dec]) continue;                                                          // v198: en la pared y el barranco de una cornisa, solo monte (yungas, bosque, pinar)
+      if(LDm&&T==='normal'){ if(!VEGL[dec]) continue; const lm=landEn(LDm,kc*14+7,false), sI=sg<0?0:1; if(lm.b[sI]||!vegC(lm.c[sI])||landUrbano(landVia(lm.v,sc.asphalt),lm.c[sI])) continue; }   // v196: casas, agua, arena o roca de Rumbo mandan
       const h1=hash(kc*2+(sg>0?1:0)), h2=hash(kc*7.31+sg), h3=hash(kc*3.7+sg*5);
       const s=kc*14+7-d; if(s<-8||s>330)continue;
       const dens=(dec==='casas'||dec==='buildings')?.55:(dec==='estepa'?.25:dec==='yungas'?.97:.78); if(h1>dens)continue;
-      const o=sg*(HW+SH+(dec==='yungas'?2.5:4)+h2*(dec==='casas'||dec==='buildings'?22:dec==='yungas'?16:30)), w=at(s), x=w.x+w.rx*o, z=w.z+w.rz*o; let y=w.y, dk=dec;
+      const o=sg*(T==='wall'?HW+SH+9+h2*45:T==='valley'?HW+SH+6+h2*40:HW+SH+(dec==='yungas'?2.5:4)+h2*(dec==='casas'||dec==='buildings'?22:dec==='yungas'?16:30)), w=at(s), x=w.x+w.rx*o, z=w.z+w.rz*o; let y=w.y, dk=dec;
+      const enLadera=!hayCO&&T!=='normal'; if(enLadera) y=gY(x,z)-.1;                                // v198: sobre la ladera de la cornisa (arriba o abajo del camino)
       if(hayCO){ const q=gT(x,z,0); if(q.agua)continue; y=q.p[1]+.05;                                              // v193: sobre la ladera real, no a la altura del camino
         const cq=CO[q.k], cc=cq&&cq.c?cq.c[sg<0?0:1][0]:null, verde=cc&&cc[1]>cc[0]*1.08&&cc[1]>cc[2]*1.05;     // y según la foto: verde = árboles; si no, lo del escenario sin árboles
-        if(cc) dk=verde?(dk==='lengas'||dk==='nieve'||dk==='yungas'?dec:'trees'):(dk==='trees'||dk==='lengas'||dk==='yungas'?'rocks':dec); }
+        if(cc) dk=verde?(dk==='lengas'||dk==='nieve'||dk==='yungas'||dk==='pinar'?dec:'trees'):(dk==='trees'||dk==='lengas'||dk==='yungas'||dk==='pinar'?'rocks':dec); }
+      if(dk==='pinar'){   /* v198: bosque de pinos y abetos de montaña (Pirineos, Alpes): coníferas altas y juntas, tres por celda */
+        const P_=[[0,0,h3],[sg*(4+6*h2),5,hash(kc*9.7+sg)],[sg*(-2+4*h1),-4.5,hash(kc*5.3-sg)]];
+        for(const [dl,df,rr] of P_){ const ww=at(s+df); if(!ww)continue; const px_=ww.x+ww.rx*(o+dl), pz_=ww.z+ww.rz*(o+dl);
+          let py=ww.y; if(hayCO){ const q=gT(px_,pz_,0); if(q.agua)continue; py=q.p[1]+.05; } else if(enLadera) py=gY(px_,pz_)-.1;
+          const hh=9+rr*13, r=hh*.21, lf=mix([.08,.24,.13],[.14,.33,.18],rr), [a1,b1]=sway(px_,pz_,hh,.5), [a2,b2]=sway(px_,pz_,hh,1);
+          shTree(px_,pz_,hh); obox(A,[px_,py+hh*.1,pz_],[1,0,0],[0,1,0],[0,0,1],.4,hh*.2,.4,[.28,.2,.14]);
+          cone(A,px_,py+hh*.14,pz_,r*1.25,hh*.42,lf,7,a1*.5,b1*.5); cone(A,px_+a1*.4,py+hh*.38,pz_+b1*.4,r,hh*.38,tone(lf,1.06),7,a1*.5,b1*.5);
+          cone(A,px_+a1*.8,py+hh*.6,pz_+b1*.8,r*.7,hh*.4,tone(lf,1.12),7,a2-a1*.8,b2-b1*.8); }
+        continue; }
       if(dk==='yungas'){   /* v194: Yungas (selva de montaña): árboles altos de copa ancha y achatada en dos pisos (tipa, cedro, laurel), helechos arborescentes y,
                               por debajo, sotobosque denso; verdes oscuros y húmedos. Cada celda pone dos o tres plantas. */
         const verdes=[[.09,.27,.12],[.12,.33,.13],[.16,.38,.15],[.07,.22,.1]], trunk=[.29,.23,.17];
         const plantas=[[0,0,h3],[sg*(3+5*h2),4.5,hash(kc*9.1+sg)],[sg*(-1.5+3*h1),-4,hash(kc*4.3-sg)],[sg*(6+6*h3),-1.5,hash(kc*2.9+sg*3)],[sg*(1+4*h2),2,hash(kc*6.7-sg*2)]];
         for(const [dl,df,rr] of plantas){ const ww=at(s+df); if(!ww)continue; const px_=ww.x+ww.rx*(o+dl), pz_=ww.z+ww.rz*(o+dl);
-          let py=ww.y; if(hayCO){ const q=gT(px_,pz_,0); if(q.agua)continue; py=q.p[1]+.05; }
+          let py=ww.y; if(hayCO){ const q=gT(px_,pz_,0); if(q.agua)continue; py=q.p[1]+.05; } else if(enLadera) py=gY(px_,pz_)-.1;
           const lf=verdes[Math.floor(rr*997)%4];
           if(rr<.2){   // helecho arborescente: tronco fino y una roseta de frondas
             const hf=3+rr*9; obox(A,[px_,py+hf*.45,pz_],[1,0,0],[0,1,0],[0,0,1],.22,hf*.9,.22,[.25,.2,.15]);
@@ -3878,11 +3904,11 @@ function mundo(S){
           for(let b=0;b<nb;b++){ const an=b*2.4+rr*6, dr=R1*(b?.55:0), bx_=px_+a1+Math.cos(an)*dr, bz_=pz_+b1+Math.sin(an)*dr, by=py+hh*(.6+.12*((b*7+Math.floor(rr*10))%3)), rb=R1*(b?.6:.8);
             const cb=tone(verdes[(b+Math.floor(rr*13))%4],.95+.1*(b%2)); cone(A,bx_,by,bz_,rb,hh*.15,cb,7); cone(A,bx_,by,bz_,rb*.94,-hh*.09,tone(cb,.7),7); }
         }
-        { const pf=(dl,df)=>{ const ww=at(s+df); if(!ww)return null; const x_=ww.x+ww.rx*dl, z_=ww.z+ww.rz*dl; let y_=ww.y; if(hayCO){ const q=gT(x_,z_,0); if(q.agua)return null; y_=q.p[1]+.05; } return [x_,y_,z_]; };
-          for(const df of [-3.5,3.5]){ const p_=pf(sg*(HW+SH+3+2*hash(kc*1.7+df+sg)),df); if(p_){ const cv=tone(verdes[(kc+(df>0?1:0))%4],1.05); cone(A,p_[0],p_[1],p_[2],2.4,1.2+.8*h2,cv,7); cone(A,p_[0]+.4,p_[1]+1,p_[2],1.5,1.3+h2,tone(cv,1.1),7); } }   // borde de matas junto a la banquina
+        { const pf=(dl,df)=>{ const ww=at(s+df); if(!ww)return null; const x_=ww.x+ww.rx*dl, z_=ww.z+ww.rz*dl; let y_=ww.y; if(hayCO){ const q=gT(x_,z_,0); if(q.agua)return null; y_=q.p[1]+.05; } else if(enLadera) y_=gY(x_,z_)-.1; return [x_,y_,z_]; };
+          for(const df of [-3.5,3.5]){ const p_=pf(sg*(HW+SH+(T==='wall'?5:3)+2*hash(kc*1.7+df+sg)),df); if(p_){ const cv=tone(verdes[(((kc+(df>0?1:0))%4)+4)%4],1.05); cone(A,p_[0],p_[1],p_[2],2.4,1.2+.8*h2,cv,7); cone(A,p_[0]+.4,p_[1]+1,p_[2],1.5,1.3+h2,tone(cv,1.1),7); } }   // borde de matas junto a la banquina
           for(let f=0;f<2;f++){ const rf=hash(kc*3.3+f*7+sg), p_=pf(sg*(30+45*rf),f*7-3.5); if(!p_)continue; const H=13+8*rf, R=6+3*rf;                 // la selva de atrás: copas grandes y juntas
             obox(A,[p_[0],p_[1]+H*.3,p_[2]],[1,0,0],[0,1,0],[0,0,1],.8,H*.6,.8,trunk);
-            for(let b=0;b<3;b++){ const an=b*2.1+rf*5, cb=tone(verdes[(b+f+kc)%4],.85); cone(A,p_[0]+Math.cos(an)*R*.5,p_[1]+H*(.62+.1*b),p_[2]+Math.sin(an)*R*.5,R*.8,H*.18,cb,7); cone(A,p_[0]+Math.cos(an)*R*.5,p_[1]+H*(.62+.1*b),p_[2]+Math.sin(an)*R*.5,R*.75,-H*.1,tone(cb,.7),7); } } }
+            for(let b=0;b<3;b++){ const an=b*2.1+rf*5, cb=tone(verdes[(((b+f+kc)%4)+4)%4],.85); cone(A,p_[0]+Math.cos(an)*R*.5,p_[1]+H*(.62+.1*b),p_[2]+Math.sin(an)*R*.5,R*.8,H*.18,cb,7); cone(A,p_[0]+Math.cos(an)*R*.5,p_[1]+H*(.62+.1*b),p_[2]+Math.sin(an)*R*.5,R*.75,-H*.1,tone(cb,.7),7); } } }
         continue;
       }
       if(dk==='trees'||dk==='lengas'||dk==='nieve'||dk==='estepa'){
