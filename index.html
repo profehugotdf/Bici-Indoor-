@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v200</title>
+<title>Bici Indoor · v201</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -96,7 +96,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v200</h1>
+  <h1>Bici Indoor · v201</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -758,6 +758,7 @@ function bigPersist(k,v){
     tx.onerror=tx.onabort=()=>{ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+((tx.error&&tx.error.message)||"error"),"#f85149"); } };
   }catch(e){ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+e.message,"#f85149"); } }
 }
+// v201: 🍁 Bosque de lengas con ruta de Rumbo (Hugo, 17-nov, tres capturas del mismo punto con casas dispersas: con Pinos y Yungas aparecía el monte, con Bosque de lengas solo pasto: "¿por qué no aparecen las lengas?"). Con `land` de Rumbo, el monte solo lo ponían Yungas y Pinos (VEGL); el bosque de lengas dejaba los costados al uso del suelo (pradera = sin árboles). Ahora lengas también manda donde no hay casas, agua, arena ni roca (VEGL y `landVegEscena`), y en WebGL es un bosque de verdad: tres lengas por celda, altas, con la copa en pisos achatados y alguna ya rojiza (antes un cono por celda).
 // v200: 🏡🌲 barrio en el monte automático con lo que manda Rumbo (Hugo, 17-nov: "¿puede hacer eso en base a los datos que envía Rumbo?"). En la vista WebGL, donde el `land` dice barrio (uso 1) sin casa cargada en OpenStreetMap y la foto satelital de ese costado (`cost`) es verde, ya no se arma la cuadra de casas pegadas: van casas espaciadas (`casaGL`, una cada ~40 m por lado, del estilo de la zona) entre árboles (lenga en el sur, pino u hoja en el resto; con Yungas o Bosque de pinos, los del escenario) (`subVerde`). Las casas reales de OSM siguen donde están. Hace falta una ruta mandada con `cost` (Rumbo de hoy). Solo WebGL.
 // v199: 🏡 casas dispersas en el monte (Hugo, 17-nov, foto satelital de su barrio: "¿convendría un escenario suburbano? mi barrio tiene casas espaciadas en medio de lengas, o la casa de mi hermano en Andorra, o el pie del cerro yendo a San Javier en Tucumán"). En vez de un escenario más, un botón por tramo "🏡 Casas" (no / dispersas, campo `casas` en bici_scenes; lo viejo no lo trae = no) que se combina con cualquier vegetación y con la cornisa. WebGL: algunas celdas del monte pasan a ser un claro con una casa retirada del camino (10–28 m), su entrada de tierra y, a veces, un auto; en la ladera de una cornisa, con cimiento. Estilo según dónde queda la ruta (`casaEstilo`, por la latitud del inicio): sur = chapa de colores; Europa = piedra con techo de pizarra y balcón de madera; resto = paredes claras y techo de tejas. 2D: casas espaciadas con `landCasa`.
 // v198: ⛰️🌿 cornisa con monte (además: arreglado un índice negativo en las Yungas cerca del km 0, que apagaba la vista WebGL hasta recargar) (Hugo, 17-nov: "que se pueda combinar camino de cornisa con Yunga, para Tucumán, o camino de cornisa con bosque para Andorra"). Botón "⛰️ Cornisa" en el tramo del cursor (pared automática sí/no, `sceneCornisa`) para cualquier escenario. Con Yungas, Rural, Bosque de lengas o el nuevo "Bosque de pinos (montaña)" (`pinar`: coníferas altas y juntas, hereda el cielo como Yungas), la vista WebGL cubre la pared de monte (corte de roca solo junto al camino) y pone plantas arriba en la ladera y abajo en el barranco (`VEGW`, `enLadera`). `pinar` también manda sobre el uso del suelo de Rumbo, como Yungas (`VEGL`, `landVegEscena`). En 2D la pared sigue de roca.
@@ -2909,7 +2910,7 @@ function landFarol(ctx,x,y,m,side,sc,dd,d0){ luzSombra(ctx,x,y,m,7,0.12); const 
 // DECORADO de la franja: cada 12,5 m, de cada lado, la casa real (a su distancia, con sus pisos) o lo que corresponda al
 // uso del suelo; faroles en las calles. hwM(d) = medio ancho del camino en metros.
 // v196: con un escenario de selva (Yungas), el monte lo pone el escenario donde el uso del suelo no dice casas, agua, arena, roca, cementerio ni nieve
-function landVegEscena(veg,c){ return (veg==="yungas"||veg==="pinar")&&(c===0||c===4||c===5||c===6||c===7||c===8||c===12); }
+function landVegEscena(veg,c){ return (veg==="yungas"||veg==="pinar"||veg==="lengas")&&(c===0||c===4||c===5||c===6||c===7||c===8||c===12); }
 function landDecorFranja(ctx,S,i,L,flip,sc,skip,hwM,d0,asf,fallback,veg){
   const b=S[i], a=S[i+1], STEP=12.5;
   for(let dd=Math.ceil(b.d/STEP)*STEP; dd<a.d; dd+=STEP){
@@ -2933,6 +2934,8 @@ function landDecorFranja(ctx,S,i,L,flip,sc,skip,hwM,d0,asf,fallback,veg){
         continue;
       }
       const c=lm.c[s];
+      if(veg==="lengas"&&landVegEscena(veg,c)&&!landUrbano(vl,c)){ const x0=cx+side*(borde+1.5)*m, r1=landHash(seed*1.9), r2=landHash(seed*5.7);   // v201
+        landArbol(ctx,x0+side*(8+7*r2)*m,y,m,11+8*r2,"lenga",r2,sc,dd,d0); landArbol(ctx,x0+side*(2+4*r1)*m,y,m,9+7*r1,"lenga",r1,sc,dd,d0); continue; }
       if(veg==="pinar"&&landVegEscena(veg,c)&&!landUrbano(vl,c)){ const x0=cx+side*(borde+1.5)*m, r1=landHash(seed*1.9), r2=landHash(seed*5.7);   // v198
         landArbol(ctx,x0+side*(8+7*r2)*m,y,m,12+9*r2,"pino",r2,sc,dd,d0); landArbol(ctx,x0+side*(2+4*r1)*m,y,m,10+8*r1,"pino",r1,sc,dd,d0); continue; }
       if(landVegEscena(veg,c)&&!landUrbano(vl,c)){ const x0=cx+side*(borde+1.5)*m, r1=landHash(seed*1.9), r2=landHash(seed*5.7), r3=landHash(seed*2.3);   // v196
@@ -3649,7 +3652,7 @@ function mundo(S){
   const CO=S.cost?[]:null, CSX=1.3;
   if(CO){ for(let i=0;i<N;i++){ const D=Ds+i*G, q=S.cost(D); if(q) q.e=eFn(D); CO.push(q); } if(!CO.some(Boolean)) CO.length=0; }
   const hayCO=!!(CO&&CO.length);
-  const VEGW={yungas:1,trees:1,lengas:1,pinar:1}, VEGL={yungas:1,pinar:1}, vegW=!!VEGW[sc.decor];   // v198: vegetación que cubre la pared y el barranco de una cornisa / que manda sobre el uso del suelo de Rumbo
+  const VEGW={yungas:1,trees:1,lengas:1,pinar:1}, VEGL={yungas:1,pinar:1,lengas:1}, vegW=!!VEGW[sc.decor];   // v198: vegetación que cubre la pared y el barranco de una cornisa / que manda sobre el uso del suelo de Rumbo
   const lT=hayCO?'normal':sc.wallSide==='left'?'wall':(sc.waterSide==='left'?'water':(sc.wallSide==='right'?'valley':'normal'));
   const rT=hayCO?'normal':sc.wallSide==='right'?'wall':(sc.waterSide==='right'?'water':(sc.wallSide==='left'?'valley':'normal'));
   const WL=(typeof WATER_LOOK!=='undefined'&&WATER_LOOK[sc.waterKind||'mar'])||{mid:'#2d7ea8',top:'#7fc4e0'}, wcol=col(WL.mid), wnear=col(WL.top||WL.mid);
@@ -3918,12 +3921,22 @@ function mundo(S){
       const h1=hash(kc*2+(sg>0?1:0)), h2=hash(kc*7.31+sg), h3=hash(kc*3.7+sg*5);
       const s=kc*14+7-d; if(s<-8||s>330)continue;
       if(conCasa){ casaGL(s,sg,T,h1,h2,h3); continue; }
-      const dens=(dec==='casas'||dec==='buildings')?.55:(dec==='estepa'?.25:dec==='yungas'?.97:.78); if(h1>dens)continue;
-      const o=sg*(T==='wall'?HW+SH+9+h2*45:T==='valley'?HW+SH+6+h2*40:HW+SH+(dec==='yungas'?2.5:4)+h2*(dec==='casas'||dec==='buildings'?22:dec==='yungas'?16:30)), w=at(s), x=w.x+w.rx*o, z=w.z+w.rz*o; let y=w.y, dk=dec;
+      const dens=(dec==='casas'||dec==='buildings')?.55:(dec==='estepa'?.25:dec==='yungas'?.97:dec==='lengas'?.93:.78); if(h1>dens)continue;
+      const o=sg*(T==='wall'?HW+SH+9+h2*45:T==='valley'?HW+SH+6+h2*40:HW+SH+(dec==='yungas'?2.5:4)+h2*(dec==='casas'||dec==='buildings'?22:dec==='yungas'||dec==='lengas'?18:30)), w=at(s), x=w.x+w.rx*o, z=w.z+w.rz*o; let y=w.y, dk=dec;
       const enLadera=!hayCO&&T!=='normal'; if(enLadera) y=gY(x,z)-.1;                                // v198: sobre la ladera de la cornisa (arriba o abajo del camino)
       if(hayCO){ const q=gT(x,z,0); if(q.agua)continue; y=q.p[1]+.05;                                              // v193: sobre la ladera real, no a la altura del camino
         const cq=CO[q.k], cc=cq&&cq.c?cq.c[sg<0?0:1][0]:null, verde=cc&&cc[1]>cc[0]*1.08&&cc[1]>cc[2]*1.05;     // y según la foto: verde = árboles; si no, lo del escenario sin árboles
         if(cc) dk=verde?(dk==='lengas'||dk==='nieve'||dk==='yungas'||dk==='pinar'?dec:'trees'):(dk==='trees'||dk==='lengas'||dk==='yungas'||dk==='pinar'?'rocks':dec); }
+      if(dk==='lengas'&&T!=='x'){   /* v201: bosque de lengas: árboles altos de copa en pisos achatados (Nothofagus), tres por celda; algunos ya rojizos */
+        const P_=[[0,0,h3],[sg*(4+7*h2),5,hash(kc*9.7+sg)],[sg*(-2+5*h1),-4.5,hash(kc*5.3-sg)]];
+        for(const [dl,df,rr] of P_){ const ww=at(s+df); if(!ww)continue; const px_=ww.x+ww.rx*(o+dl), pz_=ww.z+ww.rz*(o+dl);
+          let py=ww.y; if(hayCO){ const q=gT(px_,pz_,0); if(q.agua)continue; py=q.p[1]+.05; } else if(enLadera) py=gY(px_,pz_)-.1;
+          const hh=8+rr*11, lf=rr<.15?mix([.62,.36,.14],[.72,.24,.12],rr*6):mix([.17,.36,.15],[.27,.45,.18],rr), [a1,b1]=sway(px_,pz_,hh,.6), [a2,b2]=sway(px_,pz_,hh,1);
+          shTree(px_,pz_,hh); obox(A,[px_,py+hh*.3,pz_],[1,0,0],[0,1,0],[0,0,1],.42,hh*.6,.42,[.33,.27,.22]);
+          const pisos=2+Math.floor(rr*7)%2;
+          for(let k=0;k<pisos;k++){ const f=k/(pisos), yy=py+hh*(.45+.42*f), R=hh*(.3-.12*f)*(.85+.3*hash(kc+k+sg)), ox=(k?a2:a1)*(.5+f), oz=(k?b2:b1)*(.5+f), c=tone(lf,.92+.12*k);
+            cone(A,px_+ox,yy,pz_+oz,R,hh*.14,c,7); cone(A,px_+ox,yy,pz_+oz,R*.95,-hh*.07,tone(c,.72),7); } }
+        continue; }
       if(dk==='pinar'){   /* v198: bosque de pinos y abetos de montaña (Pirineos, Alpes): coníferas altas y juntas, tres por celda */
         const P_=[[0,0,h3],[sg*(4+6*h2),5,hash(kc*9.7+sg)],[sg*(-2+4*h1),-4.5,hash(kc*5.3-sg)]];
         for(const [dl,df,rr] of P_){ const ww=at(s+df); if(!ww)continue; const px_=ww.x+ww.rx*(o+dl), pz_=ww.z+ww.rz*(o+dl);
