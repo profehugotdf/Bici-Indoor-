@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v202</title>
+<title>Bici Indoor · v203</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -92,11 +92,35 @@
     font-size:11px;line-height:1.5;max-height:120px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:12px 0 0;color:var(--dim)}
   .summary .v{font-size:26px;font-weight:800}
   .hidden{display:none!important}
+  /*NAVB-INI*/
+  /* Barra de navegación de abajo — MISMO bloque en Correr, Bici y Kayak: si se cambia acá, copiarlo idéntico a las otras dos. */
+  :root{--navbH:62px;}
+  #navB{position:fixed;left:0;right:0;bottom:0;z-index:9000;display:flex;background:var(--navbBg,#141922);border-top:1px solid rgba(255,255,255,.12);padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -4px 14px rgba(0,0,0,.35);}
+  #navB button{all:unset;box-sizing:border-box;flex:1 1 0;min-width:0;min-height:var(--navbH);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:#9aa4b2;font:600 11px/1.1 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;cursor:pointer;border-top:3px solid transparent;-webkit-tap-highlight-color:transparent;text-align:center;}
+  #navB button .i{font-size:22px;line-height:1;filter:grayscale(.55);opacity:.85;}
+  #navB button .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;padding:0 2px;}
+  #navB button.sel{color:#fff;border-top-color:var(--navbAcc,#4cc2ff);background:rgba(255,255,255,.04);}
+  #navB button.sel .i{filter:none;opacity:1;}
+  #navB button:active{background:rgba(255,255,255,.08);}
+  body.navb-on{padding-bottom:calc(var(--navbH) + env(safe-area-inset-bottom) + 10px) !important;}
+  body.navb-on.navb-oculta{padding-bottom:0 !important;}
+  body.navb-oculta #navB,body.navb-oculta #navbMas,body.navb-oculta #navbFondo{display:none !important;}
+  #navbFondo{position:fixed;inset:0;z-index:8998;background:rgba(0,0,0,.45);display:none;}
+  #navbMas{position:fixed;left:0;right:0;bottom:calc(var(--navbH) + env(safe-area-inset-bottom));z-index:8999;background:var(--navbBg,#141922);border-top:1px solid rgba(255,255,255,.14);border-radius:16px 16px 0 0;padding:10px 12px 12px;display:none;max-height:70vh;overflow-y:auto;}
+  #navbMas.abierto,#navbFondo.abierto{display:block;}
+  #navbMas .navb-tit{color:#9aa4b2;font:600 12px system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;margin:2px 4px 8px;}
+  #navbMas button{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:12px;width:100%;min-height:52px;padding:10px 12px;margin:0 0 6px;border-radius:12px;background:rgba(255,255,255,.05);color:#e6edf3;font:600 16px system-ui,sans-serif;cursor:pointer;}
+  #navbMas button .i{font-size:22px;width:28px;text-align:center;}
+  #navbMas button:active{background:rgba(255,255,255,.12);}
+  #navbAviso{position:fixed;left:12px;right:12px;bottom:calc(var(--navbH) + env(safe-area-inset-bottom) + 10px);z-index:9001;background:#5a1d1d;color:#fff;border-radius:10px;padding:10px 12px;font:14px system-ui,sans-serif;display:none;}
+  /*NAVB-FIN*/
+  /* v203: con la barra de abajo, los botones de acceso del final de la primera tarjeta quedan escondidos (la barra los usa) */
+  body.navb-on #histBtn,body.navb-on #zonesBtn,body.navb-on #entrenoBtn,body.navb-on #routesBtn,body.navb-on #fitBtn,body.navb-on #replayBtn{display:none;}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v202</h1>
+  <h1>Bici Indoor · v203</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -760,6 +784,7 @@ function bigPersist(k,v){
     tx.onerror=tx.onabort=()=>{ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+((tx.error&&tx.error.message)||"error"),"#f85149"); } };
   }catch(e){ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+e.message,"#f85149"); } }
 }
+// v203: 🧭 misma navegación en Correr, Bici y Kayak (Hugo, 19-nov: "quiero unificar la forma de navegar por menúes y accesos en las apps de correr, bici y kayak"; eligió barra fija abajo que se esconde con la sesión en marcha). Barra fija abajo (bloque NAVB, idéntico en las tres): Sesión · Entrenos · Historial · Carrera · Más (Zonas y FTP, Rutas, Fitting, Editor de perspectiva). Se esconde con el rodillo andando o en pausa y en el resumen del final. Los botones del final de la primera tarjeta quedan escondidos; biciIr() cierra la tarjeta abierta con su propio Volver y abre la nueva.
 // v202: 📷 vistas de la cámara en la vista WebGL, como en Kayak Indoor (Hugo, 18-nov: "¿se pueden ver en Bici Indoor desde arriba o en primera persona como en Kayak Indoor?"): 🚴 de atrás (la de siempre), 🚁 alta (de atrás y desde 13 m, como un dron) y 👀 primera persona (a la altura de los ojos, sin el ciclista, con más ángulo). Botones debajo de la vista previa del Escenario y de la vista del camino en vivo, y tocar la vista pasa a la siguiente. Se recuerda en `bici_gl_cam`. Solo con la vista WebGL (la 2D sigue de atrás).
 // v201: 🍁 Bosque de lengas con ruta de Rumbo (Hugo, 17-nov, tres capturas del mismo punto con casas dispersas: con Pinos y Yungas aparecía el monte, con Bosque de lengas solo pasto: "¿por qué no aparecen las lengas?"). Con `land` de Rumbo, el monte solo lo ponían Yungas y Pinos (VEGL); el bosque de lengas dejaba los costados al uso del suelo (pradera = sin árboles). Ahora lengas también manda donde no hay casas, agua, arena ni roca (VEGL y `landVegEscena`), y en WebGL es un bosque de verdad: tres lengas por celda, altas, con la copa en pisos achatados y alguna ya rojiza (antes un cono por celda).
 // v200: 🏡🌲 barrio en el monte automático con lo que manda Rumbo (Hugo, 17-nov: "¿puede hacer eso en base a los datos que envía Rumbo?"). En la vista WebGL, donde el `land` dice barrio (uso 1) sin casa cargada en OpenStreetMap y la foto satelital de ese costado (`cost`) es verde, ya no se arma la cuadra de casas pegadas: van casas espaciadas (`casaGL`, una cada ~40 m por lado, del estilo de la zona) entre árboles (lenga en el sur, pino u hoja en el resto; con Yungas o Bosque de pinos, los del escenario) (`subVerde`). Las casas reales de OSM siguen donde están. Hace falta una ruta mandada con `cost` (Rumbo de hoy). Solo WebGL.
@@ -7301,6 +7326,107 @@ async function rumboImport(){
 }
 window.addEventListener("hashchange",()=>{ if(bigReady) rumboImport(); });
 initBigStore().then(rumboImport);
+/*NAVB-INI*/
+/* ============================================================
+   Barra de navegación de abajo — MISMO bloque en Correr, Bici y Kayak (pedido de Hugo, 19-nov:
+   "unificar la forma de navegar por menúes y accesos"). Si se cambia acá, copiarlo idéntico a las
+   otras dos apps. Cada app solo llama a navbArmar() con SUS pantallas:
+     navbArmar({
+       acento: '#color',
+       items: [{id, ico, txt, ir}],      // los 4 de siempre: sesion, entrenos, historial, carrera
+       mas:   [{id, ico, txt, ir}],      // lo propio de cada app, en la hoja "Más"
+       actual: () => id | null,          // qué pantalla está a la vista (para marcar el botón)
+       enSesion: () => bool              // true = esconder la barra (sesión en marcha)
+     })
+   La barra no reemplaza las pantallas de cada app: llama a las funciones que ya abrían cada una.
+   ============================================================ */
+const NAVB = { cfg: null, sel: null, oculta: false, timer: null };
+function navbAviso(msg) {
+  let a = document.getElementById('navbAviso');
+  if (!a) { a = document.createElement('div'); a.id = 'navbAviso'; document.body.appendChild(a); }
+  a.textContent = msg; a.style.display = 'block';
+  clearTimeout(a._t); a._t = setTimeout(() => { a.style.display = 'none'; }, 5000);
+}
+function navbIr(it) {
+  try { it.ir(); } catch (e) { console.error(e); navbAviso('No pude abrir ' + it.txt + ': ' + (e && e.message || e)); return; }
+  try { window.scrollTo(0, 0); } catch (e) { /* sin scroll no pasa nada */ }
+}
+function navbMarcar(id) {
+  NAVB.sel = id;
+  document.querySelectorAll('#navB button').forEach(b => b.classList.toggle('sel', b.dataset.id === id));
+}
+function navbMasAbrir() {
+  const m = document.getElementById('navbMas'), f = document.getElementById('navbFondo');
+  const abrir = !m.classList.contains('abierto');
+  m.classList.toggle('abierto', abrir); f.classList.toggle('abierto', abrir);
+}
+function navbMasCerrar() {
+  const m = document.getElementById('navbMas'), f = document.getElementById('navbFondo');
+  if (m) m.classList.remove('abierto'); if (f) f.classList.remove('abierto');
+}
+function navbChequear() {
+  const c = NAVB.cfg; if (!c) return;
+  let en = false; try { en = !!(c.enSesion && c.enSesion()); } catch (e) { console.error(e); }
+  if (en !== NAVB.oculta) { NAVB.oculta = en; document.body.classList.toggle('navb-oculta', en); if (en) navbMasCerrar(); }
+  let id = null; try { id = c.actual ? c.actual() : null; } catch (e) { console.error(e); }
+  if (id && id !== NAVB.sel) navbMarcar(id);
+}
+function navbArmar(cfg) {
+  NAVB.cfg = cfg;
+  let nav = document.getElementById('navB');
+  if (!nav) { nav = document.createElement('nav'); nav.id = 'navB'; nav.setAttribute('aria-label', 'Menú'); document.body.appendChild(nav); }
+  if (cfg.acento) document.documentElement.style.setProperty('--navbAcc', cfg.acento);
+  nav.innerHTML = '';
+  const boton = (it, padre) => {
+    const b = document.createElement('button'); b.type = 'button'; b.dataset.id = it.id;
+    b.innerHTML = '<span class="i">' + it.ico + '</span><span class="t">' + it.txt + '</span>';
+    padre.appendChild(b); return b;
+  };
+  cfg.items.forEach(it => { boton(it, nav).onclick = () => { navbMasCerrar(); navbIr(it); navbMarcar(it.id); }; });
+  boton({ id: 'mas', ico: '☰', txt: 'Más' }, nav).onclick = navbMasAbrir;
+  let fondo = document.getElementById('navbFondo');
+  if (!fondo) { fondo = document.createElement('div'); fondo.id = 'navbFondo'; document.body.appendChild(fondo); fondo.onclick = navbMasCerrar; }
+  let mas = document.getElementById('navbMas');
+  if (!mas) { mas = document.createElement('div'); mas.id = 'navbMas'; document.body.appendChild(mas); }
+  mas.innerHTML = '<div class="navb-tit">Más</div>';
+  (cfg.mas || []).forEach(it => { boton(it, mas).onclick = () => { navbMasCerrar(); navbIr(it); navbMarcar('mas'); }; });
+  document.body.classList.add('navb-on');
+  clearInterval(NAVB.timer); NAVB.timer = setInterval(navbChequear, 500);
+  navbChequear();
+}
+/*NAVB-FIN*/
+
+// v203: la barra común. Cada pantalla de Bici es una tarjeta que se abre con su botón y vuelve con su "Volver";
+// para ir de una a otra se cierra la que está abierta con su propio Volver (así cada una limpia lo suyo) y se abre la nueva.
+const BICI_PANTALLAS = [['historial', 'histBack', 'historial'], ['zonesCard', 'zonesBack', 'mas'], ['entrenoCard', 'entrenoBack', 'entrenos'],
+  ['routesCard', 'routesBack', 'mas'], ['fitCard', 'fitBack', 'mas'], ['replayCard', 'replayBack', 'carrera'], ['perspCard', 'perspBack', 'mas']];
+function biciVisible(id) { const e = $(id); return !!e && !e.classList.contains('hidden'); }
+function biciIr(btnId) {
+  if (biciVisible('sceneCard')) closeSceneEditor();
+  for (const [card, back] of BICI_PANTALLAS) if (biciVisible(card)) $(back).click();
+  for (const [card] of BICI_PANTALLAS) if (biciVisible(card)) $(card).classList.add('hidden');
+  $('setup').classList.remove('hidden');
+  if (btnId) $(btnId).click();
+}
+navbArmar({
+  acento: '#4cc2ff',
+  items: [
+    { id: 'sesion', ico: '🚴', txt: 'Sesión', ir: () => biciIr(null) },
+    { id: 'entrenos', ico: '📋', txt: 'Entrenos', ir: () => biciIr('entrenoBtn') },
+    { id: 'historial', ico: '📈', txt: 'Historial', ir: () => biciIr('histBtn') },
+    { id: 'carrera', ico: '🏁', txt: 'Carrera', ir: () => biciIr('replayBtn') },
+  ],
+  mas: [
+    { id: 'zonas', ico: '🎯', txt: 'Zonas de potencia y FTP', ir: () => biciIr('zonesBtn') },
+    { id: 'rutas', ico: '🗺️', txt: 'Rutas guardadas', ir: () => biciIr('routesBtn') },
+    { id: 'fit', ico: '📐', txt: 'Fitting de la bici', ir: () => biciIr('fitBtn') },
+    { id: 'persp', ico: '👁️', txt: 'Editor de perspectiva (sobrepaso)', ir: () => biciIr('perspEditBtn') },
+  ],
+  actual: () => { for (const [card, , id] of BICI_PANTALLAS) if (biciVisible(card)) return id;
+    if (biciVisible('sceneCard')) return 'mas'; return biciVisible('setup') ? 'sesion' : null; },
+  // escondida con el rodillo andando o en pausa (la pantalla de la sesión no tiene a dónde volver) y en el resumen del final
+  enSesion: () => state === 'riding' || state === 'paused' || biciVisible('summary'),
+});
 </script>
 </body>
 </html>
