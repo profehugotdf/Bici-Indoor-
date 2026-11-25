@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bici Indoor · v203</title>
+<title>Bici Indoor · v204</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#171c24; --line:#273040;
@@ -120,7 +120,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bici Indoor · v203</h1>
+  <h1>Bici Indoor · v204</h1>
   <p class="sub">Rodillo FE-C + recorrido o modo libre. Corré contra tu fantasma.</p>
 
   <!-- SETUP -->
@@ -741,6 +741,7 @@
       </div>
       <div id="repCamRow" class="hidden" style="margin-top:8px">
         <button id="repCamBtn" class="full">Cámara: corredor 1</button>
+        <div id="repCams" style="display:flex;gap:6px;margin-top:6px"></div>
       </div>
       <canvas id="repRoad" height="220" class="hidden"></canvas>
       <canvas id="repMap" height="200" class="hidden"></canvas>
@@ -784,6 +785,17 @@ function bigPersist(k,v){
     tx.onerror=tx.onabort=()=>{ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+((tx.error&&tx.error.message)||"error"),"#f85149"); } };
   }catch(e){ if(!bigWriteErrLogged){ bigWriteErrLogged=true; log("No pude guardar en la base interna: "+e.message,"#f85149"); } }
 }
+// v204: 📷 las cinco vistas de Kayak Indoor (Trasera, Frontal, Alta, 1ª persona, Dron) en Bici, en vivo y en la Carrera Virtual (Hugo, 25-nov:
+//   "quisiera tener las vistas que tiene kayak indoor en carrera virtual. También en carrera virtual de bici" y "sí, también" en vivo).
+//   Rutas (GLR): el ciclista pasó a ser una función (`ciclista` en `mundo`) que dibuja a cualquiera en su lugar del camino (S.riders: {s,lat,color,crank});
+//   nuevas cámaras 3 frontal y 4 dron (`camDron`: tomas cada 11 s con 3,5 s de transición, apunta al medio con el rival más lejano a menos de 80 m, igual que
+//   Kayak v158); con frontal/dron el mundo y los decorados se arman 140/120 m hacia atrás (ATR, BK). `GLR.proj()` da dónde quedó cada corredor (rótulos).
+//   En vivo, con fantasma también va en 3D (antes volvía a la 2D). La Carrera Virtual en ruta, con "Vista 3D", ahora va en WebGL con todos los corredores
+//   (antes solo 2D); si falla, `glRepFalla` vuelve a la 2D.
+//   Velódromo (GLV): `camera()` con las cinco (antes solo la trasera; la de costado sin uso se reemplazó por primera persona); en primera persona no se dibuja
+//   la propia bici; con frontal, alta o dron se ven también los que vienen atrás (`glCamAtrasM`).
+//   Botones en `#roadCams` (ahora también en velódromo), `#sceneCams` y `#repCams` (Carrera Virtual); tocar la vista pasa a la siguiente (`glCamSiguiente`).
+//   `bici_gl_cam` conserva el significado de 0, 1 y 2.
 // v203: 🧭 misma navegación en Correr, Bici y Kayak (Hugo, 19-nov: "quiero unificar la forma de navegar por menúes y accesos en las apps de correr, bici y kayak"; eligió barra fija abajo que se esconde con la sesión en marcha). Barra fija abajo (bloque NAVB, idéntico en las tres): Sesión · Entrenos · Historial · Carrera · Más (Zonas y FTP, Rutas, Fitting, Editor de perspectiva). Se esconde con el rodillo andando o en pausa y en el resumen del final. Los botones del final de la primera tarjeta quedan escondidos; biciIr() cierra la tarjeta abierta con su propio Volver y abre la nueva.
 // v202: 📷 vistas de la cámara en la vista WebGL, como en Kayak Indoor (Hugo, 18-nov: "¿se pueden ver en Bici Indoor desde arriba o en primera persona como en Kayak Indoor?"): 🚴 de atrás (la de siempre), 🚁 alta (de atrás y desde 13 m, como un dron) y 👀 primera persona (a la altura de los ojos, sin el ciclista, con más ángulo). Botones debajo de la vista previa del Escenario y de la vista del camino en vivo, y tocar la vista pasa a la siguiente. Se recuerda en `bici_gl_cam`. Solo con la vista WebGL (la 2D sigue de atrás).
 // v201: 🍁 Bosque de lengas con ruta de Rumbo (Hugo, 17-nov, tres capturas del mismo punto con casas dispersas: con Pinos y Yungas aparecía el monte, con Bosque de lengas solo pasto: "¿por qué no aparecen las lengas?"). Con `land` de Rumbo, el monte solo lo ponían Yungas y Pinos (VEGL); el bosque de lengas dejaba los costados al uso del suelo (pradera = sin árboles). Ahora lengas también manda donde no hay casas, agua, arena ni roca (VEGL y `landVegEscena`), y en WebGL es un bosque de verdad: tres lengas por celda, altas, con la copa en pisos achatados y alguna ya rojiza (antes un cono por celda).
@@ -1749,15 +1761,22 @@ function loadSceneRouteGeo(routeName){
 // tramos tal como están en el editor (sin guardar). "Recorrer desde acá" avanza a 25 km/h y mueve el marcador.
 const GL_RUTA_KEY="bici_gl_ruta";
 // v202: vista de la cámara del 3D: 0 de atrás, 1 alta, 2 primera persona
-const GL_CAM_KEY="bici_gl_cam", GL_CAMS=[["🚴","De atrás"],["🚁","Alta"],["👀","Primera persona"]];
-let glCamVal=(()=>{ try{ const v=+localStorage.getItem(GL_CAM_KEY); return v>=0&&v<3?v:0; }catch(e){ return 0; } })();
+// v204: cinco vistas como Kayak Indoor (Trasera, Frontal, Alta, Primera persona, Dron), en rutas y velódromo, en vivo y en la Carrera Virtual.
+// El número guardado no cambia de significado (0 atrás, 1 alta, 2 primera persona; nuevas: 3 frontal, 4 dron); el orden de los botones es el de Kayak.
+const GL_CAM_KEY="bici_gl_cam", GL_CAMS=[["🚴","Trasera"],["🦅","Alta"],["👀","1ª persona"],["🔄","Frontal"],["🚁","Dron"]], GL_CAM_ORDEN=[0,3,1,2,4], GL_CAM_N=5;
+let glCamVal=(()=>{ try{ const v=+localStorage.getItem(GL_CAM_KEY); return v>=0&&v<GL_CAM_N?v:0; }catch(e){ return 0; } })();
+// v204: hasta cuántos metros ATRÁS de la cámara se ve a un rival con cada vista (trasera y primera persona: casi nada; alta: un poco; frontal y dron: todos)
+function glCamAtrasM(k){ k=k==null?glCamVal:k; return k===3||k===4?1e9:(k===1?12:2); }
+function glCamSiguiente(){ const i=GL_CAM_ORDEN.indexOf(glCamVal); glCamPoner(GL_CAM_ORDEN[(i+1)%GL_CAM_ORDEN.length]); }
 function glCam(){ return glCamVal; }
-function glCamPoner(k){ glCamVal=((k%3)+3)%3; try{ localStorage.setItem(GL_CAM_KEY,String(glCamVal)); }catch(e){ console.warn(e); }
+function glCamPoner(k){ glCamVal=((k%GL_CAM_N)+GL_CAM_N)%GL_CAM_N; try{ localStorage.setItem(GL_CAM_KEY,String(glCamVal)); }catch(e){ console.warn(e); }
   document.querySelectorAll(".glCamBtn").forEach(b=>{ const on=+b.dataset.k===glCamVal; b.style.outline=on?"2px solid #ffd33d":"none"; b.style.background=on?"rgba(255,211,61,.15)":""; });
-  try{ if($("sceneCard")&&!$("sceneCard").classList.contains("hidden")) drawScenePreview(); }catch(e){ console.warn(e); } }
+  try{ if($("sceneCard")&&!$("sceneCard").classList.contains("hidden")) drawScenePreview(); }catch(e){ console.warn(e); }
+  try{ if($("replayView")&&!$("replayView").classList.contains("hidden")&&repRacers.length) renderReplay(); }catch(e){ console.warn(e); } }
 function glCamFila(id){ const el=$(id); if(!el) return; el.innerHTML="";
-  GL_CAMS.forEach(([ic,tx],k)=>{ const b=document.createElement("button"); b.type="button"; b.className="glCamBtn"; b.dataset.k=k; b.textContent=ic+" "+tx;
-    b.style.cssText="flex:1;min-height:40px;padding:6px 8px;font-size:13px"; b.onclick=()=>glCamPoner(k); el.appendChild(b); });
+  el.style.flexWrap="wrap";
+  GL_CAM_ORDEN.forEach(k=>{ const [ic,tx]=GL_CAMS[k], b=document.createElement("button"); b.type="button"; b.className="glCamBtn"; b.dataset.k=k; b.textContent=ic+" "+tx;
+    b.style.cssText="flex:1 1 30%;min-height:40px;padding:6px 4px;font-size:13px"; b.onclick=()=>glCamPoner(k); el.appendChild(b); });
   glCamPoner(glCamVal); }
 function glRutaOn(){ try{ return localStorage.getItem(GL_RUTA_KEY)!=="0"; }catch(e){ return true; } }
 let scenePrevRAF=null, scenePrevLast=0, scenePrevPlaying=false, scenePrevCrank=0, scenePrevFrame=0;
@@ -2219,9 +2238,10 @@ $("sceneProf").addEventListener("pointermove",e=>{ if(e.pressure>0||e.buttons)sc
 $("sceneMapCv").addEventListener("pointerdown",sceneMapScrub);
 $("sceneStrip").addEventListener("pointerdown",sceneStripScrub);
 $("sceneStrip").addEventListener("pointermove",e=>{ if(e.pressure>0||e.buttons)sceneStripScrub(e); });
-glCamFila("sceneCams"); glCamFila("roadCams");
-$("scenePrev").addEventListener("click",()=>{ if(glRutaOn()) glCamPoner(glCam()+1); });   // v202: tocar la vista pasa a la cámara siguiente
-$("road").addEventListener("click",()=>{ if(glRutaOn()&&mode==="gpx") glCamPoner(glCam()+1); });
+glCamFila("sceneCams"); glCamFila("roadCams"); glCamFila("repCams");   // v204: también en la Carrera Virtual
+$("repRoad").addEventListener("click",()=>{ if((repVeloMode&&glVeloWanted())||(!repVeloMode&&replayRoute&&glRutaOn())) glCamSiguiente(); });
+$("scenePrev").addEventListener("click",()=>{ if(glRutaOn()) glCamSiguiente(); });   // v202: tocar la vista pasa a la cámara siguiente
+$("road").addEventListener("click",()=>{ if((glRutaOn()&&mode==="gpx")||(mode==="velodromo"&&glVeloWanted())) glCamSiguiente(); });   // v204: también en el velódromo
 $("sceneCut").onclick=sceneCortar; $("sceneJoin").onclick=sceneUnir;
 $("sceneCasas").onclick=()=>{ const i=sceneTramoIdx(); if(i<0) return; const row=sceneEditRows[i]; row.casas=row.casas?null:"disp"; renderSceneRows(); renderSceneTramo(true); };
 $("sceneCornisa").onclick=()=>{ const i=sceneTramoIdx(); if(i<0) return; const row=sceneEditRows[i]; row.wall=row.wall?null:"auto"; renderSceneRows(); renderSceneTramo(true); };
@@ -3537,7 +3557,10 @@ $("perspBack").onclick=()=>{ $("perspCard").classList.add("hidden"); $("setup").
 window.addEventListener("resize",()=>{ if(!$("perspCard").classList.contains("hidden")) drawPerspEditor(); });
 let velTrackLen=250, velEnv="velodromo";
 let roadDrawErrLogged=false;
-let glVivoFalla=false;
+let glVivoFalla=false, glRepFalla=false;
+// v204: rótulo "+12 m" encima de un corredor de la ruta 3D (posición que devuelve GLR.proj())
+function glRotulo(ctx,p,txt,color){ if(!p) return; ctx.font="700 12px system-ui"; ctx.textAlign="center"; const tw=ctx.measureText(txt).width;
+  ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(p.x-tw/2-4,p.y-14,tw+8,16); ctx.fillStyle=color; ctx.fillText(txt,p.x,p.y-2); ctx.textAlign="start"; }
 function drawRoad(){
   if(!roadCtx||roadCtx.w<10) fitRoad();
   if(!roadCtx||roadCtx.w<10) return;
@@ -3547,10 +3570,16 @@ function drawRoad(){
     const idt=roadInterpDt();
     let dNow=distanceM + v*idt; if(mode==="gpx") dNow=Math.min(total,dNow);
     const gNow=ghost?ghostDistAt(elapsed+idt):0;
-    if(!ghost&&mode==="gpx"&&points.length&&glRutaOn()&&!glVivoFalla){   // v185: vista en vivo en WebGL (con el fantasma sigue la vista 2D)
-      const sc=sceneAt(fname,dNow), ex=glRutaExtra(fname,sc);
-      if(GLR.draw(ctx,w,h,{key:"v|"+fname+"|"+total,d:dNow,bFn:bearingAt,eFn:eleAt,sc:sceneSuave(fname,dNow,sc),scFn:dd=>sceneAt(fname,Math.max(0,dd)),estilo:ex.estilo,camMode:glCam(),crank:roadCrank,gs:ex.gs,hz:ex.hz,land:ex.land,infra:ex.infra,lin:ex.lin,cost:ex.cost,luz:ex.luz,wx:ex.wx,v:v})){
-        if(wxActivo()&&wxRelAhora){ const hz=Math.round(h*0.44); wxAire(ctx,w,h,hz,WX,wxRelAhora,performance.now()/1000,v); wxFlecha(ctx,w-36,36,WX,wxRelAhora); }
+    if(mode==="gpx"&&points.length&&glRutaOn()&&!glVivoFalla){   // v185: vista en vivo en WebGL. v204: también con el fantasma (antes volvía a la 2D)
+      const sc=sceneAt(fname,dNow), ex=glRutaExtra(fname,sc), gGap=gNow-dNow;
+      const riders=ghost&&gGap>=-glCamAtrasM()?[{s:gGap,lat:1.1,color:"#9fb0c0",crank:ghostRoadCrank}]:[];
+      if(GLR.draw(ctx,w,h,{key:"v|"+fname+"|"+total,d:dNow,bFn:bearingAt,eFn:eleAt,sc:sceneSuave(fname,dNow,sc),scFn:dd=>sceneAt(fname,Math.max(0,dd)),estilo:ex.estilo,camMode:glCam(),crank:roadCrank,gs:ex.gs,hz:ex.hz,land:ex.land,infra:ex.infra,lin:ex.lin,cost:ex.cost,luz:ex.luz,wx:ex.wx,v:v,riders})){
+        if(ghost){ const gap=Math.round(dNow-gNow), ahead=gap>=0;
+          if(riders.length) glRotulo(ctx,GLR.proj()[0],(gap>=0?"+":"")+gap+" m",gap<0?"#ff6b6b":"#3fb950");
+          const lbl=(ahead?"+":"−")+Math.abs(gap)+" m "+(ahead?"adelante":"atrás");
+          ctx.font="700 15px system-ui"; ctx.textAlign="center"; const tw=ctx.measureText(lbl).width;
+          ctx.fillStyle="rgba(4,7,10,.72)"; ctx.fillRect(w/2-tw/2-7,8,tw+14,24); ctx.fillStyle=ahead?"#3fb950":"#ff6b6b"; ctx.fillText(lbl,w/2,25); ctx.textAlign="start"; }
+        if(wxActivo()&&wxRelAhora){ const hz=Math.round(h*0.44); wxAire(ctx,w,h,hz,WX,wxRelAhora,performance.now()/1000,v); wxFlecha(ctx,w-36,ghost?66:36,WX,wxRelAhora); }
         roadDrawErrLogged=false; return; }
       if(!GLR.ok()) glVivoFalla=true; }
     const S=roadBands(ctx,w,h,dNow,bearingAt,eleAt,fname);
@@ -3668,8 +3697,31 @@ function traza(key,bFn,eFn,Dend){
     let sx=0,sy=0; w=0; for(let k=-hb;k<=hb;k++){ const j=Math.max(0,i+k), wt=KB_[k+hb]; sx+=c.sx[j]*wt; sy+=c.sy[j]*wt; w+=wt; } c.bs.push(Math.atan2(sx,sy));
     if(i>0){const a=c.bs[i-1],b=c.bs[i],bm=Math.atan2(Math.sin(a)+Math.sin(b),Math.cos(a)+Math.cos(b));c.px.push(c.px[i-1]+Math.sin(bm)*G);c.pz.push(c.pz[i-1]+Math.cos(bm)*G);} }
   return c; }
+// v204: 🚁 DRON, igual que en Kayak Indoor (v158): tomas que se encadenan solas cada 11 s, con 3,5 s de transición suave y un paneo lento.
+// Cada toma = [ángulo alrededor del ciclista (π = atrás, 0 = adelante), distancia, altura]. Apunta al medio entre vos y el rival más
+// alejado a menos de 80 m (S.riders), y se aleja según la separación. Ojo y punto de mira suavizados (sin saltos al cambiar de toma).
+const DRON_TOMAS=[[Math.PI,9,3.2],[Math.PI*0.6,11,2.2],[Math.PI*0.85,24,15],[0.2,9,1.8],[-Math.PI*0.55,15,5.5]];
+let dronSm=null, lastProj=[];
+function camDron(S,at){
+  const lerp=(a,b,t)=>a+(b-a)*t, tW=performance.now()/1000, DUR=11, TR=3.5, tt=tW/DUR, i=Math.floor(tt)%DRON_TOMAS.length, j=(i+1)%DRON_TOMAS.length, u=tt-Math.floor(tt);
+  const x0=1-TR/DUR, su=u<x0?0:(u-x0)/(TR/DUR), sm=su*su*(3-2*su), A_=DRON_TOMAS[i], B_=DRON_TOMAS[j];
+  const ang=lerp(A_[0]+.35*(u-.5),B_[0]-.175,sm); let dist=lerp(A_[1],B_[1],sm), alt=lerp(A_[2],B_[2],sm);
+  const me=at(0); let c=[me.x,me.y+.6,me.z];
+  let foco=null; for(const q of (S.riders||[])) if(Math.abs(q.s)<=80&&q.s>-138&&(!foco||Math.abs(q.s)>Math.abs(foco.s))) foco=q;
+  if(foco){ const g=at(foco.s), sep=Math.hypot(g.x-me.x,g.z-me.z); c=[(me.x+g.x)/2,(me.y+g.y)/2+.6,(me.z+g.z)/2]; dist=Math.max(dist,sep*.8+6); alt+=sep*.18; }
+  const fw=[Math.sin(me.b),0,Math.cos(me.b)], rt=[Math.cos(me.b),0,-Math.sin(me.b)], ca=Math.cos(ang)*dist, sa=Math.sin(ang)*dist;
+  let eye=[c[0]+fw[0]*ca+rt[0]*sa, c[1]+alt, c[2]+fw[2]*ca+rt[2]*sa], tgt=c;
+  const now=performance.now();
+  if(!dronSm||now-dronSm.t>500||dronSm.k!==S.key||Math.hypot(eye[0]-dronSm.e[0],eye[2]-dronSm.e[2])>60) dronSm={e:eye.slice(),g:tgt.slice(),t:now,k:S.key};
+  const dt=Math.min(.2,(now-dronSm.t)/1000), ke=1-Math.exp(-dt/.22), kg=1-Math.exp(-dt/.35);
+  for(let k=0;k<3;k++){ dronSm.e[k]=lerp(dronSm.e[k],eye[k],ke); dronSm.g[k]=lerp(dronSm.g[k],tgt[k],kg); } dronSm.t=now;
+  // el mundo está relativo a la cámara y la cámara avanza con vos: el suavizado va en coordenadas relativas, así no queda atrás
+  eye=dronSm.e.slice(); tgt=dronSm.g.slice(); eye[1]=Math.max(eye[1],me.y+.6);
+  return {eye,tgt,fov:55};
+}
 function mundo(S){
-  const {d,bFn,eFn,sc,gs,hz,crank}=S, LDm=S.land||null, Ds=Math.max(0,Math.floor((d-16)/G)*G), N=Math.ceil((d+700-Ds)/G)+1, SS=[];
+  const {d,bFn,eFn,sc,gs,hz,crank}=S, LDm=S.land||null, ATR=(S.camMode===3||S.camMode===4)?140:16, BK=ATR===16?10:120, Ds=Math.max(0,Math.floor((d-ATR)/G)*G),   // v204: frontal y dron miran hacia atrás: el mundo arranca 140 m detrás
+  N=Math.ceil((d+700-Ds)/G)+1, SS=[];
   // v180: grilla FIJA cada 4 m de distancia absoluta: los vértices no cambian cuando avanzás. v184: además se integra desde el km 0 (con caché por ruta,
   // `S.key`) para que las coordenadas sean absolutas y la grilla del terreno quede fija en el mundo (no se mueve ni "nada" al avanzar).
   const T=traza(S.key||'_',bFn,eFn,d+720), i0=Ds/G, bs=T.bs.slice(i0,i0+N), ys=T.ys.slice(i0,i0+N), px=T.px.slice(i0,i0+N), pz=T.pz.slice(i0,i0+N);
@@ -3864,8 +3916,8 @@ function mundo(S){
       const leaf=mix([.15,.4,.18],[.3,.52,.2],r); obox(A,[x,y+hh*.22,z],[1,0,0],[0,1,0],[0,0,1],.35,hh*.44,.35,trunk);
       cone(A,x,y+hh*.3,z,hh*.34,hh*.4,leaf,8,wx0,wz0); cone(A,x+wx0*.7,y+hh*.55,z+wz0*.7,hh*.26,hh*.38,tone(leaf,1.08),8,wx1-wx0*.7,wz1-wz0*.7); };
     const gYat=(x,z)=>gT(x,z,0).p[1];
-    for(let kc=Math.floor((d-12)/STEP);kc<=Math.floor((d+340)/STEP);kc++){
-      const dd=kc*STEP, s0=dd-d; if(s0<-10||s0>340) continue;
+    for(let kc=Math.floor((d-BK-2)/STEP);kc<=Math.floor((d+340)/STEP);kc++){
+      const dd=kc*STEP, s0=dd-d; if(s0<-BK||s0>340) continue;   // v204: BK = cuánto se ve hacia atrás (más con frontal y dron)
       { const ii=Math.max(0,Math.min(N-1,Math.round((dd-Ds)/G))); if(hayInf&&(IT[ii]>.2||IP[ii]>0)) continue; }
       const lm=landEn(LDm,dd,false), vl=landVia(lm.v,sc.asphalt), w=at(s0), hwi=Math.max(1.4,Math.min(5.5,landAncho(LDm,dd,HW)));
       for(const side of [-1,1]){
@@ -3954,14 +4006,14 @@ function mundo(S){
   };
   if(LDm){ landGL(); }
   if(S.scFn||(!LDm||dec==='yungas')&&dec!=='waves'&&dec!=='stands'){
-    for(let kc=Math.floor((d-10)/14);kc<=Math.floor((d+330)/14);kc++)for(const sg of [-1,1]){
+    for(let kc=Math.floor((d-BK)/14);kc<=Math.floor((d+330)/14);kc++)for(const sg of [-1,1]){
       const T=sg<0?lT:rT; if(T==='water')continue;
       const dec=decAt(kc*14+7,kc*3.17+sg*.53); if(dec==='waves'||dec==='stands') continue;
       const cqC=S.scFn?S.scFn(kc*14+7+(hash(kc*1.91+sg)-.5)*2*MEZ):sc, conCasa=!!(cqC&&cqC.casas)&&hash(kc*4.13+sg*2.7)<.3&&hash((kc-1)*4.13+sg*2.7)>=.3;   // v199: casas dispersas (nunca dos en celdas seguidas del mismo lado)
       if(T!=='normal'&&!VEGW[dec]&&!conCasa) continue;                                                // v198: en la pared y el barranco de una cornisa, solo monte (yungas, bosque, pinar)
       if(LDm&&T==='normal'){ if(!VEGL[dec]&&!conCasa) continue; const lm=landEn(LDm,kc*14+7,false), sI=sg<0?0:1; if(lm.b[sI]||!(vegC(lm.c[sI])&&!landUrbano(landVia(lm.v,sc.asphalt),lm.c[sI])||lm.c[sI]===1&&subVerde(kc*14+7,sI))) continue; }   // v196: casas, agua, arena o roca de Rumbo mandan
       const h1=hash(kc*2+(sg>0?1:0)), h2=hash(kc*7.31+sg), h3=hash(kc*3.7+sg*5);
-      const s=kc*14+7-d; if(s<-8||s>330)continue;
+      const s=kc*14+7-d; if(s<-BK+2||s>330)continue;
       if(conCasa){ casaGL(s,sg,T,h1,h2,h3); continue; }
       const dens=(dec==='casas'||dec==='buildings')?.55:(dec==='estepa'?.25:dec==='yungas'?.97:dec==='lengas'?.93:.78); if(h1>dens)continue;
       const o=sg*(T==='wall'?HW+SH+9+h2*45:T==='valley'?HW+SH+6+h2*40:HW+SH+(dec==='yungas'?2.5:4)+h2*(dec==='casas'||dec==='buildings'?22:dec==='yungas'||dec==='lengas'?18:30)), w=at(s), x=w.x+w.rx*o, z=w.z+w.rz*o; let y=w.y, dk=dec;
@@ -4066,32 +4118,37 @@ function mundo(S){
   /* el ciclista, visto de atrás (v190): bici con cuadro, horquilla, ruedas con tubular y un reflector que gira, manubrio de carrera con puños, botella y luz trasera;
      piernas articuladas que pedalean (muslo y pantorrilla con la rodilla resuelta a partir del pie en el pedal), torso inclinado, brazos al manubrio, casco aerodinámico y
      bolsillos en la camiseta. Acompaña la pendiente dibujada (cabeceo) y se inclina en las curvas (tope 12°, con la velocidad `S.v`). */
-  const f=[Math.sin(C.b),0,Math.cos(C.b)], r=[Math.cos(C.b),0,-Math.sin(C.b)], up=[0,1,0], by=0;
-  const jer=[.18,.44,.62], jer2=[.12,.3,.46], skin=[.82,.62,.5], dark=[.1,.11,.14], helm=[.93,.93,.95], frm=[.78,.8,.84], sho=[.08,.08,.09], tire=[.07,.07,.08];
+  // v204: el ciclista es una función: dibuja a cualquiera (vos, el fantasma, los de la Carrera Virtual) en su lugar del camino.
+  // o:{s: metros adelante (+) o atrás (−) de la cámara, lat: metros al costado (+ derecha), jer:[r,g,b], crank, v, wd: distancia para el reflector, own}
+  const ciclista=(o)=>{
+  const B0=at(o.s), f=[Math.sin(B0.b),0,Math.cos(B0.b)], r=[Math.cos(B0.b),0,-Math.sin(B0.b)], up=[0,1,0], by=0, lat=o.lat||0;
+  const ox=B0.x+r[0]*lat, oy=B0.y, oz=B0.z+r[2]*lat;
+  const jer=o.jer, jer2=[o.jer[0]*.68,o.jer[1]*.68,o.jer[2]*.74], skin=[.82,.62,.5], dark=[.1,.11,.14], helm=[.93,.93,.95], frm=[.78,.8,.84], sho=[.08,.08,.09], tire=[.07,.07,.08];
   // pendiente dibujada bajo la bici y curvatura (cuánto gira el rumbo por metro) para la inclinación
-  const pa=at(-1.2), pb=at(1.2), pitch=Math.atan2(pb.y-pa.y,2.4);
-  const kap=(bs[Math.min(N-1,iCi+1)]-bs[Math.max(0,iCi-1)]), kap1=Math.atan2(Math.sin(kap),Math.cos(kap))/(2*G), vv=Math.max(0,S.v!=null?S.v:6);
+  const pa=at(o.s-1.2), pb=at(o.s+1.2), pitch=Math.atan2(pb.y-pa.y,2.4);
+  const iR=Math.max(0,Math.min(N-1,Math.round((d+o.s-Ds)/G)));
+  const kap=(bs[Math.min(N-1,iR+1)]-bs[Math.max(0,iR-1)]), kap1=Math.atan2(Math.sin(kap),Math.cos(kap))/(2*G), vv=Math.max(0,o.v!=null?o.v:6);
   let lean=Math.atan(vv*vv*kap1/9.81); lean=Math.max(-.21,Math.min(.21,lean));
   const cp=Math.cos(pitch), sp=Math.sin(pitch), cl=Math.cos(lean), sl2=Math.sin(lean);
   const F1=[f[0]*cp,sp,f[2]*cp], U1=[-f[0]*sp,cp,-f[2]*sp];
   const R2=[r[0]*cl-U1[0]*sl2,-U1[1]*sl2,r[2]*cl-U1[2]*sl2], U2=[U1[0]*cl+r[0]*sl2,U1[1]*cl,U1[2]*cl+r[2]*sl2], F2=F1;
-  const a1=crank||0, bal=.012*Math.sin(a1);
-  const P3=(l,h,fw)=>{ l+=bal*h; return [R2[0]*l+U2[0]*h+F2[0]*fw,by+R2[1]*l+U2[1]*h+F2[1]*fw,R2[2]*l+U2[2]*h+F2[2]*fw]; };
+  const a1=o.crank||0, bal=.012*Math.sin(a1);
+  const P3=(l,h,fw)=>{ l+=bal*h; return [ox+R2[0]*l+U2[0]*h+F2[0]*fw,oy+by+R2[1]*l+U2[1]*h+F2[1]*fw,oz+R2[2]*l+U2[2]*h+F2[2]*fw]; };
   const nrm=v=>{const m=Math.hypot(v[0],v[1],v[2])||1;return [v[0]/m,v[1]/m,v[2]/m];};
   const crs=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
   const limb=(p,q,wl,wd,k)=>{ const A_=P3(...p), B_=P3(...q), Y=nrm([B_[0]-A_[0],B_[1]-A_[1],B_[2]-A_[2]]), dd=R2[0]*Y[0]+R2[1]*Y[1]+R2[2]*Y[2];
     const X=nrm([R2[0]-Y[0]*dd,R2[1]-Y[1]*dd,R2[2]-Y[2]*dd]), Z=crs(X,Y), L=Math.hypot(B_[0]-A_[0],B_[1]-A_[1],B_[2]-A_[2]);
     obox(A,[(A_[0]+B_[0])/2,(A_[1]+B_[1])/2,(A_[2]+B_[2])/2],X,Y,Z,wl,L,wd,k); };
   const bx=(l,h,fw,sx,sy,sz,k)=>obox(A,P3(l,h,fw),R2,U2,F2,sx,sy,sz,k);
-  if(shOn){ const o=offS(1.7), pts=[]; for(const a of [-1,1])for(const b of [-.55,.55]){ const bx=r[0]*a*.22+f[0]*b, bz=r[2]*a*.22+f[2]*b; pts.push([bx,bz]); pts.push([bx+o[0]*.9+r[0]*a*.05,bz+o[1]*.9]); } shad(pts); }
-  if(S.camMode!==2){   // v202: en primera persona el ciclista no se dibuja (la cámara está en su cabeza); queda su sombra
+  if(shOn){ const o=offS(1.7), pts=[]; for(const a of [-1,1])for(const b of [-.55,.55]){ const bx=ox+r[0]*a*.22+f[0]*b, bz=oz+r[2]*a*.22+f[2]*b; pts.push([bx,bz]); pts.push([bx+o[0]*.9+r[0]*a*.05,bz+o[1]*.9]); } shad(pts); }
+  if(!(o.own&&S.camMode===2)){   // v202: en primera persona el ciclista no se dibuja (la cámara está en su cabeza); queda su sombra
   // ruedas: disco fino (14 lados) con tubular negro y llanta clara; el reflector da vuelta con la distancia (radio 0,34 m)
   const wheel=(fw)=>{ const Rw=.34, n=14, cy=.34; for(let i=0;i<n;i++){ const a0=i/n*6.2832, a1_=(i+1)/n*6.2832;
       for(const [rad,w,k] of [[Rw,.045,tire],[Rw-.035,.03,[.62,.64,.68]]]){
         const p0=[rad*Math.sin(a0),cy+rad*Math.cos(a0)], p1=[rad*Math.sin(a1_),cy+rad*Math.cos(a1_)];
         quad(A,P3(-w/2,p0[1],fw+p0[0]),P3(w/2,p0[1],fw+p0[0]),P3(w/2,p1[1],fw+p1[0]),P3(-w/2,p1[1],fw+p1[0]),k,0,P3(0,cy,fw));
         quad(A,P3(-w/2,p1[1],fw+p1[0]),P3(-w/2,p0[1],fw+p0[0]),P3(-w/2,cy,fw),P3(-w/2,cy,fw),k,0,P3(0,cy,fw)); } }
-    const ang=(S.d||0)/Rw; bx(.03,cy+Math.cos(ang)*(Rw-.05),fw+Math.sin(ang)*(Rw-.05),.03,.06,.06,[1,.85,.2]); };
+    const ang=(o.wd!=null?o.wd:(S.d||0))/Rw; bx(.03,cy+Math.cos(ang)*(Rw-.05),fw+Math.sin(ang)*(Rw-.05),.03,.06,.06,[1,.85,.2]); };
   wheel(-.5); wheel(.5);
   // cuadro: tubo superior, caño del sillín, vainas y horquilla (en diagonal, con las dos patas separadas)
   const tube=(p,q,w,k)=>limb(p,q,w,w,k);
@@ -4125,8 +4182,14 @@ function mundo(S){
   bx(0,1.56,.42,.2,.15,.28,helm); bx(0,1.5,.31,.15,.1,.2,[.88,.88,.92]); bx(0,1.55,.24,.1,.06,.12,helm);   // casco (con cola)
   for(const sg of [-1,1]){ const sh_=[sg*.19,1.37,.3], el=[sg*.25,1.18,.4], hd=[sg*.2,1.02,.54]; limb(sh_,el,.09,.09,jer); limb(el,hd,.075,.075,skin); bx(sg*.19,1.02,.56,.07,.07,.07,[.1,.1,.12]); }
   }
-  const iC=Math.max(0,Math.min(N-1,Math.round((d-Ds)/G))); return {A,M,R,Sh,sun:sunV,luzK:(S.luz?LZ.k:1)*(hayInf?(1-.65*IT[iC]):1),camB:C.b,cam:(()=>{
+  return P3; };
+  // los demás (fantasma, corredores de la Carrera Virtual): dentro de lo que cubre la grilla, de lejos a cerca
+  for(const q of (S.riders||[]).filter(q=>q.s>-(ATR-2)&&q.s<680).sort((a_,b_)=>b_.s-a_.s)) ciclista({s:q.s,lat:q.lat||0,jer:col(q.color||'#9fb0c0'),crank:q.crank||0,v:q.v,wd:(S.d||0)+q.s});
+  const P3=ciclista({s:0,lat:0,jer:S.jersey?col(S.jersey):[.18,.44,.62],crank,v:S.v,own:true});
+  const iC=Math.max(0,Math.min(N-1,Math.round((d-Ds)/G))); return {at,A,M,R,Sh,sun:sunV,luzK:(S.luz?LZ.k:1)*(hayInf?(1-.65*IT[iC]):1),camB:C.b,cam:(()=>{
     if(S.camMode===1){ const e0=at(-15), w=at(26); return {eye:[e0.x,e0.y+13,e0.z],tgt:[w.x,w.y,w.z],fov:55}; }          // v202: alta (como un dron, de atrás y de arriba)
+    if(S.camMode===3){ const e0=at(6.5), w=at(0); return {eye:[e0.x,e0.y+1.7,e0.z],tgt:[w.x,w.y+.85,w.z],fov:55}; }        // v204: frontal (de frente, mirándote)
+    if(S.camMode===4) return camDron(S,at);                                                                                  // v204: dron (tomas que se encadenan, como Kayak)
     if(S.camMode===2){ const e=P3(0,1.62,.36), w=at(22); return {eye:e,tgt:[w.x,w.y+1.25,w.z],fov:68}; }                   // v202: primera persona (a la altura de los ojos)
     const e0=at(-4.6),w=at(16),w2=at(34),gr=(w2.y-e0.y)/38.6, ey=e0.y+2.15; return {eye:[e0.x,ey,e0.z],tgt:[w.x,ey+20.6*gr*.85-.5,w.z]};})(),fog:skyB,skyA,skyB,fogK:(sc.bruma||1)*(W?1+(wet?1.6+Math.min(2,W.lluvia*.5):0)+(W.nubes||0)/100*.35:1),W,TW};
 }
@@ -4150,10 +4213,14 @@ function draw(ctx,w,h,S){
     if(m.Sh.length&&m.luzK>.1){gl.polygonOffset(-5,-150);gl.enable(gl.BLEND);gl.blendFuncSeparate(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA,gl.ZERO,gl.ONE);gl.depthMask(false);gl.uniform1f(U.uAl,.34*m.luzK);flush(m.Sh,VP,m.fog,.00085*m.fogK);gl.depthMask(true);gl.disable(gl.BLEND);gl.uniform1f(U.uAl,1);}
     gl.disable(gl.POLYGON_OFFSET_FILL);
     ctx.drawImage(cv,0,0,w,h);
+    // v204: dónde quedó cada corredor en la pantalla (para que la app dibuje su rótulo encima); null si quedó detrás de la cámara o fuera
+    lastProj=(S.riders||[]).map(q=>{ if(!(q.s>-((S.camMode===3||S.camMode===4)?138:14)&&q.s<680)) return null; const g=m.at(q.s), rx_=Math.cos(g.b)*(q.lat||0), rz_=-Math.sin(g.b)*(q.lat||0);
+      const p=[g.x+rx_,g.y+2.1,g.z+rz_], X=VP[0]*p[0]+VP[4]*p[1]+VP[8]*p[2]+VP[12], Y=VP[1]*p[0]+VP[5]*p[1]+VP[9]*p[2]+VP[13], Wc=VP[3]*p[0]+VP[7]*p[1]+VP[11]*p[2]+VP[15];
+      if(Wc<=.3) return null; const sx=(X/Wc*.5+.5)*w, sy=(1-(Y/Wc*.5+.5))*h; return (sx<-40||sx>w+40||sy<-40||sy>h+40)?null:{x:sx,y:sy}; });
     return true;
   }catch(e){failed=e.message||String(e);note('falló: '+failed);return false;}
 }
-return {draw, ok:()=>!failed&&!lost, diag:()=>'Vista 3D del camino (WebGL): '+(failed?'DESACTIVADA — '+failed:(lost?'contexto perdido':(gl?'activa':'sin usar todavía')))+(msB?' · armar el mundo: '+msB.toFixed(1)+' ms/cuadro':'')+(msgs.length?' · '+msgs.join(' | '):''), reset:()=>{failed='';}};
+return {draw, proj:()=>lastProj, ok:()=>!failed&&!lost, diag:()=>'Vista 3D del camino (WebGL): '+(failed?'DESACTIVADA — '+failed:(lost?'contexto perdido':(gl?'activa':'sin usar todavía')))+(msB?' · armar el mundo: '+msB.toFixed(1)+' ms/cuadro':'')+(msgs.length?' · '+msgs.join(' | '):''), reset:()=>{failed='';}};
 })();
 const VELO_GEOM={N:100, NEAR:0.8, GROW:0.012, wRoad:4.2};
 let veloDrawErrLogged=false;
@@ -4430,11 +4497,30 @@ function riderFrame(p,L,sway){
   const Z=V.norm(V.sub(fw,V.mul(Y,V.dot(fw,Y)))),X=V.cross(Y,Z);
   return M4.basis(X,Y,Z,pos);
 }
-function camera(pOwn,L,mode){
-  const o=fr(pOwn).o,tb=Math.tan(bankDeg(pOwn)*Math.PI/180);let eye,tgt,upv=[0,1,0];
+// v204: 0 trasera, 1 alta, 2 primera persona, 3 frontal, 4 dron (las mismas cinco de Kayak Indoor; antes solo se usaba la trasera)
+let veloDronSm=null;
+function camera(pOwn,L,mode,riders){
+  const o=fr(pOwn).o,tb=Math.tan(bankDeg(pOwn)*Math.PI/180),a=Math.atan(tb)*0.55,upB=V.norm([-Math.sin(a)*o[0],Math.cos(a),-Math.sin(a)*o[2]]);let eye,tgt,upv=[0,1,0];
   if(mode===1){eye=P(pOwn-9,L,6.5);tgt=P(pOwn+5,L,0.6);}
-  else if(mode===2){eye=P(pOwn+1.5,-HW-8,1.6);tgt=P(pOwn+2.5,L,1.0);}
-  else{eye=P(pOwn-4.4,L,1.7);tgt=P(pOwn+9,L,1.0);const a=Math.atan(tb)*0.55;upv=V.norm([-Math.sin(a)*o[0],Math.cos(a),-Math.sin(a)*o[2]]);}
+  else if(mode===2){eye=P(pOwn+0.36,L,1.62);tgt=P(pOwn+22,L,1.25);upv=upB;}
+  else if(mode===3){eye=P(pOwn+6.5,L,1.7);tgt=P(pOwn,L,0.85);upv=upB;}
+  else if(mode===4){
+    const TOMAS=[[Math.PI,9,3.2],[Math.PI*0.6,11,2.2],[Math.PI*0.85,24,15],[0.2,9,1.8],[-Math.PI*0.55,15,5.5]];
+    const tW=performance.now()/1000,DUR=11,TR=3.5,tt=tW/DUR,i=Math.floor(tt)%TOMAS.length,j=(i+1)%TOMAS.length,u=tt-Math.floor(tt);
+    const x0=1-TR/DUR,su=u<x0?0:(u-x0)/(TR/DUR),sm=su*su*(3-2*su),A_=TOMAS[i],B_=TOMAS[j];
+    const ang=lerp(A_[0]+.35*(u-.5),B_[0]-.175,sm);let dist=lerp(A_[1],B_[1],sm),alt=lerp(A_[2],B_[2],sm);
+    let c=P(pOwn,L,0.6);
+    let foco=null;for(const rd of (riders||[]))if(!rd.own){const g=rd.p-pOwn;if(Math.abs(g)<=80&&(!foco||Math.abs(g)>Math.abs(foco.p-pOwn)))foco=rd;}
+    if(foco){const q=P(foco.p,foco.L,0.6),sep=V.len(V.sub(q,c));c=V.mul(V.add(c,q),0.5);dist=Math.max(dist,sep*0.8+6);alt+=sep*0.18;}
+    const fw=V.norm(V.sub(P(pOwn+1,L,0),P(pOwn-1,L,0))),rt=V.norm(V.cross(fw,[0,1,0]));
+    eye=V.add(c,V.add(V.mul(fw,Math.cos(ang)*dist),V.add(V.mul(rt,Math.sin(ang)*dist),[0,alt,0])));tgt=c;
+    const now=performance.now();
+    if(!veloDronSm||now-veloDronSm.t>500||V.len(V.sub(eye,veloDronSm.e))>60)veloDronSm={e:eye.slice(),g:tgt.slice(),t:now};
+    const dt=Math.min(0.2,(now-veloDronSm.t)/1000),ke=1-Math.exp(-dt/0.22),kg=1-Math.exp(-dt/0.35);
+    for(let k=0;k<3;k++){veloDronSm.e[k]=lerp(veloDronSm.e[k],eye[k],ke);veloDronSm.g[k]=lerp(veloDronSm.g[k],tgt[k],kg);}veloDronSm.t=now;
+    eye=veloDronSm.e.slice();tgt=veloDronSm.g.slice();
+  }
+  else{eye=P(pOwn-4.4,L,1.7);tgt=P(pOwn+9,L,1.0);upv=upB;}
   return {eye,tgt,up:upv};
 }
 function drawMesh(m,M,tint,spec){gl.uniformMatrix4fv(U(PMESH,'uModel'),false,M);gl.uniform3fv(U(PMESH,'uTint'),tint);gl.uniform1f(U(PMESH,'uSpec'),spec||0);
@@ -4446,7 +4532,7 @@ function projPt(VP,p){const x=VP[0]*p[0]+VP[4]*p[1]+VP[8]*p[2]+VP[12],y=VP[1]*p[
 function renderScene(RS){ // RS:{pOwn,L,v,time,camMode,riders:[{p,L,jersey,cr,wr,stand,own}]}
   gl.viewport(0,0,cv.width,cv.height);
   const indoor=ENV.indoor,asp=cv.width/cv.height,fy=clamp(2*Math.atan(Math.tan(1.28/2)/asp),0.72,1.2),tanH=Math.tan(fy/2);
-  const pOwn=RS.pOwn,L0=RS.L,cam=camera(pOwn,L0,RS.camMode||0),f=V.norm(V.sub(cam.tgt,cam.eye)),r=V.norm(V.cross(f,cam.up)),u=V.cross(r,f);
+  const pOwn=RS.pOwn,L0=RS.L,cam=camera(pOwn,L0,RS.camMode||0,RS.riders),f=V.norm(V.sub(cam.tgt,cam.eye)),r=V.norm(V.cross(f,cam.up)),u=V.cross(r,f);
   const VP=M4.mul(M4.persp(fy,asp,0.12,900),M4.look(cam.eye,cam.tgt,cam.up));
   const fog=indoor?[.045,.05,.065]:[.74,.85,.94],fogD=indoor?0.0075:0.0032;
   gl.clearColor(fog[0],fog[1],fog[2],1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
@@ -4470,7 +4556,8 @@ function renderScene(RS){ // RS:{pOwn,L,v,time,camMode,riders:[{p,L,jersey,cr,wr
   gl.uniform1f(U(p,'uGloss'),40);for(const m of WORLD.misc)drawMesh(m,IDM,WH,0);
   gl.uniform1f(U(p,'uEmis'),1);for(const m of WORLD.emis)drawMesh(m,IDM,WH,0);
   gl.uniform1f(U(p,'uEmis'),0);gl.uniform1f(U(p,'uLit'),1);gl.uniform1f(U(p,'uSunSpec'),indoor?0.15:0.5);gl.uniform1f(U(p,'uGloss'),50);gl.uniform1f(U(p,'uLampN'),0);
-  for(const rd of RS.riders){const sw=Math.sin(rd.cr)*(0.025+0.07*(rd.stand||0))*Math.min(1,RS.v/6);drawBike(riderFrame(rd.p,rd.L,sw),rd.jersey,rd.cr,rd.wr,rd.stand||0);}
+  for(const rd of RS.riders){if(rd.own&&RS.camMode===2)continue;   // v204: en primera persona no se dibuja la propia bici
+    const sw=Math.sin(rd.cr)*(0.025+0.07*(rd.stand||0))*Math.min(1,RS.v/6);drawBike(riderFrame(rd.p,rd.L,sw),rd.jersey,rd.cr,rd.wr,rd.stand||0);}
   gl.depthMask(false);gl.enable(gl.BLEND);gl.useProgram(PDEC);gl.uniformMatrix4fv(U(PDEC,'uVP'),false,VP);
   gl.disableVertexAttribArray(3);gl.enableVertexAttribArray(0);gl.enableVertexAttribArray(1);gl.enableVertexAttribArray(2);
   const dec=[];const quad=(c,a,b,al)=>{for(const [x,y] of [[-1,-1],[1,-1],[1,1],[-1,1]]){const q=V.add(V.add(c,V.mul(a,x)),V.mul(b,y));dec.push(q[0],q[1],q[2],x,y,al);}};
@@ -4542,10 +4629,11 @@ function draw(c2d,s){
     const dpr=Math.min(window.devicePixelRatio||1,2)*st8.res,w=Math.max(2,Math.round(c2d.clientWidth*dpr)),h=Math.max(2,Math.round(c2d.clientHeight*dpr));
     if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h;st8.size=w+'×'+h;}
     const L0=-HW+1.2,pOwn=s.d+G.straight,riders=[{p:pOwn,L:L0,jersey:cssC(s.jersey||'#2f6f9c'),cr:s.crank,wr:s.d/0.34,stand:s.stand||0,own:true}];
-    for(const r of (s.racers||[])){if(r.gap<-3.5)continue;riders.push({p:pOwn+r.gap,L:L0+(r.lane||0),jersey:cssC(r.color||'#9fb0c0'),cr:r.crank||0,wr:(s.d+r.gap)/0.34,stand:0});}
-    const pr=renderScene({pOwn,L:L0,v:s.v||0,time:performance.now()/1000,camMode:0,riders});
+    const atrasMax=s.atrasM!=null?s.atrasM+1.5:3.5;   // v204: con frontal, alta o dron también se ven los que vienen atrás
+    for(const r of (s.racers||[])){if(r.gap<-atrasMax)continue;riders.push({p:pOwn+r.gap,L:L0+(r.lane||0),jersey:cssC(r.color||'#9fb0c0'),cr:r.crank||0,wr:(s.d+r.gap)/0.34,stand:0});}
+    const pr=renderScene({pOwn,L:L0,v:s.v||0,time:performance.now()/1000,camMode:s.camMode||0,riders});   // v204: la cámara elegida (antes siempre la trasera)
     perf();
-    return {own:pr[0],others:pr.slice(1),racers:(s.racers||[]).filter(r=>r.gap>=-3.5)};
+    return {own:pr[0],others:pr.slice(1),racers:(s.racers||[]).filter(r=>r.gap>=-atrasMax)};
   }catch(e){st8.failed=e.message;note('error al dibujar: '+e.message);return null;}
 }
 function hide(){if(cv)cv.style.display='none';}
@@ -4757,11 +4845,11 @@ function drawVelodromeRoad(ctx,w,h){
       gNow=ghostDistAt(elapsed+idt);
       const gd0=((gNow%velTrackLen)+velTrackLen)%velTrackLen;
       const ghostGap=((gd0-d0+velTrackLen/2)%velTrackLen+velTrackLen)%velTrackLen - velTrackLen/2; // + adelante, - atrás
-      if(ghostGap>=PERSP_KEYFRAMES[0].gap) // por diseño: pasados los 2 m atrás sale de pantalla
+      if(ghostGap>=Math.min(PERSP_KEYFRAMES[0].gap,-glCamAtrasM())) // pasados los 2 m atrás sale de pantalla (v204: salvo con frontal, alta o dron)
         racers.push({gap:ghostGap, lane:1.0, crank:ghostRoadCrank, color:"#9fb0c0", alpha:ghostKeyframeAt(ghostGap).alpha});
     }
     const standNow=updateLiveStand();
-    const glr=glVeloDraw($("road"),ctx,w,h,{d:dNow,v,crank:roadCrank,stand:standNow,env:glVeloEnv(velEnv),trackLen:velTrackLen,racers}); // v179
+    const glr=glVeloDraw($("road"),ctx,w,h,{d:dNow,v,crank:roadCrank,stand:standNow,env:glVeloEnv(velEnv),trackLen:velTrackLen,racers,camMode:glCam(),atrasM:glCamAtrasM()}); // v179; v204: cámara elegida
     if(!glr) drawVelodrome3D(ctx,w,h,{trackLen:velTrackLen, env:velEnv, dOwn:dNow, youS, camL:V3_CAM_L, racers});
     if(ghost){
       const gapNow=Math.round(dNow-gNow), ahead=gapNow>=0;
@@ -4905,7 +4993,7 @@ function updateLiveStand(){
 function applyGpxView(){
   const gpx=mode==="gpx", velo=mode==="velodromo", on = velo ? true : (road3d && gpx);
   $("road").classList.toggle("hidden",!on);
-  $("roadCams").classList.toggle("hidden",!(on&&gpx&&glRutaOn()));   // v202
+  $("roadCams").classList.toggle("hidden",!(on&&((gpx&&glRutaOn())||(velo&&glVeloWanted()))));   // v202; v204: también en el velódromo
   $("prof").classList.toggle("hidden", gpx?on:true);
   $("map").classList.toggle("hidden", gpx?on:true);
   $("road3dBtn").style.display=gpx?"":"none";
@@ -5880,12 +5968,12 @@ function drawRepVelodrome(st){
   for(const x of st){ if(x.r===camRacer) continue;
     const xd0=((x.d%L)+L)%L;
     const gap=((xd0-camD0+L/2)%L+L)%L - L/2; // brecha con signo (positivo=adelante, negativo=atrás)
-    if(gap<PERSP_KEYFRAMES[0].gap) continue; // pasados los 2 m atrás sale de pantalla
+    if(gap<Math.min(PERSP_KEYFRAMES[0].gap,-glCamAtrasM())) continue; // pasados los 2 m atrás sale de pantalla (v204: salvo con frontal, alta o dron)
     const lapDiff=Math.floor(x.d/L)-Math.floor(cam.d/L), gapM=Math.round(gap);
     racers.push({gap, lane:0.9*laneSignFor(x.r), crank:x.r.crank, color:x.r.color, alpha:ghostKeyframeAt(gap).alpha,
       label:(gapM>=0?"+":"")+gapM+" m"+(lapDiff!==0?" ("+(lapDiff>0?"+":"")+lapDiff+"v)":""), labelColor:x.r.color});
   }
-  if(glVeloDraw($("repRoad"),ctx,w,h,{d:cam.d,v:(cam.v||0),crank:camRacer.crank,stand:0,env:glVeloEnv(repVeloEnv),trackLen:L,jersey:camRacer.color,racers})) return; // v179
+  if(glVeloDraw($("repRoad"),ctx,w,h,{d:cam.d,v:(cam.v||0),crank:camRacer.crank,stand:0,env:glVeloEnv(repVeloEnv),trackLen:L,jersey:camRacer.color,racers,camMode:glCam(),atrasM:glCamAtrasM()})) return; // v179; v204: cámara elegida
   drawVelodrome3D(ctx,w,h,{trackLen:L, env:repVeloEnv, dOwn:cam.d, youS, camL:V3_CAM_L, racers});
   drawCyclistRear(ctx, w/2, h-6, youS, camRacer.crank, camRacer.color, 1);
 }
@@ -5983,6 +6071,17 @@ function drawRepRoad(st){
   const camRacer=repRacers[repCam]||repRacers[0];
   const cam=st.find(x=>x.r===camRacer)||st[0];
   const camD=cam.d;
+  // v204: con la vista 3D (WebGL) prendida, la carrera en ruta también va en 3D: todos los corredores en su lugar del camino,
+  // las cinco cámaras de Kayak y el escenario de la ruta. Si WebGL falla, sigue el dibujo 2D de siempre (abajo).
+  if(repRouteName&&glRutaOn()&&!glRepFalla){
+    const sc=sceneAt(repRouteName,camD), ex=glRutaExtra(repRouteName,sc), tot=replayRoute.dist[replayRoute.dist.length-1];
+    const others=st.filter(x=>x.r!==camRacer&&x.d-camD>=-glCamAtrasM());
+    const riders=others.map(x=>({s:x.d-camD,lat:1.1*laneSignFor(x.r),color:x.r.color,crank:x.r.crank}));
+    if(GLR.draw(ctx,w,h,{key:"r|"+repRouteName+"|"+tot,d:camD,bFn:d=>bearingRoute(replayRoute,d),eFn:d=>eleRoute(replayRoute,d),sc:sceneSuave(repRouteName,camD,sc),scFn:dd=>sceneAt(repRouteName,Math.max(0,dd)),estilo:ex.estilo,camMode:glCam(),crank:camRacer.crank,gs:ex.gs,hz:ex.hz,land:ex.land,infra:ex.infra,lin:ex.lin,cost:ex.cost,luz:ex.luz,riders,jersey:camRacer.color})){
+      const pr=GLR.proj(); others.forEach((x,i)=>{ const g=Math.round(x.d-camD); glRotulo(ctx,pr[i],(g>=0?"+":"")+g+" m",x.r.color); });
+      return; }
+    if(!GLR.ok()) glRepFalla=true;
+  }
   const S=roadBands(ctx,w,h,camD, d=>bearingRoute(replayRoute,d), d=>eleRoute(replayRoute,d), repRouteName);
   const youS=Math.max(20,h*0.135*PERSP_YOU_SCALE);
   const bFnRep=d=>bearingRoute(replayRoute,d);
